@@ -4,6 +4,7 @@ import LoginView from '../views/auth/LoginView.vue';
 import RegisterView from '../views/auth/RegisterView.vue';
 import HomeView from '../views/home/HomeView.vue';
 import ProfileView from '../views/profile/ProfileView.vue';
+import SubmitRepairView from '../views/student/SubmitRepairView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -23,6 +24,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Home',
     component: HomeView,
     meta: { title: '服务主页', requiresAuth: true }
+  },
+  {
+    path: '/student/submit',
+    name: 'SubmitRepair',
+    component: SubmitRepairView,
+    meta: { title: '极速报修提单', requiresAuth: true }
   },
   {
     path: '/profile',

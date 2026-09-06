@@ -17,7 +17,10 @@
     </div>
 
     <div style="margin: 20px 16px;">
-      <van-button round block type="primary" plain to="/profile">
+      <van-button round block type="primary" size="large" to="/student/submit">
+        发起极速报修提单
+      </van-button>
+      <van-button round block plain type="primary" style="margin-top: 12px;" to="/profile">
         进入个人中心与修改密码
       </van-button>
     </div>

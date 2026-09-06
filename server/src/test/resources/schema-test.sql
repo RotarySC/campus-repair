@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS sys_user_role;
 DROP TABLE IF EXISTS sys_role;
 DROP TABLE IF EXISTS sys_user;
@@ -72,4 +73,41 @@ CREATE TABLE sys_config (
   config_value VARCHAR(255) NOT NULL,
   description VARCHAR(128),
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE repair_order (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_no VARCHAR(32) NOT NULL UNIQUE,
+  student_user_id BIGINT NOT NULL,
+  applicant_name VARCHAR(32) NOT NULL,
+  applicant_phone VARCHAR(20) NOT NULL,
+  space_id BIGINT NOT NULL,
+  space_full_path VARCHAR(255) NOT NULL,
+  category_id BIGINT NOT NULL,
+  category_full_name VARCHAR(128) NOT NULL,
+  worker_skill_code VARCHAR(32),
+  description VARCHAR(1000) NOT NULL,
+  fault_images VARCHAR(2000),
+  urgency_level TINYINT NOT NULL DEFAULT 1,
+  appointment_period VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'PENDING_DISPATCH',
+  worker_id BIGINT,
+  worker_name VARCHAR(32),
+  worker_phone VARCHAR(20),
+  dispatch_type VARCHAR(16),
+  dispatched_time TIMESTAMP,
+  accepted_time TIMESTAMP,
+  finish_time TIMESTAMP,
+  closed_time TIMESTAMP,
+  sla_deadline TIMESTAMP,
+  is_sla_timeout TINYINT NOT NULL DEFAULT 0,
+  suspend_count INT NOT NULL DEFAULT 0,
+  total_suspend_minutes INT NOT NULL DEFAULT 0,
+  rework_count INT NOT NULL DEFAULT 0,
+  material_cost DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  cancel_reason VARCHAR(255),
+  is_archived TINYINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted TINYINT NOT NULL DEFAULT 0
 );
