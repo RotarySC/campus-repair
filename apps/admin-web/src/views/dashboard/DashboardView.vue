@@ -7,6 +7,7 @@
       </div>
       <div class="header-right">
         <span class="user-greeting">欢迎您，{{ authStore.userInfo?.realName }} ({{ authStore.userInfo?.userType }})</span>
+        <el-button type="primary" plain size="small" @click="router.push('/spatial')">空间网格与分类维护</el-button>
         <el-button type="primary" plain size="small" @click="router.push('/system/users')">用户台账管理</el-button>
         <el-button type="danger" plain size="small" @click="handleLogout">退出登录</el-button>
       </div>

@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth';
 import LoginView from '../views/login/LoginView.vue';
 import DashboardView from '../views/dashboard/DashboardView.vue';
 import UserManageView from '../views/system/UserManageView.vue';
+import SpatialManageView from '../views/spatial/SpatialManageView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -22,6 +23,12 @@ const routes: RouteRecordRaw[] = [
     name: 'UserManage',
     component: UserManageView,
     meta: { title: '用户台账管理', requiresAuth: true }
+  },
+  {
+    path: '/spatial',
+    name: 'SpatialManage',
+    component: SpatialManageView,
+    meta: { title: '空间网格与字典', requiresAuth: true }
   },
   {
     path: '/:pathMatch(.*)*',
