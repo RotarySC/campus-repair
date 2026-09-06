@@ -1,0 +1,27 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: campus-repair-server
+  profiles:
+    active: dev
+  jackson:
+    time-zone: GMT+8
+    date-format: yyyy-MM-dd HH:mm:ss
+
+# JWT 配置
+jwt:
+  secret: "CampusRepairSystemSuperSecureSecretKeyForJjwtVerification2026!#"
+  access-token-expiration-seconds: 7200 # 2小时
+  refresh-token-expiration-seconds: 604800 # 7天
+
+# 系统业务参数默认值
+app:
+  security:
+    max-failed-attempts-for-captcha: 3
+  file:
+    upload-dir: ./uploads/
+    max-size-mb: 10

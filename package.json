@@ -1,0 +1,22 @@
+{
+  "name": "campus-repair-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Campus Repair System Monorepo Frontend",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "vue-demi"
+    ]
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "dev:admin": "pnpm --filter @campus/admin run dev",
+    "dev:mobile": "pnpm --filter @campus/mobile run dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
