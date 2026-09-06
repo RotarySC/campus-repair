@@ -38,6 +38,8 @@ public class WorkOrderService {
     private final SpatialNodeService spatialNodeService;
     private final RepairCategoryService categoryService;
     private final UserService userService;
+    private final com.campus.repair.modules.user.service.WorkerService workerService;
+    private final WorkOrderStateMachine stateMachine;
     private final OrderNoGenerator orderNoGenerator;
     private final WorkOrderLogService orderLogService;
     private final ApplicationEventPublisher eventPublisher;
@@ -162,5 +164,234 @@ public class WorkOrderService {
 
     public List<com.campus.repair.modules.workorder.entity.RepairOrderLog> getTimeline(Long orderId) {
         return orderLogService.getTimeline(orderId);
+    }
+
+    public com.campus.repair.modules.workorder.vo.DispatchPoolResultVO getDispatchPool(com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request) {
+        // 1. 统计各分类 Tab 的红点/数量
+        long allCount = countDispatchOrders(null);
+        long failCount = countDispatchOrders("DISPATCH_FAIL");
+        long transferCount = countDispatchOrders("TRANSFER_APPLY");
+        long urgentCount = countDispatchOrders("URGENT");
+        long reworkCount = countDispatchOrders("REWORK");
+
+        com.campus.repair.modules.workorder.vo.DispatchPoolCategoryCountVO counts =
+                com.campus.repair.modules.workorder.vo.DispatchPoolCategoryCountVO.builder()
+                        .allCount(allCount)
+                        .dispatchFailCount(failCount)
+                        .transferApplyCount(transferCount)
+                        .urgentCount(urgentCount)
+                        .reworkCount(reworkCount)
+                        .build();
+
+        // 2. 分页构建查询
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> pageParam =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                        request.getPage() != null ? request.getPage() : 1,
+                        request.getSize() != null ? request.getSize() : 20
+                );
+
+        LambdaQueryWrapper<RepairOrder> query = buildDispatchPoolQuery(request, true);
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> orderPage = orderMapper.selectPage(pageParam, query);
+
+        // 3. 组装 VO (附带流转原因提示与校区解析)
+        List<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> voList = orderPage.getRecords().stream().map(order -> {
+            com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo = new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
+            org.springframework.beans.BeanUtils.copyProperties(order, vo);
+
+            Long rootCampusId = spatialNodeService.resolveRootCampusId(order.getSpaceId());
+            vo.setCampusId(rootCampusId);
+            if (rootCampusId != null) {
+                SpatialNode rootNode = spatialNodeService.getNodeById(rootCampusId);
+                if (rootNode != null) {
+                    vo.setCampusName(rootNode.getName());
+                }
+            }
+
+            // 查询最新的日志说明，提供如“未匹配到在岗电工”或“师傅申请转派：水管爆裂需特种水工”的提示
+            List<com.campus.repair.modules.workorder.entity.RepairOrderLog> logs = orderLogService.getTimeline(order.getId());
+            if (logs != null && !logs.isEmpty()) {
+                com.campus.repair.modules.workorder.entity.RepairOrderLog lastLog = logs.get(logs.size() - 1);
+                vo.setDispatchReason(lastLog.getReasonOrRemark());
+            }
+            return vo;
+        }).collect(java.util.stream.Collectors.toList());
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> resultPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
+        resultPage.setRecords(voList);
+
+        return com.campus.repair.modules.workorder.vo.DispatchPoolResultVO.builder()
+                .orders(resultPage)
+                .counts(counts)
+                .build();
+    }
+
+    private long countDispatchOrders(String categoryFilter) {
+        com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest req = new com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest();
+        req.setCategoryFilter(categoryFilter);
+        LambdaQueryWrapper<RepairOrder> query = buildDispatchPoolQuery(req, false);
+        return orderMapper.selectCount(query);
+    }
+
+    private LambdaQueryWrapper<RepairOrder> buildDispatchPoolQuery(com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request, boolean withOrderBy) {
+        LambdaQueryWrapper<RepairOrder> query = new LambdaQueryWrapper<>();
+
+        // 调度池核心业务范围：待人工调度 MANUAL_DISPATCH 或 返工待指派 REWORK_PENDING
+        String filter = request.getCategoryFilter();
+        if ("REWORK".equalsIgnoreCase(filter)) {
+            query.eq(RepairOrder::getStatus, "REWORK_PENDING");
+        } else if ("DISPATCH_FAIL".equalsIgnoreCase(filter)) {
+            query.eq(RepairOrder::getStatus, "MANUAL_DISPATCH")
+                 .eq(RepairOrder::getDispatchType, "MANUAL")
+                 .isNull(RepairOrder::getWorkerId);
+        } else if ("TRANSFER_APPLY".equalsIgnoreCase(filter)) {
+            query.eq(RepairOrder::getStatus, "MANUAL_DISPATCH")
+                 .isNotNull(RepairOrder::getWorkerId); // 之前指派过师傅后被转派回调度池
+        } else if ("URGENT".equalsIgnoreCase(filter)) {
+            query.in(RepairOrder::getStatus, List.of("MANUAL_DISPATCH", "REWORK_PENDING"))
+                 .eq(RepairOrder::getUrgencyLevel, 2);
+        } else {
+            // ALL: MANUAL_DISPATCH 或 REWORK_PENDING
+            query.in(RepairOrder::getStatus, List.of("MANUAL_DISPATCH", "REWORK_PENDING"));
+        }
+
+        if (request.getUrgencyLevel() != null) {
+            query.eq(RepairOrder::getUrgencyLevel, request.getUrgencyLevel());
+        }
+        if (request.getSpaceId() != null) {
+            query.eq(RepairOrder::getSpaceId, request.getSpaceId());
+        }
+        if (StringUtils.hasText(request.getWorkerSkillCode())) {
+            query.eq(RepairOrder::getWorkerSkillCode, request.getWorkerSkillCode().trim());
+        }
+        if (StringUtils.hasText(request.getKeyword())) {
+            String kw = request.getKeyword().trim();
+            query.and(wrapper -> wrapper.like(RepairOrder::getOrderNo, kw)
+                    .or().like(RepairOrder::getApplicantName, kw)
+                    .or().like(RepairOrder::getDescription, kw));
+        }
+
+        if (withOrderBy) {
+            // 排序规则：返工单最优先置顶 -> 加急单次优先 -> 提单时间正序 (等待越久越先调度)
+            query.orderByDesc(RepairOrder::getReworkCount)
+                 .orderByDesc(RepairOrder::getUrgencyLevel)
+                 .orderByAsc(RepairOrder::getCreatedAt);
+        }
+
+        return query;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void manualDispatch(Long orderId, Long operatorUserId, com.campus.repair.modules.workorder.dto.WorkOrderManualDispatchRequest request) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        // 验证状态机：支持 MANUAL_DISPATCH -> ASSIGNED、ASSIGNED -> MANUAL_DISPATCH (改派)、REWORK_PENDING -> ASSIGNED
+        // 如果当前是 ASSIGNED 状态进行改派，状态机校验改派至 MANUAL_DISPATCH，再跃迁至 ASSIGNED
+        if (currentStatus == com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED) {
+            stateMachine.verifyTransition(com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED,
+                    com.campus.repair.modules.workorder.enums.OrderStatusEnum.MANUAL_DISPATCH);
+            // 原师傅负荷减 1
+            if (order.getWorkerId() != null) {
+                workerService.decrementLoad(order.getWorkerId());
+            }
+        } else {
+            stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED);
+        }
+
+        // 目标师傅校验
+        SysUser targetWorker = userService.getUserById(request.getWorkerId());
+        if (targetWorker == null || targetWorker.getStatus() != 1) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND.getCode(), "指定维修师傅不存在或已被停用");
+        }
+
+        // 增加新师傅负荷
+        boolean success = workerService.incrementLoadAtomic(targetWorker.getId());
+        if (!success) {
+            throw new BusinessException(ErrorCode.WORKER_LOAD_EXCEEDED.getCode(), "指派失败：目标师傅当前负荷已达上限或非在岗状态");
+        }
+
+        Long oldWorkerId = order.getWorkerId();
+        String oldWorkerName = order.getWorkerName();
+
+        order.setWorkerId(targetWorker.getId());
+        order.setWorkerName(targetWorker.getRealName());
+        order.setWorkerPhone(targetWorker.getPhone());
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED.name());
+        order.setDispatchType("MANUAL");
+        order.setDispatchedTime(LocalDateTime.now());
+        orderMapper.updateById(order);
+
+        // 记录流转审计
+        SysUser operator = userService.getUserById(operatorUserId);
+        String opName = operator != null ? operator.getRealName() : "调度主管";
+        String opRole = operator != null ? operator.getUserType() : "ADMIN";
+
+        String remark = StringUtils.hasText(request.getDispatchRemark()) ? request.getDispatchRemark().trim() : "调度中心人工指派";
+        if (oldWorkerId != null && !oldWorkerId.equals(targetWorker.getId())) {
+            remark = String.format("调度中心改派：由原师傅[%s]变更为[%s]。说明：%s", oldWorkerName, targetWorker.getRealName(), remark);
+        }
+
+        orderLogService.recordLog(
+                order,
+                operatorUserId,
+                opName,
+                opRole,
+                "MANUAL_DISPATCH",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED.name(),
+                remark
+        );
+
+        log.info("[WorkOrderService] 工单 {} 人工指派成功给师傅 {} (userId={})", order.getOrderNo(), targetWorker.getRealName(), targetWorker.getId());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelOrder(Long orderId, Long operatorUserId, com.campus.repair.modules.workorder.dto.WorkOrderCancelRequest request) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        // 校验状态机允许跃迁至 CANCELLED (MANUAL_DISPATCH / REWORK_PENDING -> CANCELLED)
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED);
+
+        // 如果工单此前处于占用师傅负荷的状态（如 ASSIGNED / IN_PROGRESS / SUSPENDED），释放师傅负荷；
+        // 若已经处于 MANUAL_DISPATCH 或 REWORK_PENDING，负荷在申请转派或差评时已移出师傅负荷，避免重复扣减
+        if (order.getWorkerId() != null &&
+                (currentStatus == com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED
+                || currentStatus == com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS
+                || currentStatus == com.campus.repair.modules.workorder.enums.OrderStatusEnum.SUSPENDED)) {
+            workerService.decrementLoad(order.getWorkerId());
+        }
+
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED.name());
+        order.setCancelReason(request.getCancelReason().trim());
+        orderMapper.updateById(order);
+
+        SysUser operator = userService.getUserById(operatorUserId);
+        String opName = operator != null ? operator.getRealName() : "调度主管";
+        String opRole = operator != null ? operator.getUserType() : "ADMIN";
+
+        orderLogService.recordLog(
+                order,
+                operatorUserId,
+                opName,
+                opRole,
+                "CANCEL",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED.name(),
+                "工单作废: " + request.getCancelReason().trim()
+        );
+
+        log.info("[WorkOrderService] 工单 {} 已核实作废: {}", order.getOrderNo(), request.getCancelReason());
     }
 }

@@ -46,4 +46,34 @@ public class WorkOrderController {
     public R<java.util.List<com.campus.repair.modules.workorder.entity.RepairOrderLog>> getTimeline(@PathVariable Long id) {
         return R.success(workOrderService.getTimeline(id));
     }
+
+    @Operation(summary = "调度中心获取待办工单池列表及各分类统计")
+    @GetMapping("/dispatch-pool")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    public R<com.campus.repair.modules.workorder.vo.DispatchPoolResultVO> getDispatchPool(
+            com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request) {
+        return R.success(workOrderService.getDispatchPool(request));
+    }
+
+    @Operation(summary = "调度人员人工指派或改派维修师傅")
+    @PostMapping("/{id}/dispatch")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    public R<Void> manualDispatch(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderManualDispatchRequest request) {
+        workOrderService.manualDispatch(id, user.getUserId(), request);
+        return R.success();
+    }
+
+    @Operation(summary = "调度中心核实作废无效或虚假工单")
+    @PostMapping("/{id}/cancel")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    public R<Void> cancelOrder(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderCancelRequest request) {
+        workOrderService.cancelOrder(id, user.getUserId(), request);
+        return R.success();
+    }
 }

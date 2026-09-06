@@ -4,6 +4,7 @@ import LoginView from '../views/login/LoginView.vue';
 import DashboardView from '../views/dashboard/DashboardView.vue';
 import UserManageView from '../views/system/UserManageView.vue';
 import SpatialManageView from '../views/spatial/SpatialManageView.vue';
+import DispatchCenterView from '../views/dispatch/DispatchCenterView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -17,6 +18,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Dashboard',
     component: DashboardView,
     meta: { title: '控制台概览', requiresAuth: true }
+  },
+  {
+    path: '/dispatch',
+    name: 'DispatchCenter',
+    component: DispatchCenterView,
+    meta: { title: '后勤调度中心', requiresAuth: true }
   },
   {
     path: '/system/users',

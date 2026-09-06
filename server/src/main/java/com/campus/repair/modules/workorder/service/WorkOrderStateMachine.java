@@ -22,7 +22,7 @@ public class WorkOrderStateMachine {
         VALID_TRANSITIONS.put(OrderStatusEnum.IN_PROGRESS, Set.of(OrderStatusEnum.SUSPENDED, OrderStatusEnum.PENDING_ACCEPTANCE, OrderStatusEnum.MANUAL_DISPATCH));
         VALID_TRANSITIONS.put(OrderStatusEnum.SUSPENDED, Set.of(OrderStatusEnum.IN_PROGRESS));
         VALID_TRANSITIONS.put(OrderStatusEnum.PENDING_ACCEPTANCE, Set.of(OrderStatusEnum.COMPLETED, OrderStatusEnum.REWORK_PENDING));
-        VALID_TRANSITIONS.put(OrderStatusEnum.REWORK_PENDING, Set.of(OrderStatusEnum.ASSIGNED));
+        VALID_TRANSITIONS.put(OrderStatusEnum.REWORK_PENDING, Set.of(OrderStatusEnum.ASSIGNED, OrderStatusEnum.CANCELLED));
     }
 
     public void verifyTransition(OrderStatusEnum from, OrderStatusEnum to) {

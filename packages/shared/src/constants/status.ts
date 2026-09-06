@@ -21,3 +21,12 @@ export const OrderStatusLabels: Record<OrderStatusEnum, string> = {
   [OrderStatusEnum.COMPLETED]: '已结单',
   [OrderStatusEnum.CANCELLED]: '已作废'
 };
+
+export const WorkerSkillLabels: Record<string, string> = {
+  ELECTRICIAN: '电工电气',
+  PLUMBER: '水暖管道',
+  HVAC: '暖通空调',
+  LOCKSMITH: '门窗锁具',
+  NETWORK: '弱电网络',
+  GENERAL: '综合维修'
+};

@@ -23,6 +23,7 @@ public enum ErrorCode {
     PHONE_EXISTS(1007, "手机号已存在"),
     ORDER_DUPLICATE_ACTIVE(2001, "同一位置已存在未结单同类故障单"),
     ORDER_STATE_TRANSITION_INVALID(2002, "当前工单状态与流转动作不匹配"),
+    ORDER_NOT_FOUND(2003, "工单不存在"),
     INVENTORY_OUT_OF_STOCK(3001, "备件物理库存不足，无法完成核销出库"),
     WORKER_LOAD_EXCEEDED(4001, "指定维修师傅当前并发负荷已达上限");
 
