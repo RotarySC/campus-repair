@@ -176,4 +176,8 @@ public class UserService {
         user.setIsFirstLogin(1); // 管理员重置密码后下次登录强制改密
         userMapper.updateById(user);
     }
+
+    public SysUser getUserById(Long userId) {
+        return userMapper.selectById(userId);
+    }
 }

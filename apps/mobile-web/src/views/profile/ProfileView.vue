@@ -16,7 +16,12 @@
         <van-field v-model="profileForm.realName" label="姓名" placeholder="真实姓名" />
         <van-field v-model="profileForm.phone" label="手机号码" type="tel" placeholder="常用联系电话" />
         <van-field v-model="profileForm.department" label="学院/部门" placeholder="所在单位" />
-        <van-field v-model="profileForm.defaultSpaceId" label="默认宿舍ID" type="digit" placeholder="常用报修空间节点" />
+        <van-cell
+          is-link
+          title="默认宿舍/空间"
+          :value="selectedSpaceName || '点击选择默认报修空间'"
+          @click="showSpaceCascader = true"
+        />
       </van-cell-group>
       <div style="margin: 16px;">
         <van-button round block type="primary" native-type="submit" :loading="profileLoading">
@@ -24,6 +29,17 @@
         </van-button>
       </div>
     </van-form>
+
+    <!-- 空间选择 Popup -->
+    <van-popup v-model:show="showSpaceCascader" round position="bottom">
+      <van-cascader
+        v-model="cascaderSpaceValue"
+        title="选择默认宿舍/办公房间"
+        :options="spaceCascaderOptions"
+        @close="showSpaceCascader = false"
+        @finish="onSpaceFinish"
+      />
+    </van-popup>
 
     <!-- 安全改密 -->
     <van-form @submit="onChangePassword" class="form-section">
@@ -53,11 +69,16 @@ const authStore = useAuthStore();
 const profileLoading = ref(false);
 const passwordLoading = ref(false);
 
+const showSpaceCascader = ref(false);
+const cascaderSpaceValue = ref('');
+const selectedSpaceName = ref('');
+const spaceCascaderOptions = ref<any[]>([]);
+
 const profileForm = reactive({
   realName: '',
   phone: '',
   department: '',
-  defaultSpaceId: '' as any
+  defaultSpaceId: null as number | null
 });
 
 const passwordForm = reactive({
@@ -65,12 +86,55 @@ const passwordForm = reactive({
   newPassword: ''
 });
 
+function transformTreeToCascader(nodes: any[]): any[] {
+  return nodes.map((node) => ({
+    text: node.name,
+    value: node.id,
+    children: node.children && node.children.length > 0 ? transformTreeToCascader(node.children) : undefined
+  }));
+}
+
+async function loadSpaceOptions() {
+  try {
+    const res = await httpClient.get<any, ApiResponse<any[]>>('/spatial/tree', {
+      params: { onlyEnabled: true }
+    });
+    if (res.code === 200) {
+      spaceCascaderOptions.value = transformTreeToCascader(res.data);
+      if (profileForm.defaultSpaceId) {
+        const findPath = (list: any[], id: number, prefix = ''): string | null => {
+          for (const node of list) {
+            const curPath = prefix ? `${prefix} / ${node.text}` : node.text;
+            if (node.value === id) return curPath;
+            if (node.children) {
+              const r = findPath(node.children, id, curPath);
+              if (r) return r;
+            }
+          }
+          return null;
+        };
+        const p = findPath(spaceCascaderOptions.value, profileForm.defaultSpaceId);
+        if (p) selectedSpaceName.value = p;
+      }
+    }
+  } catch (_) {}
+}
+
+function onSpaceFinish({ selectedOptions }: any) {
+  showSpaceCascader.value = false;
+  const leaf = selectedOptions[selectedOptions.length - 1];
+  profileForm.defaultSpaceId = leaf.value;
+  selectedSpaceName.value = selectedOptions.map((o: any) => o.text).join(' / ');
+}
+
 onMounted(() => {
   if (authStore.userInfo) {
     profileForm.realName = authStore.userInfo.realName || '';
     profileForm.phone = authStore.userInfo.phone || '';
-    profileForm.defaultSpaceId = authStore.userInfo.defaultSpaceId ? String(authStore.userInfo.defaultSpaceId) : '';
+    profileForm.department = authStore.userInfo.department || '';
+    profileForm.defaultSpaceId = authStore.userInfo.defaultSpaceId || null;
   }
+  loadSpaceOptions();
 });
 
 async function onUpdateProfile() {

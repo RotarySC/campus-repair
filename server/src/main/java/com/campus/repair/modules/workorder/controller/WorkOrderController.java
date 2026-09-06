@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,5 +39,11 @@ public class WorkOrderController {
             @AuthenticationPrincipal LoginUserPrincipal user,
             @Valid @RequestBody WorkOrderSubmitRequest request) {
         return R.success(workOrderService.submitOrder(user.getUserId(), request));
+    }
+
+    @Operation(summary = "获取工单流转审计时间轴")
+    @GetMapping("/{id}/timeline")
+    public R<java.util.List<com.campus.repair.modules.workorder.entity.RepairOrderLog>> getTimeline(@PathVariable Long id) {
+        return R.success(workOrderService.getTimeline(id));
     }
 }

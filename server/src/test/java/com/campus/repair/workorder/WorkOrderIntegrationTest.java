@@ -103,5 +103,23 @@ class WorkOrderIntegrationTest {
                 .andExpect(jsonPath("$.data.hasActiveOrder").value(true))
                 .andExpect(jsonPath("$.data.activeOrderNo", startsWith("BX")))
                 .andExpect(jsonPath("$.data.activeOrderStatus").value("PENDING_DISPATCH"));
+
+        // 5. 校验工单流转审计时间轴首节点
+        String submitResp = mockMvc.perform(post("/api/v1/work-orders/submit")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(submitReq)))
+                .andReturn().getResponse().getContentAsString();
+        Long newOrderId = objectMapper.readTree(submitResp).path("data").path("orderId").asLong();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/work-orders/" + newOrderId + "/timeline")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data", hasSize(greaterThanOrEqualTo(1))))
+                .andExpect(jsonPath("$.data[0].actionType").value("SUBMIT"))
+                .andExpect(jsonPath("$.data[0].operatorRole").value("STUDENT"))
+                .andExpect(jsonPath("$.data[0].fromStatus").value("DRAFT"))
+                .andExpect(jsonPath("$.data[0].toStatus").value("PENDING_DISPATCH"));
     }
 }

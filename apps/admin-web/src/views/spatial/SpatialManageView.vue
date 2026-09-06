@@ -119,6 +119,16 @@
             <el-option label="室外公共" value="OUTDOOR" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="nodeForm.levelType === 3" label="楼栋责任人">
+          <el-select v-model="nodeForm.leaderUserId" placeholder="选择楼栋网格责任人/宿管" clearable filterable>
+            <el-option
+              v-for="user in adminUserOptions"
+              :key="user.id"
+              :label="`${user.realName} (${user.username} - ${user.userType})`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="nodeDialogVisible = false">取消</el-button>
@@ -171,8 +181,19 @@ const nodeForm = reactive({
   parentId: 0,
   levelType: 1,
   name: '',
-  buildingNature: 'DORMITORY'
+  buildingNature: 'DORMITORY',
+  leaderUserId: null as number | null
 });
+const adminUserOptions = ref<any[]>([]);
+
+async function loadAdminUsers() {
+  try {
+    const res = await httpClient.get<any, ApiResponse<any>>('/users/page', {
+      params: { page: 1, size: 100 }
+    });
+    if (res.code === 200) adminUserOptions.value = res.data.records;
+  } catch (_) {}
+}
 
 const categoryDialogVisible = ref(false);
 const categoryForm = reactive({
@@ -342,6 +363,7 @@ onMounted(() => {
   loadSpatialTree();
   loadCategoryTree();
   loadConfigs();
+  loadAdminUsers();
 });
 </script>
 

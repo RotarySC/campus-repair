@@ -131,6 +131,10 @@ public class SpatialNodeService {
         spatialNodeMapper.deleteById(id);
     }
 
+    public SpatialNode getNodeById(Long id) {
+        return spatialNodeMapper.selectById(id);
+    }
+
     public Long resolveRootCampusId(Long spaceId) {
         SpatialNode current = spatialNodeMapper.selectById(spaceId);
         if (current == null) return null;

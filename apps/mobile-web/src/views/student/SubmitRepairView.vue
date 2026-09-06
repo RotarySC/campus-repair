@@ -194,6 +194,8 @@ function restoreDraft() {
         form.applicantPhone = data.applicantPhone || '';
         isUrgent.value = !!data.isUrgent;
         hasDraft.value = true;
+        // 恢复草稿后立即联动触发防重检测
+        triggerDuplicateCheck();
       }
     } catch (_) {}
   }
@@ -340,10 +342,33 @@ async function onSubmit() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadSpaceOptions();
+  await loadCategoryOptions();
   restoreDraft();
-  loadSpaceOptions();
-  loadCategoryOptions();
+
+  // 若无草稿且用户绑定了默认空间，自动带出默认空间
+  if (!form.spaceId && authStore.userInfo?.defaultSpaceId) {
+    const defaultId = authStore.userInfo.defaultSpaceId;
+    form.spaceId = defaultId;
+    // 递归查找匹配节点名称全路径
+    const findPath = (list: any[], id: number, prefix = ''): string | null => {
+      for (const node of list) {
+        const curPath = prefix ? `${prefix} / ${node.text}` : node.text;
+        if (node.value === id) return curPath;
+        if (node.children) {
+          const res = findPath(node.children, id, curPath);
+          if (res) return res;
+        }
+      }
+      return null;
+    };
+    const foundPath = findPath(spaceCascaderOptions.value, defaultId);
+    if (foundPath) {
+      selectedSpaceName.value = foundPath;
+    }
+  }
+
   if (authStore.userInfo?.phone && !form.applicantPhone) {
     form.applicantPhone = authStore.userInfo.phone;
   }

@@ -95,4 +95,8 @@ public class RepairCategoryService {
         }
         categoryMapper.deleteById(id);
     }
+
+    public RepairCategory getCategoryById(Long id) {
+        return categoryMapper.selectById(id);
+    }
 }

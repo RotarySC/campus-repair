@@ -5,10 +5,10 @@ import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.modules.spatial.entity.RepairCategory;
 import com.campus.repair.modules.spatial.entity.SpatialNode;
-import com.campus.repair.modules.spatial.mapper.RepairCategoryMapper;
-import com.campus.repair.modules.spatial.mapper.SpatialNodeMapper;
+import com.campus.repair.modules.spatial.service.RepairCategoryService;
+import com.campus.repair.modules.spatial.service.SpatialNodeService;
 import com.campus.repair.modules.user.entity.SysUser;
-import com.campus.repair.modules.user.mapper.SysUserMapper;
+import com.campus.repair.modules.user.service.UserService;
 import com.campus.repair.modules.workorder.dto.DuplicateCheckRequest;
 import com.campus.repair.modules.workorder.dto.WorkOrderSubmitRequest;
 import com.campus.repair.modules.workorder.entity.RepairOrder;
@@ -35,14 +35,15 @@ import java.util.Set;
 public class WorkOrderService {
 
     private final RepairOrderMapper orderMapper;
-    private final SpatialNodeMapper spatialNodeMapper;
-    private final RepairCategoryMapper categoryMapper;
-    private final SysUserMapper userMapper;
+    private final SpatialNodeService spatialNodeService;
+    private final RepairCategoryService categoryService;
+    private final UserService userService;
     private final OrderNoGenerator orderNoGenerator;
+    private final WorkOrderLogService orderLogService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
 
-    // 活跃状态集合：存在这些状态的工单算作未结单
+    // 活跃状态集合：存在这些状态的工单算作未结单（全量非终态，无时间窗口限制）
     private static final Set<String> ACTIVE_STATUSES = Set.of(
             "PENDING_DISPATCH", "MANUAL_DISPATCH", "ASSIGNED", "IN_PROGRESS",
             "SUSPENDED", "PENDING_ACCEPTANCE", "REWORK_PENDING"
@@ -62,7 +63,7 @@ public class WorkOrderService {
         }
 
         RepairOrder first = activeOrders.get(0);
-        String tip = String.format("该位置当前存在处理中的同类报修单（%s，状态：%s），请避免重复提交。",
+        String tip = String.format("该位置当前存在处理中的同类报修单（%s，状态：%s），维修师傅正在处置中，无需重复提单。",
                 first.getOrderNo(), first.getStatus());
 
         return DuplicateCheckResultVO.builder()
@@ -76,19 +77,19 @@ public class WorkOrderService {
     @Transactional(rollbackFor = Exception.class)
     public WorkOrderSubmitResultVO submitOrder(Long applicantUserId, WorkOrderSubmitRequest request) {
         // 1. 检查空间节点
-        SpatialNode space = spatialNodeMapper.selectById(request.getSpaceId());
+        SpatialNode space = spatialNodeService.getNodeById(request.getSpaceId());
         if (space == null || space.getStatus() == 0) {
-            throw new BusinessException("所选报修空间不存在或已停用");
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "所选报修空间不存在或已停用");
         }
 
         // 2. 检查故障分类
-        RepairCategory category = categoryMapper.selectById(request.getCategoryId());
+        RepairCategory category = categoryService.getCategoryById(request.getCategoryId());
         if (category == null || category.getStatus() == 0) {
-            throw new BusinessException("所选故障分类不存在或已停用");
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "所选故障分类不存在或已停用");
         }
 
         // 3. 申请人信息
-        SysUser applicant = userMapper.selectById(applicantUserId);
+        SysUser applicant = userService.getUserById(applicantUserId);
         if (applicant == null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
@@ -137,7 +138,19 @@ public class WorkOrderService {
 
         orderMapper.insert(order);
 
-        // 7. 发布领域事件，触发自动派单异步监听器
+        // 7. 写入不可篡改流转审计时间轴首节点
+        orderLogService.recordLog(
+                order,
+                applicant.getId(),
+                applicant.getRealName(),
+                "STUDENT",
+                "SUBMIT",
+                "DRAFT",
+                "PENDING_DISPATCH",
+                "师生提交报修工单，等待系统调度分派"
+        );
+
+        // 8. 发布领域事件，触发自动派单异步监听器
         eventPublisher.publishEvent(new OrderCreatedEvent(this, order.getId(), order.getOrderNo()));
 
         return WorkOrderSubmitResultVO.builder()
@@ -145,5 +158,9 @@ public class WorkOrderService {
                 .orderNo(order.getOrderNo())
                 .status(order.getStatus())
                 .build();
+    }
+
+    public List<com.campus.repair.modules.workorder.entity.RepairOrderLog> getTimeline(Long orderId) {
+        return orderLogService.getTimeline(orderId);
     }
 }

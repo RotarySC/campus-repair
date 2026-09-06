@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS repair_order_log;
 DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS sys_user_role;
 DROP TABLE IF EXISTS sys_role;
@@ -110,4 +111,19 @@ CREATE TABLE repair_order (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted TINYINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE repair_order_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT NOT NULL,
+  order_no VARCHAR(32) NOT NULL,
+  operator_id BIGINT NOT NULL,
+  operator_name VARCHAR(32) NOT NULL,
+  operator_role VARCHAR(32) NOT NULL,
+  action_type VARCHAR(32) NOT NULL,
+  from_status VARCHAR(32) NOT NULL,
+  to_status VARCHAR(32) NOT NULL,
+  reason_or_remark VARCHAR(500),
+  evidence_images VARCHAR(2000),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
