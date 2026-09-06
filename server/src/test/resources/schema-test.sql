@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS repair_order_log;
 DROP TABLE IF EXISTS repair_order;
+DROP TABLE IF EXISTS worker_profile;
 DROP TABLE IF EXISTS sys_user_role;
 DROP TABLE IF EXISTS sys_role;
 DROP TABLE IF EXISTS sys_user;
@@ -37,6 +38,20 @@ CREATE TABLE sys_user_role (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
   role_id BIGINT NOT NULL
+);
+
+CREATE TABLE worker_profile (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL UNIQUE,
+  skill_code VARCHAR(32) NOT NULL,
+  campus_id BIGINT NOT NULL,
+  max_load INT NOT NULL DEFAULT 10,
+  current_load INT NOT NULL DEFAULT 0,
+  on_duty_status TINYINT NOT NULL DEFAULT 1,
+  rating_avg DECIMAL(3,2) NOT NULL DEFAULT 5.00,
+  total_completed_count INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE spatial_node (

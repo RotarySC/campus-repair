@@ -93,7 +93,7 @@ class WorkOrderIntegrationTest {
                 .andExpect(jsonPath("$.data.orderNo", startsWith("BX")))
                 .andExpect(jsonPath("$.data.status").value("PENDING_DISPATCH"));
 
-        // 4. 再次触发防重检查 -> 应返回 hasActiveOrder: true 并提示既有单号
+        // 4. 再次触发防重检查 -> 应返回 hasActiveOrder: true 并提示既有单号 (由于监听派单事件无可用师傅，已由引擎降级为 MANUAL_DISPATCH)
         mockMvc.perform(post("/api/v1/work-orders/check-duplicate")
                         .header("Authorization", "Bearer " + studentToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -102,7 +102,7 @@ class WorkOrderIntegrationTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.hasActiveOrder").value(true))
                 .andExpect(jsonPath("$.data.activeOrderNo", startsWith("BX")))
-                .andExpect(jsonPath("$.data.activeOrderStatus").value("PENDING_DISPATCH"));
+                .andExpect(jsonPath("$.data.activeOrderStatus").value(anyOf(equalTo("PENDING_DISPATCH"), equalTo("MANUAL_DISPATCH"))));
 
         // 5. 校验工单流转审计时间轴首节点
         String submitResp = mockMvc.perform(post("/api/v1/work-orders/submit")
