@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import LoginView from '../views/login/LoginView.vue';
 import DashboardView from '../views/dashboard/DashboardView.vue';
+import UserManageView from '../views/system/UserManageView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -15,6 +16,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Dashboard',
     component: DashboardView,
     meta: { title: '控制台概览', requiresAuth: true }
+  },
+  {
+    path: '/system/users',
+    name: 'UserManage',
+    component: UserManageView,
+    meta: { title: '用户台账管理', requiresAuth: true }
   },
   {
     path: '/:pathMatch(.*)*',

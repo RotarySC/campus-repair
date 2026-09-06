@@ -40,6 +40,9 @@
         <van-button round block type="primary" native-type="submit" :loading="loading" size="large">
           登录系统
         </van-button>
+        <van-button round block plain type="primary" style="margin-top: 12px;" @click="router.push('/register')">
+          没有账号？师生自助注册
+        </van-button>
       </div>
     </van-form>
   </div>

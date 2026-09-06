@@ -9,11 +9,17 @@
 
     <div class="user-card">
       <van-cell-group inset>
-        <van-cell title="当前用户" :value="authStore.userInfo?.realName" size="large" />
+        <van-cell title="当前用户" :value="authStore.userInfo?.realName" size="large" is-link to="/profile" />
         <van-cell title="身份类型" :value="authStore.userInfo?.userType" />
         <van-cell title="联系电话" :value="authStore.userInfo?.phone" />
         <van-cell title="账号状态" value="正常在用" value-class="status-normal" />
       </van-cell-group>
+    </div>
+
+    <div style="margin: 20px 16px;">
+      <van-button round block type="primary" plain to="/profile">
+        进入个人中心与修改密码
+      </van-button>
     </div>
 
     <div style="margin: 32px 16px;">
