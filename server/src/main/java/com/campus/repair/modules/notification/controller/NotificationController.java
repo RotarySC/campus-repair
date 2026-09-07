@@ -47,4 +47,12 @@ public class NotificationController {
     public R<Integer> markAllAsRead(@AuthenticationPrincipal LoginUserPrincipal user) {
         return R.success(notificationService.markAllAsRead(user.getUserId()));
     }
+
+    @Operation(summary = "发布全校后勤广播公告 (管理员权限)")
+    @PostMapping("/broadcast")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    public R<Integer> broadcastAnnouncement(
+            @jakarta.validation.Valid @RequestBody com.campus.repair.modules.notification.dto.BroadcastNotificationRequest request) {
+        return R.success(notificationService.broadcastAnnouncement(request.getTitle(), request.getContent()));
+    }
 }

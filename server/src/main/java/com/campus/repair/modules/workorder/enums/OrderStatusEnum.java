@@ -1,10 +1,5 @@
 package com.campus.repair.modules.workorder.enums;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
-@Getter
-@AllArgsConstructor
 public enum OrderStatusEnum {
     DRAFT("草稿"),
     PENDING_DISPATCH("待派单"),
@@ -18,4 +13,12 @@ public enum OrderStatusEnum {
     CANCELLED("已作废");
 
     private final String desc;
+
+    OrderStatusEnum(String desc) {
+        this.desc = desc;
+    }
+
+    public String getDesc() {
+        return desc;
+    }
 }

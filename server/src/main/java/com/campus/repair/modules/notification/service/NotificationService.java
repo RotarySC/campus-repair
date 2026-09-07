@@ -150,4 +150,32 @@ public class NotificationService {
                 .eq(SysNotification::getUserId, userId)
                 .eq(SysNotification::getIsRead, 0));
     }
+
+    /**
+     * 向全校在册正常用户群体发布后勤广播公告 (Fan-out 扇出)
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int broadcastAnnouncement(String title, String content) {
+        List<SysUser> activeUsers = userService.getAllActiveUsers();
+        if (activeUsers == null || activeUsers.isEmpty()) {
+            return 0;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        int count = 0;
+        for (SysUser user : activeUsers) {
+            SysNotification notification = new SysNotification();
+            notification.setUserId(user.getId());
+            notification.setTitle(title);
+            notification.setContent(content);
+            notification.setCategory("BROADCAST");
+            notification.setIsRead(0);
+            notification.setCreatedAt(now);
+            notificationMapper.insert(notification);
+            count++;
+        }
+
+        log.info("[NotificationService] 成功向 {} 位系统活跃用户扇出发布全校后勤广播公告: {}", count, title);
+        return count;
+    }
 }

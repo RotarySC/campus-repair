@@ -71,6 +71,8 @@ public class RepairOrder implements Serializable {
 
     private Integer reworkCount;
 
+    private Integer isTransferApply; // 0-否, 1-是 (师傅申请转派标记)
+
     private BigDecimal materialCost;
 
     private String cancelReason;

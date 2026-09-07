@@ -43,6 +43,10 @@ mvn test -f server/pom.xml
   - 工单改派或作废时需及时释放原师傅的负荷配额。
 - **不可逆流转审计**：
   - 提单、自动/人工派单、改派、作废等所有跃迁动作必须通过 `orderLogService.recordLog()` 写入 `repair_order_log` 表。
+- **评价打分与超时自动结单约定**：
+  - 师生主动质检评价（1~5 星）写入 `repair_order_evaluation`；打分 ≤ 2 星强制触发差评返工督办。
+  - 72 小时超时自动核销结单时，`ratingStar` 必须保持为 `null`（不强设 5 星虚增好评），并在大屏计算口碑综合满意度时自动过滤未评价订单。
+  - 师傅申请转派（`transferApply`）必须将工单当前的 `workerId`/`workerName`/`workerPhone` 置空，同时标记 `is_transfer_apply = 1`，以便调度中心准确呈现转派池。
 
 ## 4. 常见陷阱与注意事项 (Pitfalls)
 

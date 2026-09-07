@@ -180,4 +180,10 @@ public class UserService {
     public SysUser getUserById(Long userId) {
         return userMapper.selectById(userId);
     }
+
+    public List<SysUser> getAllActiveUsers() {
+        return userMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getDeleted, 0)
+                .eq(SysUser::getStatus, 1));
+    }
 }

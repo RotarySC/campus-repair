@@ -125,6 +125,7 @@ CREATE TABLE repair_order (
   suspend_count INT NOT NULL DEFAULT 0,
   total_suspend_minutes INT NOT NULL DEFAULT 0,
   rework_count INT NOT NULL DEFAULT 0,
+  is_transfer_apply TINYINT NOT NULL DEFAULT 0,
   material_cost DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   cancel_reason VARCHAR(255),
   is_archived TINYINT NOT NULL DEFAULT 0,

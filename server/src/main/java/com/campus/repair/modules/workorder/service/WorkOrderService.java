@@ -267,10 +267,11 @@ public class WorkOrderService {
         } else if ("DISPATCH_FAIL".equalsIgnoreCase(filter)) {
             query.eq(RepairOrder::getStatus, "MANUAL_DISPATCH")
                  .eq(RepairOrder::getDispatchType, "MANUAL")
+                 .eq(RepairOrder::getIsTransferApply, 0)
                  .isNull(RepairOrder::getWorkerId);
         } else if ("TRANSFER_APPLY".equalsIgnoreCase(filter)) {
             query.eq(RepairOrder::getStatus, "MANUAL_DISPATCH")
-                 .isNotNull(RepairOrder::getWorkerId); // 之前指派过师傅后被转派回调度池
+                 .eq(RepairOrder::getIsTransferApply, 1); // 师傅现场申请转派回调度池
         } else if ("ASSIGNED".equalsIgnoreCase(filter)) {
             query.eq(RepairOrder::getStatus, "ASSIGNED"); // 已指派待承接，可执行强制改派
         } else if ("URGENT".equalsIgnoreCase(filter)) {
@@ -350,6 +351,7 @@ public class WorkOrderService {
         order.setWorkerPhone(targetWorker.getPhone());
         order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED.name());
         order.setDispatchType("MANUAL");
+        order.setIsTransferApply(0); // 重置转派标记
         order.setDispatchedTime(LocalDateTime.now());
         orderMapper.updateById(order);
 
@@ -642,10 +644,14 @@ public class WorkOrderService {
         // 1. 移出原师傅个人负荷
         workerService.decrementLoad(workerUserId);
 
-        // 2. 更新工单状态为 MANUAL_DISPATCH，更新建议工种，保留原 workerId 以便调度中心识别“师傅转派”
+        // 2. 更新工单状态为 MANUAL_DISPATCH，更新建议工种，并将原师傅绑定置空（清空当前责任技师），同时标记 isTransferApply = 1
         order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.MANUAL_DISPATCH.name());
         order.setWorkerSkillCode(request.getRecommendSkillCode().trim());
         order.setDispatchType("MANUAL");
+        order.setIsTransferApply(1);
+        order.setWorkerId(null);
+        order.setWorkerName(null);
+        order.setWorkerPhone(null);
         orderMapper.updateById(order);
 
         SysUser worker = userService.getUserById(workerUserId);
@@ -877,15 +883,15 @@ public class WorkOrderService {
         order.setClosedTime(now);
         orderMapper.updateById(order);
 
-        // 更新评价记录标记
+        // 更新评价记录标记：系统自动超时核销不强行打 5 星虚增好评，记录为未打分（ratingStar 置空或保留 null），避免虚增满意度口碑
         com.campus.repair.modules.workorder.entity.RepairOrderEvaluation eval = evaluationMapper.selectOne(
                 new LambdaQueryWrapper<com.campus.repair.modules.workorder.entity.RepairOrderEvaluation>()
                         .eq(com.campus.repair.modules.workorder.entity.RepairOrderEvaluation::getOrderId, order.getId())
         );
         if (eval != null) {
             eval.setIsAutoConfirmed(1);
-            eval.setRatingStar(5); // 默认五星好评
-            eval.setEvaluationComment("超过72小时未确认，系统自动确认结单");
+            eval.setRatingStar(null); // 超时自动核销不强设评分
+            eval.setEvaluationComment("超过72小时师生未手动确认，系统自动确认结单");
             eval.setEvaluatedAt(now);
             evaluationMapper.updateById(eval);
         }

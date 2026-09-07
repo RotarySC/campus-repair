@@ -105,9 +105,10 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
         BigDecimal avgHours = calculateAvgHours(completedList, new BigDecimal("3.50"));
 
-        // 综合满意度均分 (根据 repair_order_evaluation 表的 rating_star 计算)
+        // 综合满意度均分 (根据 repair_order_evaluation 表中真实用户的 rating_star 计算，排除未打分和自动核销无分数据)
         List<RepairOrderEvaluation> evalList = evaluationMapper.selectList(new LambdaQueryWrapper<RepairOrderEvaluation>()
-                .isNotNull(RepairOrderEvaluation::getRatingStar));
+                .isNotNull(RepairOrderEvaluation::getRatingStar)
+                .gt(RepairOrderEvaluation::getRatingStar, 0));
         BigDecimal avgScore = new BigDecimal("4.85");
         if (!evalList.isEmpty()) {
             double sumStar = evalList.stream().mapToInt(RepairOrderEvaluation::getRatingStar).sum();
@@ -306,10 +307,30 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         List<RepairOrder> orders = orderMapper.selectList(query);
         List<WorkOrderExportVO> result = new ArrayList<>();
 
+        // 预加载已结单工单的评价记录，批量映射满意度星级
+        List<Long> orderIds = orders.stream().map(RepairOrder::getId).filter(Objects::nonNull).toList();
+        Map<Long, RepairOrderEvaluation> evalMap = new HashMap<>();
+        if (!orderIds.isEmpty()) {
+            List<RepairOrderEvaluation> evals = evaluationMapper.selectList(
+                    new LambdaQueryWrapper<RepairOrderEvaluation>().in(RepairOrderEvaluation::getOrderId, orderIds)
+            );
+            for (RepairOrderEvaluation ev : evals) {
+                evalMap.put(ev.getOrderId(), ev);
+            }
+        }
+
         for (RepairOrder o : orders) {
             String statusDesc = getStatusChineseDesc(o.getStatus());
             String urgencyDesc = (o.getUrgencyLevel() != null && o.getUrgencyLevel() == 2) ? "【加急】" : "常规";
             String archiveDesc = (o.getIsArchived() != null && o.getIsArchived() == 1) ? "已归档冷数据" : "活跃业务数据";
+
+            String ratingDesc = "-";
+            RepairOrderEvaluation ev = evalMap.get(o.getId());
+            if (ev != null && ev.getRatingStar() != null && ev.getRatingStar() > 0) {
+                ratingDesc = ev.getRatingStar() + " 星";
+            } else if (ev != null && ev.getIsAutoConfirmed() != null && ev.getIsAutoConfirmed() == 1) {
+                ratingDesc = "自动结单(未评分)";
+            }
 
             result.add(WorkOrderExportVO.builder()
                     .orderNo(o.getOrderNo())
@@ -323,6 +344,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                     .appointmentPeriod(o.getAppointmentPeriod())
                     .workerName(o.getWorkerName() != null ? o.getWorkerName() : "-")
                     .materialCost(o.getMaterialCost() != null ? o.getMaterialCost() : BigDecimal.ZERO)
+                    .ratingStarDesc(ratingDesc)
                     .reworkCount(o.getReworkCount() != null ? o.getReworkCount() : 0)
                     .archiveDesc(archiveDesc)
                     .createdAt(o.getCreatedAt() != null ? o.getCreatedAt().format(DATETIME_FORMATTER) : "")

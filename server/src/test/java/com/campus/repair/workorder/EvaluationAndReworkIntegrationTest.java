@@ -331,10 +331,10 @@ public class EvaluationAndReworkIntegrationTest {
         assertEquals(OrderStatusEnum.COMPLETED.name(), autoClosed.getStatus());
         assertNotNull(autoClosed.getClosedTime());
 
-        // 验证评价记录带超时标记
+        // 验证评价记录带超时标记，且不强行虚增评分（ratingStar 为 null，避免虚假好评）
         WorkOrderEvaluationVO eval = workOrderService.getOrderEvaluationDetail(order.getId());
         assertEquals(1, eval.getIsAutoConfirmed(), "应标记为72小时超时自动确认");
-        assertEquals(5, eval.getRatingStar());
+        assertNull(eval.getRatingStar(), "自动确认结单不应强设虚假评分");
         assertTrue(eval.getEvaluationComment().contains("72小时"));
 
         // 验证定时核销幂等性：再次执行任务不应抛错或重复翻转

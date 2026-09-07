@@ -59,6 +59,10 @@ public class WorkOrderExportVO {
     @ColumnWidth(16)
     private BigDecimal materialCost;
 
+    @ExcelProperty("满意度星级")
+    @ColumnWidth(14)
+    private String ratingStarDesc;
+
     @ExcelProperty("返工次数")
     @ColumnWidth(12)
     private Integer reworkCount;
