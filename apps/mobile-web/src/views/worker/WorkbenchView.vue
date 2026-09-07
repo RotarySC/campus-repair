@@ -7,6 +7,9 @@
       @click-left="router.push('/')"
     >
       <template #right>
+        <van-badge :content="unreadNotifCount > 0 ? unreadNotifCount : ''" :max="99" style="margin-right: 12px;">
+          <van-icon name="bell" size="18" color="#1677FF" @click="showNotifPopup = true" />
+        </van-badge>
         <van-icon name="replay" size="18" @click="fetchOrders" />
       </template>
     </van-nav-bar>
@@ -284,6 +287,16 @@
         @confirm="onConfirmSkill"
         @cancel="showSkillPicker = false"
       />
+    <!-- 站内消息通知中心弹层 -->
+    <van-popup
+      v-model:show="showNotifPopup"
+      position="right"
+      :style="{ width: '100%', height: '100%' }"
+    >
+      <NotificationListView
+        @close="showNotifPopup = false"
+        @unread-updated="fetchUnreadCount"
+      />
     </van-popup>
   </div>
 </template>
@@ -293,6 +306,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showSuccessToast, showFailToast, showConfirmDialog } from 'vant';
 import { useAuthStore, httpClient } from '../../stores/auth';
+import NotificationListView from '../notification/NotificationListView.vue';
 import {
   ApiResponse,
   OrderStatusLabels,
@@ -347,6 +361,19 @@ const recommendSkillCode = ref('PLUMBER');
 const transferReason = ref('');
 const showSkillPicker = ref(false);
 
+// 站内通知状态
+const showNotifPopup = ref(false);
+const unreadNotifCount = ref(0);
+
+async function fetchUnreadCount() {
+  try {
+    const res = await httpClient.get<ApiResponse<number>>('/notifications/unread-count');
+    if (res.data.code === 200 && typeof res.data.data === 'number') {
+      unreadNotifCount.value = res.data.data;
+    }
+  } catch (e) {}
+}
+
 const skillColumns = [
   { text: '水暖管道 (PLUMBER)', value: 'PLUMBER' },
   { text: '电工电气 (ELECTRICIAN)', value: 'ELECTRICIAN' },
@@ -364,6 +391,7 @@ function onConfirmSkill({ selectedOptions }: any) {
 
 onMounted(() => {
   fetchOrders();
+  fetchUnreadCount();
 });
 
 function handleTabChange() {

@@ -115,7 +115,7 @@ async function fetchData() {
       params.category = activeTab.value;
     }
 
-    const res = await httpClient.get<ApiResponse<{ records: NotificationItemVO[]; total: number }>>('/api/v1/notifications/my', {
+    const res = await httpClient.get<ApiResponse<{ records: NotificationItemVO[]; total: number }>>('/notifications/my', {
       params
     });
 

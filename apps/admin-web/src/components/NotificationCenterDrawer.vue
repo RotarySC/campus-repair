@@ -78,6 +78,7 @@ import {
 
 const emit = defineEmits<{
   (e: 'unread-updated'): void;
+  (e: 'select-order', orderId: number): void;
 }>();
 
 const router = useRouter();
@@ -155,7 +156,8 @@ function handleItemClick(item: NotificationItemVO) {
     handleMarkSingleRead(item);
   }
   if (item.relatedOrderId) {
-    router.push('/dispatch');
+    emit('select-order', item.relatedOrderId);
+    router.push({ path: '/dispatch', query: { orderId: item.relatedOrderId } });
   }
 }
 </script>

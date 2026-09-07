@@ -87,7 +87,7 @@ onMounted(() => {
 
 async function fetchUnreadCount() {
   try {
-    const res = await httpClient.get<ApiResponse<number>>('/api/v1/notifications/unread-count');
+    const res = await httpClient.get<ApiResponse<number>>('/notifications/unread-count');
     if (res.data.code === 200 && typeof res.data.data === 'number') {
       unreadCount.value = res.data.data;
     }

@@ -454,7 +454,10 @@
       size="420px"
       direction="rtl"
     >
-      <NotificationCenterDrawer @unread-updated="fetchUnreadNotifCount" />
+      <NotificationCenterDrawer
+        @unread-updated="fetchUnreadNotifCount"
+        @select-order="handleSelectOrderFromNotif"
+      />
     </el-drawer>
   </div>
 </template>
@@ -543,6 +546,19 @@ async function fetchUnreadNotifCount() {
 function openTimelineModal(order: DispatchOrderItemVO) {
   timelineOrder.value = order;
   timelineDrawerVisible.value = true;
+}
+
+async function handleSelectOrderFromNotif(orderId: number) {
+  showNotificationDrawer.value = false;
+  try {
+    const res = await httpClient.get<any, ApiResponse<DispatchOrderItemVO>>(`/work-orders/${orderId}`);
+    if (res.code === 200 && res.data) {
+      timelineOrder.value = res.data;
+      timelineDrawerVisible.value = true;
+    }
+  } catch (e) {
+    // fallback
+  }
 }
 
 onMounted(() => {

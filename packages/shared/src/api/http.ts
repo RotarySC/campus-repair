@@ -29,8 +29,11 @@ export function createHttpClient(baseURL: string, tokenProvider: TokenProvider):
     retrySubscribers = [];
   }
 
-  // 请求拦截器注入 Bearer Token
+  // 请求拦截器注入 Bearer Token 并规范化去除多余的 baseURL 前缀 (防止重复传入 /api/v1)
   instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+    if (config.url && baseURL && config.url.startsWith(baseURL)) {
+      config.url = config.url.substring(baseURL.length);
+    }
     const token = tokenProvider.getAccessToken();
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
