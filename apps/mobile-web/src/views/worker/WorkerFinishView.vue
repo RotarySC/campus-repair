@@ -29,6 +29,7 @@
             v-model="fileList"
             multiple
             :max-count="3"
+            capture="camera"
             :before-read="beforeReadImage"
             :after-read="afterReadImage"
             @delete="onDeleteImage"
@@ -94,7 +95,7 @@
               <van-stepper
                 v-model="item.consumeQuantity"
                 :min="1"
-                :max="item.part.stockQuantity > 0 ? item.part.stockQuantity : 1"
+                :max="item.part.stockQuantity"
                 integer
               />
               <van-icon
@@ -184,7 +185,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { showToast, showSuccessToast, showFailToast, showLoadingToast, closeToast } from 'vant';
+import { showToast, showSuccessToast, showFailToast, UploaderFileListItem } from 'vant';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import {
   ApiResponse,
@@ -201,7 +202,7 @@ const authStore = useAuthStore();
 const orderId = Number(route.params.id);
 const orderInfo = ref<Partial<DispatchOrderItemVO>>({});
 const repairSummary = ref('');
-const fileList = ref<any[]>([]);
+const fileList = ref<UploaderFileListItem[]>([]);
 const uploadedImageUrls = ref<string[]>([]);
 const submitting = ref(false);
 
@@ -229,14 +230,9 @@ onMounted(() => {
 
 async function fetchOrderDetail() {
   try {
-    const res = await httpClient.get<ApiResponse<any>>(`/api/v1/work-orders/${orderId}/timeline`);
-    // 从路由或查询基础信息
-    if (res.data.data && res.data.data.length > 0) {
-      const first = res.data.data[0];
-      orderInfo.value = {
-        id: orderId,
-        orderNo: first.orderNo
-      };
+    const res = await httpClient.get<ApiResponse<DispatchOrderItemVO>>(`/api/v1/work-orders/${orderId}`);
+    if (res.data.code === 200 && res.data.data) {
+      orderInfo.value = res.data.data;
     }
   } catch (e) {
     // 允许通过

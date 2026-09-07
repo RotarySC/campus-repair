@@ -168,6 +168,25 @@ public class WorkOrderService {
         return orderLogService.getTimeline(orderId);
     }
 
+    public com.campus.repair.modules.workorder.vo.DispatchOrderItemVO getOrderDetail(Long orderId) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo = new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
+        org.springframework.beans.BeanUtils.copyProperties(order, vo);
+        vo.setStatus(order.getStatus());
+        Long rootCampusId = spatialNodeService.resolveRootCampusId(order.getSpaceId());
+        vo.setCampusId(rootCampusId);
+        if (rootCampusId != null) {
+            SpatialNode rootNode = spatialNodeService.getNodeById(rootCampusId);
+            if (rootNode != null) {
+                vo.setCampusName(rootNode.getName());
+            }
+        }
+        return vo;
+    }
+
     public com.campus.repair.modules.workorder.vo.DispatchPoolResultVO getDispatchPool(com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request) {
         // 1. 统计各分类 Tab 的红点/数量
         long allCount = countDispatchOrders(null);
@@ -715,6 +734,10 @@ public class WorkOrderService {
 
         log.info("[WorkOrderService] 师傅 {} 完工上报工单 {}: 材料成本 ¥{}, 状态跃迁至 PENDING_ACCEPTANCE",
                 workerName, order.getOrderNo(), totalMaterialCost);
+
+        // 6. 发布待验收领域事件，触发师生验收通知
+        eventPublisher.publishEvent(new com.campus.repair.modules.workorder.event.OrderPendingAcceptanceEvent(
+                this, order.getId(), order.getOrderNo(), order.getStudentUserId()));
     }
 
     private RepairOrder getAndVerifyWorkerOrder(Long orderId, Long workerUserId) {

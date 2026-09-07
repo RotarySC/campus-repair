@@ -47,6 +47,12 @@ public class WorkOrderController {
         return R.success(workOrderService.getTimeline(id));
     }
 
+    @Operation(summary = "查询工单基础信息")
+    @GetMapping("/{id}")
+    public R<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> getOrderDetail(@PathVariable Long id) {
+        return R.success(workOrderService.getOrderDetail(id));
+    }
+
     @Operation(summary = "调度中心获取待办工单池列表及各分类统计")
     @GetMapping("/dispatch-pool")
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")

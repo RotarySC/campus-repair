@@ -44,25 +44,29 @@ public class InventoryServiceImpl implements InventoryService {
                 continue;
             }
 
-            // 1. 行级条件原子扣减：UPDATE spare_part SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?
-            int affected = sparePartMapper.deductStockAtomic(item.getPartId(), item.getConsumeQuantity());
-            if (affected == 0) {
-                SparePart part = sparePartMapper.selectById(item.getPartId());
-                String partName = part != null ? part.getPartName() : "ID:" + item.getPartId();
-                int currentStock = part != null ? part.getStockQuantity() : 0;
-                log.warn("[Inventory] 物料 [{}] 物理库存不足! 当前库存: {}, 申请扣减: {}", partName, currentStock, item.getConsumeQuantity());
-                throw new BusinessException(ErrorCode.INVENTORY_OUT_OF_STOCK.getCode(),
-                        String.format("物料 [%s] 实际物理库存不足（当前仅剩 %d 件，申请消耗 %d 件），无法核销出库！",
-                                partName, currentStock, item.getConsumeQuantity()));
+            // 1. 获取物料元数据
+            SparePart part = sparePartMapper.selectById(item.getPartId());
+            if (part == null || part.getDeleted() != 0 || part.getStatus() != 1) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(),
+                        String.format("物料 ID [%d] 不存在或已停用下架！", item.getPartId()));
             }
 
-            // 2. 获取指导价格计算直接成本
-            SparePart part = sparePartMapper.selectById(item.getPartId());
+            // 2. 行级条件原子扣减：UPDATE spare_part SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?
+            int affected = sparePartMapper.deductStockAtomic(item.getPartId(), item.getConsumeQuantity());
+            if (affected == 0) {
+                int currentStock = part.getStockQuantity() != null ? part.getStockQuantity() : 0;
+                log.warn("[Inventory] 物料 [{}] 物理库存不足! 当前库存: {}, 申请扣减: {}", part.getPartName(), currentStock, item.getConsumeQuantity());
+                throw new BusinessException(ErrorCode.INVENTORY_OUT_OF_STOCK.getCode(),
+                        String.format("物料 [%s] 实际物理库存不足（当前仅剩 %d 件，申请消耗 %d 件），无法核销出库！",
+                                part.getPartName(), currentStock, item.getConsumeQuantity()));
+            }
+
+            // 3. 计算指导价格直接成本
             BigDecimal unitPrice = part.getGuidePrice() != null ? part.getGuidePrice() : BigDecimal.ZERO;
             BigDecimal itemTotalCost = unitPrice.multiply(BigDecimal.valueOf(item.getConsumeQuantity()));
             totalCost = totalCost.add(itemTotalCost);
 
-            // 3. 记录维修现场耗材核销流水明细
+            // 4. 记录维修现场耗材核销流水明细
             RepairMaterialConsume consume = new RepairMaterialConsume();
             consume.setOrderId(orderId);
             consume.setOrderNo(orderNo);

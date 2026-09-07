@@ -14,6 +14,7 @@ public class WorkOrderFinishRequest {
     private String repairSummary;
 
     @NotEmpty(message = "请至少上传1张完工现场照片")
+    @jakarta.validation.constraints.Size(max = 3, message = "完工现场照片最多上传3张")
     private List<String> repairImages;
 
     /**
