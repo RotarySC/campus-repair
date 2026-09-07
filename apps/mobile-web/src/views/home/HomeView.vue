@@ -1,6 +1,12 @@
 <template>
   <div class="mobile-home">
-    <van-nav-bar title="校园服务主页" />
+    <van-nav-bar title="校园服务主页">
+      <template #right>
+        <van-badge :content="unreadCount > 0 ? unreadCount : ''" :max="99">
+          <van-icon name="bell" size="20" color="#1989fa" @click="showNotifPopup = true" />
+        </van-badge>
+      </template>
+    </van-nav-bar>
 
     <van-notice-bar
       left-icon="volume-o"
@@ -47,15 +53,46 @@
         退出当前登录
       </van-button>
     </div>
+
+    <!-- 站内消息中心弹层 -->
+    <van-popup
+      v-model:show="showNotifPopup"
+      position="right"
+      :style="{ width: '100%', height: '100%' }"
+    >
+      <NotificationListView
+        @close="showNotifPopup = false"
+        @unread-updated="fetchUnreadCount"
+      />
+    </van-popup>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '../../stores/auth';
+import { useAuthStore, httpClient } from '../../stores/auth';
+import NotificationListView from '../notification/NotificationListView.vue';
+import { ApiResponse } from '@campus/shared';
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+const showNotifPopup = ref(false);
+const unreadCount = ref(0);
+
+onMounted(() => {
+  fetchUnreadCount();
+});
+
+async function fetchUnreadCount() {
+  try {
+    const res = await httpClient.get<ApiResponse<number>>('/api/v1/notifications/unread-count');
+    if (res.data.code === 200 && typeof res.data.data === 'number') {
+      unreadCount.value = res.data.data;
+    }
+  } catch (e) {}
+}
 
 function handleLogout() {
   authStore.logout();

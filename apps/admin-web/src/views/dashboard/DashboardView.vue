@@ -7,6 +7,9 @@
       </div>
       <div class="header-right">
         <span class="user-greeting">欢迎您，{{ authStore.userInfo?.realName }} ({{ authStore.userInfo?.userType }})</span>
+        <el-badge :value="unreadCount" :max="99" :hidden="unreadCount === 0" class="notif-badge">
+          <el-button :icon="Bell" circle @click="showNotificationDrawer = true" title="消息通知中心" />
+        </el-badge>
         <el-button type="primary" size="small" @click="router.push('/dispatch')">调度中心工作台</el-button>
         <el-button type="primary" plain size="small" @click="router.push('/spatial')">空间网格与分类维护</el-button>
         <el-button type="primary" plain size="small" @click="router.push('/system/users')">用户台账管理</el-button>
@@ -27,16 +30,47 @@
         <p>系统角色：<strong>{{ authStore.userInfo?.roleCodes.join(', ') }}</strong></p>
       </el-card>
     </el-main>
+
+    <!-- 站内通知中心抽屉 -->
+    <el-drawer
+      v-model="showNotificationDrawer"
+      title="站内消息通知中心"
+      size="420px"
+      direction="rtl"
+    >
+      <NotificationCenterDrawer @unread-updated="fetchUnreadCount" />
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '../../stores/auth';
-import { Management } from '@element-plus/icons-vue';
+import { useAuthStore, httpClient } from '../../stores/auth';
+import { Management, Bell } from '@element-plus/icons-vue';
+import NotificationCenterDrawer from '../../components/NotificationCenterDrawer.vue';
+import { ApiResponse } from '@campus/shared';
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+const showNotificationDrawer = ref(false);
+const unreadCount = ref(0);
+
+onMounted(() => {
+  fetchUnreadCount();
+});
+
+async function fetchUnreadCount() {
+  try {
+    const res = await httpClient.get<any, ApiResponse<number>>('/notifications/unread-count');
+    if (res.code === 200 && typeof res.data === 'number') {
+      unreadCount.value = res.data;
+    }
+  } catch (e) {
+    // 忽略异常
+  }
+}
 
 function handleLogout() {
   authStore.logout();

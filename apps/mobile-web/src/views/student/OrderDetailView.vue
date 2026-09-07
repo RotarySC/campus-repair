@@ -99,7 +99,12 @@
           <van-cell v-if="evaluation.arbitrationNote" title="主管仲裁说明" :label="evaluation.arbitrationNote" />
         </van-cell-group>
 
-        <!-- 5. 待验收评价操作面板 (当处于 PENDING_ACCEPTANCE 时常驻展示) -->
+        <!-- 5. 全生命周期不可篡改流转时间轴 -->
+        <van-cell-group inset title="工单全流程流转审计时间轴" style="margin-top: 12px;">
+          <WorkOrderTimeline v-if="orderId" :order-id="orderId" />
+        </van-cell-group>
+
+        <!-- 6. 待验收评价操作面板 (当处于 PENDING_ACCEPTANCE 时常驻展示) -->
         <div v-if="order.status === 'PENDING_ACCEPTANCE'" class="evaluate-panel">
           <van-cell-group inset title="师傅已完工，请确认验收并评价">
             <div style="padding: 16px;">
@@ -170,6 +175,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showSuccessToast, showFailToast, showImagePreview } from 'vant';
 import { httpClient } from '../../stores/auth';
+import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import {
   ApiResponse,
   DispatchOrderItemVO,

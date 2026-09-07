@@ -97,27 +97,30 @@
   - 移动端落地工单详情与评价验收页面（`apps/mobile-web/src/views/student/OrderDetailView.vue`，路由 `/orders/:id`），支持报修前后现场实况对比卡片（Visual Diff，左右对照与点击大图预览）、1~5 星打分、快捷满意标签及 <= 2 星差评强提醒与必填说明校验；
   - PC 管理端调度中心（`apps/admin-web/src/views/dispatch/DispatchCenterView.vue`）集成返工待派置顶标识与【返工仲裁】弹窗，支持主管一键下达督办方案或换派师傅；
   - 编写并运行集成测试套件 `EvaluationAndReworkIntegrationTest`（包含好评结单闭环、差评返工置顶、主管仲裁退回原师傅/换派新技师、72h超时自动结单调度与越权拦截），全套 39 个单元/集成测试 100% 通过。
+- [x] **Issue 10 (`10-notifications-center-and-audit-timeline.md`)**：
+  - 交付站内通知表（`sys_notification`）与 `repair_order_log` 审计表 DDL，覆盖六大消息分类（`ORDER_DISPATCH`, `ORDER_FLOW`, `SLA_ALERT`, `REWORK_ALERT`, `STOCK_WARNING`, `BROADCAST`）；
+  - 抽象外部通知 SPI 扩展架构（`Notifier` 接口），提供默认格式化输出的控制台通知器（`MockConsoleNotifier`）与邮件通道适配桩（`MailNotifier`）；
+  - 实现站内通知中心 REST 服务接口（`GET /api/v1/notifications/my`、`GET /unread-count`、`PUT /{id}/read`、`PUT /read-all`），具备严格的越权校验与零延迟更新；
+  - 接入领域事件异步监听器（`OrderNotificationEventListener`），对工单提单、智能/人工派单、完工待验收、核实作废、差评返工全生命周期自动分发个性化站内信并触发外部通道通知；
+  - 在 `packages/shared` 共享层沉淀通知模型与通用图片解析、角色文案工具（`parseImageUrls`, `OperatorRoleLabels`）；
+  - 交付 PC 管理端（Element Plus）与移动端（Vant 4）纵向流转审计时间轴组件（`WorkOrderTimeline.vue`），对报修人、师傅、调度主管及系统调度器进行语义化角色着色、展示状态跳变标签、现场存证照片九宫格与详细批注意见；
+  - 交付 PC 管理端导航栏与移动端首页/个人中心未读红点徽标与全功能消息中心抽屉（`NotificationCenterDrawer.vue` / `NotificationListView.vue`），支持按未读/分类筛选与一键全部已读；
+  - 编写并运行集成测试套件 `NotificationIntegrationTest`，验证消息生命周期、越权已读阻断及工单 7 步核心流转审计时间轴链条完整性与单调递增性，全套 42 个单元/集成测试 100% 通过。
 
 ---
 
 ## 3. 当前活跃前沿与后续任务规划 (Active Frontier & Next Tasks)
 
-目前所有代码均已干净验证并合并至 `master`（最近提交 `141f53f`），后端 39 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
+目前所有代码均已干净验证并准备就绪，后端 42 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
 后续未阻塞、可立即开工的任务为：
 
-1. **Issue 10 (`.scratch/campus-repair-system/issues/10-notifications-center-and-audit-timeline.md`)**：
-   - **全端站内消息中心与流转时间轴审计**：
-   - 站内信表 `sys_notification` 与已读/未读状态管理、未读徽标计数（`GET /api/v1/notifications/my`、`GET /unread-count`、`PUT /{id}/read`、`PUT /read-all`）；
-   - 抽象 `Notifier` SPI 领域消息通知器（默认 Console，支持站内信持久化）；
-   - 监听 `OrderCreatedEvent`、`OrderAssignedEvent`、`OrderPendingAcceptanceEvent`、`OrderCancelledEvent` 等领域事件自动派发通知。
-
-2. **Issue 11 (`.scratch/campus-repair-system/issues/11-inventory-ledger-and-purchase-advice.md`)**：
+1. **Issue 11 (`.scratch/campus-repair-system/issues/11-inventory-ledger-and-purchase-advice.md`)**：
    - **耗材进销存台账管理端、采购入库与补货建议导出**：
    - PC 管理端耗材台账 CRUD 与低库存常驻警告条；
    - 采购入库登记表单（`POST /api/v1/inventory/inbound`）；
    - 基于 EasyExcel 导出缺料补货建议清单（`GET /api/v1/inventory/export-purchase-advice`）。
 
-3. **Issue 12 (`.scratch/campus-repair-system/issues/12-operations-cockpit-and-multi-filter-analytics.md`)**：
+2. **Issue 12 (`.scratch/campus-repair-system/issues/12-operations-cockpit-and-multi-filter-analytics.md`)**：
    - **后勤运营大屏指挥中心与工单多维组合导出**：
    - 16:9 响应式数据可视化大屏（6大核心KPI、30天提单/完工双折线、空间故障热力排行、工种/分类饼图、师傅红黑榜）；
    - 工单多条件组合高级检索与流式 Excel 导出。

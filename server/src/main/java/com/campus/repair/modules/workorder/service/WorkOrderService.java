@@ -833,6 +833,8 @@ public class WorkOrderService {
                     reworkRemark
             );
             log.warn("[WorkOrderService] 工单 {} 被师生打出 {} 星差评，转入返工待派: {}", order.getOrderNo(), request.getRatingStar(), request.getComment());
+            eventPublisher.publishEvent(new com.campus.repair.modules.workorder.event.OrderReworkTriggeredEvent(
+                    this, order.getId(), order.getOrderNo(), studentUserId, request.getRatingStar(), request.getComment()));
         } else {
             String acceptRemark = String.format("师生确认验收满意结单 (%d 星)%s",
                     request.getRatingStar(),

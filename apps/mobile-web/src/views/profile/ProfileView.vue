@@ -10,6 +10,22 @@
       </div>
     </div>
 
+    <!-- 站内通知快捷入口卡片 -->
+    <van-cell-group inset title="消息通知中心" style="margin-bottom: 12px;">
+      <van-cell
+        title="我的站内消息"
+        is-link
+        :value="unreadCount > 0 ? `${unreadCount} 条未读` : '全部已读'"
+        @click="showNotifPopup = true"
+      >
+        <template #icon>
+          <van-badge :content="unreadCount > 0 ? unreadCount : ''" :max="99" style="margin-right: 8px;">
+            <van-icon name="bell" size="18" color="#1989fa" />
+          </van-badge>
+        </template>
+      </van-cell>
+    </van-cell-group>
+
     <!-- 资料修改 -->
     <van-form @submit="onUpdateProfile" class="form-section">
       <van-cell-group inset title="基本联系资料">
@@ -53,6 +69,18 @@
         </van-button>
       </div>
     </van-form>
+
+    <!-- 站内消息中心弹层 -->
+    <van-popup
+      v-model:show="showNotifPopup"
+      position="right"
+      :style="{ width: '100%', height: '100%' }"
+    >
+      <NotificationListView
+        @close="showNotifPopup = false"
+        @unread-updated="fetchUnreadCount"
+      />
+    </van-popup>
   </div>
 </template>
 
@@ -61,6 +89,7 @@ import { reactive, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showNotify } from 'vant';
 import { useAuthStore, httpClient } from '../../stores/auth';
+import NotificationListView from '../notification/NotificationListView.vue';
 import { ApiResponse } from '@campus/shared';
 
 const router = useRouter();
@@ -68,6 +97,9 @@ const authStore = useAuthStore();
 
 const profileLoading = ref(false);
 const passwordLoading = ref(false);
+
+const showNotifPopup = ref(false);
+const unreadCount = ref(0);
 
 const showSpaceCascader = ref(false);
 const cascaderSpaceValue = ref('');
@@ -135,7 +167,17 @@ onMounted(() => {
     profileForm.defaultSpaceId = authStore.userInfo.defaultSpaceId || null;
   }
   loadSpaceOptions();
+  fetchUnreadCount();
 });
+
+async function fetchUnreadCount() {
+  try {
+    const res = await httpClient.get<ApiResponse<number>>('/api/v1/notifications/unread-count');
+    if (res.data.code === 200 && typeof res.data.data === 'number') {
+      unreadCount.value = res.data.data;
+    }
+  } catch (e) {}
+}
 
 async function onUpdateProfile() {
   profileLoading.value = true;

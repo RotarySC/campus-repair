@@ -139,3 +139,36 @@ CREATE TABLE IF NOT EXISTS `repair_material_consume` (
   KEY `idx_order_part` (`order_id`, `part_id`),
   KEY `idx_worker_time` (`worker_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='维修耗材核销流水表';
+
+-- 16. 全端站内通知消息表
+CREATE TABLE IF NOT EXISTS `sys_notification` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收通知用户ID',
+  `title` VARCHAR(128) NOT NULL COMMENT '通知消息标题',
+  `content` VARCHAR(1000) NOT NULL COMMENT '通知详细文本内容',
+  `category` VARCHAR(32) NOT NULL COMMENT '通知类型: ORDER_DISPATCH(派单), ORDER_FLOW(进度更新), SLA_ALERT(催办报警), REWORK_ALERT(返工通知), STOCK_WARNING(库存告警), BROADCAST(全校公告)',
+  `related_order_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '关联业务工单ID(支持点击直达工单详情)',
+  `is_read` TINYINT NOT NULL DEFAULT 0 COMMENT '阅读状态: 0-未读, 1-已读',
+  `read_at` DATETIME DEFAULT NULL COMMENT '阅读标记时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_read` (`user_id`, `is_read`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='站内消息与提醒通知表';
+
+-- 17. 工单流转审计日志表 (不可篡改流转追溯)
+CREATE TABLE IF NOT EXISTS `repair_order_log` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `order_id` BIGINT UNSIGNED NOT NULL COMMENT '关联工单ID',
+  `order_no` VARCHAR(32) NOT NULL COMMENT '关联工单编号',
+  `operator_id` BIGINT UNSIGNED NOT NULL COMMENT '操作人ID (0为系统自动)',
+  `operator_name` VARCHAR(32) NOT NULL COMMENT '经办操作人真实姓名',
+  `operator_role` VARCHAR(32) NOT NULL COMMENT '经办人角色代码 (STUDENT, TEACHER, REPAIR_WORKER, LOGISTICS_ADMIN, SUPER_ADMIN, SYSTEM)',
+  `action_type` VARCHAR(32) NOT NULL COMMENT '动作类型 (SUBMIT, AUTO_DISPATCH, MANUAL_DISPATCH, ACCEPT, SUSPEND, RESUME, TRANSFER_APPLY, FINISH_UPLOAD, MANUAL_ACCEPT, AUTO_ACCEPT, REWORK_TRIGGER, ARBITRATE, CANCEL)',
+  `from_status` VARCHAR(32) NOT NULL COMMENT '跃迁前工单状态',
+  `to_status` VARCHAR(32) NOT NULL COMMENT '跃迁后工单状态',
+  `reason_or_remark` VARCHAR(500) DEFAULT NULL COMMENT '详细原因说明/工单备注/仲裁方案',
+  `evidence_images` VARCHAR(2000) DEFAULT NULL COMMENT '现场存证照片JSON或逗号分隔',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '不可篡改日志生成时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_order_id` (`order_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工单流转审计日志表';

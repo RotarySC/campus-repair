@@ -2,6 +2,7 @@ DROP TABLE IF EXISTS repair_material_consume;
 DROP TABLE IF EXISTS spare_part_inbound;
 DROP TABLE IF EXISTS spare_part;
 DROP TABLE IF EXISTS repair_order_evaluation;
+DROP TABLE IF EXISTS sys_notification;
 DROP TABLE IF EXISTS repair_order_log;
 DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS worker_profile;
@@ -207,4 +208,16 @@ CREATE TABLE repair_order_evaluation (
   rework_flag TINYINT NOT NULL DEFAULT 0,
   arbitration_admin_id BIGINT,
   arbitration_note VARCHAR(500)
+);
+
+CREATE TABLE sys_notification (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  title VARCHAR(128) NOT NULL,
+  content VARCHAR(1000) NOT NULL,
+  category VARCHAR(32) NOT NULL,
+  related_order_id BIGINT,
+  is_read TINYINT NOT NULL DEFAULT 0,
+  read_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

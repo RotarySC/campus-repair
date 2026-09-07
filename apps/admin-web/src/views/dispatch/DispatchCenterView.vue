@@ -10,6 +10,9 @@
         </el-tag>
       </div>
       <div class="header-right">
+        <el-badge :value="unreadNotifCount" :max="99" :hidden="unreadNotifCount === 0">
+          <el-button :icon="Bell" circle @click="showNotificationDrawer = true" title="站内通知" />
+        </el-badge>
         <el-button :icon="Refresh" :loading="loadingOrders" circle @click="refreshAll" title="刷新调度数据" />
         <el-button type="primary" plain size="small" @click="router.push('/')">返回控制台</el-button>
         <el-button type="danger" plain size="small" @click="handleLogout">退出</el-button>
@@ -164,6 +167,14 @@
                   @click.stop="openArbitrateModal(order)"
                 >
                   返工仲裁
+                </el-button>
+                <el-button
+                  type="info"
+                  link
+                  size="small"
+                  @click.stop="openTimelineModal(order)"
+                >
+                  时间轴
                 </el-button>
                 <el-button
                   type="danger"
@@ -414,6 +425,37 @@
         <el-button type="primary" :loading="arbitrating" @click="submitArbitrateRework">确认仲裁指派</el-button>
       </template>
     </el-dialog>
+
+    <!-- 工单全生命周期流转审计时间轴抽屉 -->
+    <el-drawer
+      v-model="timelineDrawerVisible"
+      :title="`工单流转审计追溯链 - ${timelineOrder?.orderNo || ''}`"
+      size="520px"
+      direction="rtl"
+    >
+      <div v-if="timelineOrder" style="margin-bottom: 16px;">
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="报修单号">{{ timelineOrder.orderNo }}</el-descriptions-item>
+          <el-descriptions-item label="报修空间">{{ timelineOrder.spaceFullPath }}</el-descriptions-item>
+          <el-descriptions-item label="故障类型">{{ timelineOrder.categoryFullName }}</el-descriptions-item>
+          <el-descriptions-item label="当前状态">
+            <el-tag size="small">{{ OrderStatusLabels[timelineOrder.status] || timelineOrder.status }}</el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <WorkOrderTimeline v-if="timelineOrder" :order-id="timelineOrder.id" />
+    </el-drawer>
+
+    <!-- 站内消息通知中心抽屉 -->
+    <el-drawer
+      v-model="showNotificationDrawer"
+      title="站内消息通知中心"
+      size="420px"
+      direction="rtl"
+    >
+      <NotificationCenterDrawer @unread-updated="fetchUnreadNotifCount" />
+    </el-drawer>
   </div>
 </template>
 
@@ -427,9 +469,12 @@ import {
   Search,
   Location,
   Warning,
-  Phone
+  Phone,
+  Bell
 } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../../stores/auth';
+import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
+import NotificationCenterDrawer from '../../components/NotificationCenterDrawer.vue';
 import {
   ApiResponse,
   OrderStatusEnum,
@@ -476,6 +521,30 @@ const canceling = ref(false);
 const cancelingOrder = ref<DispatchOrderItemVO | null>(null);
 const cancelReasonInput = ref('');
 
+// 时间轴抽屉状态
+const timelineDrawerVisible = ref(false);
+const timelineOrder = ref<DispatchOrderItemVO | null>(null);
+
+// 消息通知抽屉状态
+const showNotificationDrawer = ref(false);
+const unreadNotifCount = ref(0);
+
+async function fetchUnreadNotifCount() {
+  try {
+    const res = await httpClient.get<any, ApiResponse<number>>('/notifications/unread-count');
+    if (res.code === 200 && typeof res.data === 'number') {
+      unreadNotifCount.value = res.data;
+    }
+  } catch (e) {
+    // 忽略异常
+  }
+}
+
+function openTimelineModal(order: DispatchOrderItemVO) {
+  timelineOrder.value = order;
+  timelineDrawerVisible.value = true;
+}
+
 onMounted(() => {
   refreshAll();
 });
@@ -483,6 +552,7 @@ onMounted(() => {
 function refreshAll() {
   fetchOrders();
   fetchWorkers();
+  fetchUnreadNotifCount();
 }
 
 async function fetchOrders() {
