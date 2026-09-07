@@ -5,6 +5,7 @@ import DashboardView from '../views/dashboard/DashboardView.vue';
 import UserManageView from '../views/system/UserManageView.vue';
 import SpatialManageView from '../views/spatial/SpatialManageView.vue';
 import DispatchCenterView from '../views/dispatch/DispatchCenterView.vue';
+import InventoryManageView from '../views/inventory/InventoryManageView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -36,6 +37,12 @@ const routes: RouteRecordRaw[] = [
     name: 'SpatialManage',
     component: SpatialManageView,
     meta: { title: '空间网格与字典', requiresAuth: true }
+  },
+  {
+    path: '/inventory',
+    name: 'InventoryManage',
+    component: InventoryManageView,
+    meta: { title: '耗材备件进销存', requiresAuth: true }
   },
   {
     path: '/:pathMatch(.*)*',

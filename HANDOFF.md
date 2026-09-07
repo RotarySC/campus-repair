@@ -106,21 +106,25 @@
   - 交付 PC 管理端（Element Plus）与移动端（Vant 4）纵向流转审计时间轴组件（`WorkOrderTimeline.vue`），对报修人、师傅、调度主管及系统调度器进行语义化角色着色、展示状态跳变标签、现场存证照片九宫格与详细批注意见；
   - 交付 PC 管理端导航栏与移动端首页/个人中心未读红点徽标与全功能消息中心抽屉（`NotificationCenterDrawer.vue` / `NotificationListView.vue`），支持按未读/分类筛选与一键全部已读；
   - 编写并运行集成测试套件 `NotificationIntegrationTest`，验证消息生命周期、越权已读阻断及工单 7 步核心流转审计时间轴链条完整性与单调递增性，全套 42 个单元/集成测试 100% 通过。
+- [x] **Issue 11 (`11-inventory-ledger-and-purchase-advice.md`)**：
+  - 落地采购入库明细流水表 `spare_part_inbound` 与不可篡改审计数据映射；
+  - 扩展后端耗材管理 CRUD（`POST /api/v1/inventory/parts`、`DELETE /api/v1/inventory/parts/{id}`），增加编码唯一性拦截与有物理在库库存时禁止物理删除硬保护；
+  - 交付采购批量入库核心接口（`POST /api/v1/inventory/inbound`），在单笔事务中生成唯一单号 `INyyyyMMddXXXXXX` 沉淀入库流水，并采用原子条件更新 `addStockAtomic` 实时累加物理库存；
+  - 交付库存概况监控接口（`GET /api/v1/inventory/summary`）与入库历史流水查询接口（`GET /api/v1/inventory/inbound/history/{partId}`）；
+  - 基于 EasyExcel 交付缺料采购建议清单一键流式导出接口（`GET /api/v1/inventory/export-purchase-advice`），按照目标物料缺口及安全水位 2 倍动态计算建议采购量与预算成本；
+  - 在 `packages/shared` 扩展物料档案与采购出入库交互 DTO/VO；
+  - PC 管理端落地耗材台账工作台（`apps/admin-web/src/views/inventory/InventoryManageView.vue`，路由 `/inventory`），集成四大态势指标卡、低库存常驻红色预警横幅、分类 Tab 与缺料复选、物料新增/编辑/删除弹窗、采购入库登记与历史流水抽屉；
+  - 在管理端主控制台（`DashboardView`）及调度中心（`DispatchCenterView`）顶部导航打通耗材台账快捷跳转入口；
+  - 编写并运行集成测试套件 `InventoryLedgerIntegrationTest`（覆盖物料创建、编码防重、低库存告警标记、入库事务原子累加与采购建议计算），全套 45 个单元/集成测试 100% 通过。
 
 ---
 
 ## 3. 当前活跃前沿与后续任务规划 (Active Frontier & Next Tasks)
 
-目前所有代码均已干净验证并准备就绪，后端 42 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
+目前所有代码均已干净验证并准备就绪，后端 45 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
 后续未阻塞、可立即开工的任务为：
 
-1. **Issue 11 (`.scratch/campus-repair-system/issues/11-inventory-ledger-and-purchase-advice.md`)**：
-   - **耗材进销存台账管理端、采购入库与补货建议导出**：
-   - PC 管理端耗材台账 CRUD 与低库存常驻警告条；
-   - 采购入库登记表单（`POST /api/v1/inventory/inbound`）；
-   - 基于 EasyExcel 导出缺料补货建议清单（`GET /api/v1/inventory/export-purchase-advice`）。
-
-2. **Issue 12 (`.scratch/campus-repair-system/issues/12-operations-cockpit-and-multi-filter-analytics.md`)**：
+1. **Issue 12 (`.scratch/campus-repair-system/issues/12-operations-cockpit-and-multi-filter-analytics.md`)**：
    - **后勤运营大屏指挥中心与工单多维组合导出**：
    - 16:9 响应式数据可视化大屏（6大核心KPI、30天提单/完工双折线、空间故障热力排行、工种/分类饼图、师傅红黑榜）；
    - 工单多条件组合高级检索与流式 Excel 导出。

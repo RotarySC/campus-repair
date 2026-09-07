@@ -11,6 +11,7 @@
           <el-button :icon="Bell" circle @click="showNotificationDrawer = true" title="消息通知中心" />
         </el-badge>
         <el-button type="primary" size="small" @click="router.push('/dispatch')">调度中心工作台</el-button>
+        <el-button type="warning" plain size="small" @click="router.push('/inventory')">耗材进销存台账</el-button>
         <el-button type="primary" plain size="small" @click="router.push('/spatial')">空间网格与分类维护</el-button>
         <el-button type="primary" plain size="small" @click="router.push('/system/users')">用户台账管理</el-button>
         <el-button type="danger" plain size="small" @click="handleLogout">退出登录</el-button>
