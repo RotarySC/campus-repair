@@ -85,31 +85,42 @@
   - 落地维修师傅单页完工填报与耗材核销移动工作台（`apps/mobile-web/src/views/worker/WorkerFinishView.vue`，路由 `/worker/finish/:id`），支持多张现场带水印照片上传、维修总结录入、物料搜索弹窗选入与动态步进器（受限于物理库存上限硬约束），实时计算工单直接耗材总成本；
   - 打通师傅【完工填报与耗材核销】核心接口（`POST /api/v1/work-orders/{id}/finish`），采用行级条件原子更新（`UPDATE spare_part SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?`）杜绝并发超卖，库存不足时严格回滚；释放师傅在修负荷（`current_load - 1`），自动汇总材料费回填 `repair_order.material_cost`，工单跃迁至 `PENDING_ACCEPTANCE`（待验收）并写入流转审计日志（`actionType = FINISH_UPLOAD`）；
   - 编写并运行集成测试套件 `InventoryAndFinishIntegrationTest`（包含 10 线程并发争抢紧俏备件防超卖原子压测、多物料核销流转、库存不足阻断回滚、越权拦截等），全套 33 个单元与集成测试 100% 通过。
+- [x] **Issue 09 (`09-acceptance-evaluation-and-rework-arbitration.md`)**：
+  - 交付师生满意度质检评价接口（`POST /api/v1/work-orders/{id}/evaluate`）：
+    - 正常打分（>= 3 星）触发工单完工闭环（`COMPLETED`），固化 `closed_time`，写入 `MANUAL_ACCEPT` 审计日志；
+    - 差评打分（<= 2 星）强制校验问题说明，阻断结单，将工单跃迁为返工待派（`REWORK_PENDING`），自增 `rework_count`，写入 `REWORK_TRIGGER` 审计日志；
+  - 交付后勤主管返工仲裁督办接口（`POST /api/v1/work-orders/{id}/arbitrate-rework`）：
+    - 支持退回原师傅（`RETRY_ORIGINAL_WORKER`）限期整改二次上门，原师傅负荷原子加 1，跃迁为 `ASSIGNED`；
+    - 支持换派资深技师（`REASSIGN_NEW_WORKER`），新技师负荷原子递增，跃迁为 `ASSIGNED`；
+  - 交付工单完工与评价对比详情接口（`GET /api/v1/work-orders/{id}/evaluation-detail`）；
+  - 后台定时调度任务 `WorkOrderScheduledJobs`（Spring Task，`@Scheduled(cron = "0 0/15 * * * ?")`），每 15 分钟扫描超 72 小时未确认工单，幂等自动闭环结单（`AUTO_ACCEPT`，默认五星好评）；
+  - 移动端落地工单详情与评价验收页面（`apps/mobile-web/src/views/student/OrderDetailView.vue`，路由 `/orders/:id`），支持报修前后现场实况对比卡片（Visual Diff，左右对照与点击大图预览）、1~5 星打分、快捷满意标签及 <= 2 星差评强提醒与必填说明校验；
+  - PC 管理端调度中心（`apps/admin-web/src/views/dispatch/DispatchCenterView.vue`）集成返工待派置顶标识与【返工仲裁】弹窗，支持主管一键下达督办方案或换派师傅；
+  - 编写并运行集成测试套件 `EvaluationAndReworkIntegrationTest`（包含好评结单闭环、差评返工置顶、主管仲裁退回原师傅/换派新技师、72h超时自动结单调度与越权拦截），全套 39 个单元/集成测试 100% 通过。
 
 ---
 
 ## 3. 当前活跃前沿与后续任务规划 (Active Frontier & Next Tasks)
 
-目前所有代码均已干净验证并合并至 `master`，后端 33 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
+目前所有代码均已干净验证并合并至 `master`（最近提交 `141f53f`），后端 39 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
 后续未阻塞、可立即开工的任务为：
 
-1. **Issue 09 (`.scratch/campus-repair-system/issues/09-acceptance-evaluation-and-rework-arbitration.md`)**：
-   - **现场完工拍照水印比对、师生验收与评价返工仲裁**：
-   - 师傅完工照片与总结在移动端师生工单详情中呈现对比视图；
-   - 师生端 1~5 星打分评价与标签（`POST /api/v1/work-orders/{id}/evaluate`），≤ 2 星触发差评返工（`REWORK_PENDING`）；
-   - 后勤主管仲裁督办接口（`POST /api/v1/work-orders/{id}/arbitrate-rework`），决策退回原师傅或换派新技师；
-   - 72 小时超时自动确认核销定时任务引擎（SLA 扫描）。
-
-2. **Issue 10 (`.scratch/campus-repair-system/issues/10-notifications-center-and-audit-timeline.md`)**：
+1. **Issue 10 (`.scratch/campus-repair-system/issues/10-notifications-center-and-audit-timeline.md`)**：
    - **全端站内消息中心与流转时间轴审计**：
-   - 站内信表 `sys_notification` 与已读/未读状态管理、未读徽标计数；
-   - 抽象 `Notifier` SPI 领域消息通知器。
+   - 站内信表 `sys_notification` 与已读/未读状态管理、未读徽标计数（`GET /api/v1/notifications/my`、`GET /unread-count`、`PUT /{id}/read`、`PUT /read-all`）；
+   - 抽象 `Notifier` SPI 领域消息通知器（默认 Console，支持站内信持久化）；
+   - 监听 `OrderCreatedEvent`、`OrderAssignedEvent`、`OrderPendingAcceptanceEvent`、`OrderCancelledEvent` 等领域事件自动派发通知。
 
-3. **Issue 11 (`.scratch/campus-repair-system/issues/11-inventory-ledger-and-purchase-advice.md`)**：
+2. **Issue 11 (`.scratch/campus-repair-system/issues/11-inventory-ledger-and-purchase-advice.md`)**：
    - **耗材进销存台账管理端、采购入库与补货建议导出**：
    - PC 管理端耗材台账 CRUD 与低库存常驻警告条；
    - 采购入库登记表单（`POST /api/v1/inventory/inbound`）；
-   - 基于 EasyExcel 导出缺料补货建议清单。
+   - 基于 EasyExcel 导出缺料补货建议清单（`GET /api/v1/inventory/export-purchase-advice`）。
+
+3. **Issue 12 (`.scratch/campus-repair-system/issues/12-operations-cockpit-and-multi-filter-analytics.md`)**：
+   - **后勤运营大屏指挥中心与工单多维组合导出**：
+   - 16:9 响应式数据可视化大屏（6大核心KPI、30天提单/完工双折线、空间故障热力排行、工种/分类饼图、师傅红黑榜）；
+   - 工单多条件组合高级检索与流式 Excel 导出。
 
 ---
 
@@ -122,7 +133,7 @@
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 
-# 2. 运行后端全量测试套件 (包含全部 33 个单元与集成测试)
+# 2. 运行后端全量测试套件 (包含全部 39 个单元与集成测试)
 mvn test -f server/pom.xml
 
 # 3. 运行前端全量 TypeScript 类型检查
@@ -135,5 +146,5 @@ mvn test -f server/pom.xml
 
 ## 5. 给接手 Agent 的建议技能 (Suggested Skills)
 
-- `/implement`：在新会话启动时直接调用，针对 `Issue 09`（师生评价验收与差评返工仲裁）按照垂直切片规则进行实现。
-- `/code-review`：在新功能切片完成后，调用审查技能以确保代码严格遵循架构规范与需求规格。
+- `/implement`：在新会话启动或恢复任务时直接调用，针对 `Issue 10`（全端站内消息中心与通知体系）或 `Issue 11`（耗材台账管理端与采购入库）按垂直切片落地。
+- `/code-review`：在完成切片实现后调用，进行两轴规范审查。
