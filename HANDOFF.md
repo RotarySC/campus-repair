@@ -67,23 +67,29 @@
   - 建立 `WorkOrderStatisticsService` 领域统计服务，彻底消除 `WorkerService` 对 `RepairOrderMapper` 的逆向依赖；
   - 在 `DispatchEngine` 加锁决策中补齐真实活跃工单双重校验（`countWorkerActiveOrders < maxLoad`）；
   - 发布 `OrderAssignedEvent` 与 `OrderCancelledEvent` 领域事件，支撑后续分派与作废通知。
+- [x] **Issue 07 (`07-worker-mobile-workbench-and-actions.md`)**：
+  - 交付维修师傅移动作业台三栏工单接口（`GET /api/v1/work-orders/worker-pool`），严格按师傅用户身份隔离数据，返回【待承接】、【维修中】与【历史记录】分页及红点计数；
+  - 落地移动端三栏粘性 Tab 卡片流工作台（`apps/mobile-web/src/views/worker/WorkbenchView.vue`），按钮严格对齐现场触屏触控尺寸（>= 44x44 pt）；
+  - 卡片集成绿色 `tel:` 拨号直呼协议，支持一键呼叫报修人；
+  - 打通师傅【接单出发】接口（`POST /api/v1/work-orders/{id}/accept`），推进状态为 `IN_PROGRESS` 并固化接单出发时间戳；
+  - 打通师傅【工单挂起】接口（`POST /api/v1/work-orders/{id}/suspend`），记录挂起类型与预计恢复时间，SLA 倒计时自动冻结；
+  - 打通师傅【解除挂起】接口（`POST /api/v1/work-orders/{id}/resume`），自动计算累计挂起分钟数并顺延 SLA 截止时间；
+  - 打通师傅【申请转派】接口（`POST /api/v1/work-orders/{id}/transfer-apply`），支持推荐新工种，移出当前师傅个人在修负荷，工单流转为 `MANUAL_DISPATCH` 回退调度中心待人工处理；
+  - 编写并运行集成测试 `WorkerWorkbenchIntegrationTest`（全套 27 个测试用例 100% 通过），严格验证越权拦截（AccessDeniedException）、状态机跃迁约束与负荷增减一致性。
 
 ---
 
 ## 3. 当前活跃前沿与后续任务规划 (Active Frontier & Next Tasks)
 
-目前所有代码均已干净验证，后端 23 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
+目前所有代码均已干净验证，后端 27 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
 后续未阻塞、可立即开工的任务为：
 
-1. **Issue 07 (`.scratch/campus-repair-system/issues/07-worker-mobile-workbench-and-actions.md`)**：
-   - **维修师傅移动自适应作业台与挂起/转派流程**：
-   - 移动端三栏粘性 Tab 卡片流（【待承接】、【维修中】、【历史记录】）；
-   - 卡片内置绿色 `tel:` 拨号协议，支持一键呼叫报修人；
-   - 师傅核心业务动作打通：
-     - 【接单出发】：状态推进为 `IN_PROGRESS`，记录出发时间戳；
-     - 【工单挂起】：现场缺料/外协阻滞时录入挂起原因与预计恢复时间，冻结 SLA 倒计时（`IN_PROGRESS -> SUSPENDED`）；
-     - 【解除挂起】：恢复施工（`SUSPENDED -> IN_PROGRESS`）；
-     - 【申请转派】：现场排查超出工种技能时说明原因并推荐工种，工单移回人工调度池并移出师傅负荷（`IN_PROGRESS -> MANUAL_DISPATCH`）。
+1. **Issue 08 (`.scratch/campus-repair-system/issues/08-material-stock-and-offline-verification.md`)**：
+   - **耗材备件轻量进销存与领用核销**：
+   - 耗材备件台账管理与安全库存预警（`spare_part`）；
+   - 采购批量入库单登记（`spare_part_inbound`）；
+   - 维修师傅现场完工填报与耗材领用原子出库核销（`deductStockAtomic`，防止超卖变负）；
+   - 导出一键采购补货建议报表。
 
 ---
 

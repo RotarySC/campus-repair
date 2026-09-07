@@ -39,4 +39,19 @@ public class WorkOrderLogService {
                 .eq(RepairOrderLog::getOrderId, orderId)
                 .orderByAsc(RepairOrderLog::getCreatedAt));
     }
+
+    public long calculateSuspendDurationMinutes(Long orderId) {
+        List<RepairOrderLog> logs = getTimeline(orderId);
+        if (logs == null || logs.isEmpty()) {
+            return 1;
+        }
+        for (int i = logs.size() - 1; i >= 0; i--) {
+            RepairOrderLog l = logs.get(i);
+            if ("SUSPEND".equals(l.getActionType())) {
+                long mins = java.time.Duration.between(l.getCreatedAt(), LocalDateTime.now()).toMinutes();
+                return mins < 1 ? 1 : mins;
+            }
+        }
+        return 1;
+    }
 }

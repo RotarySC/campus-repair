@@ -5,6 +5,7 @@ import RegisterView from '../views/auth/RegisterView.vue';
 import HomeView from '../views/home/HomeView.vue';
 import ProfileView from '../views/profile/ProfileView.vue';
 import SubmitRepairView from '../views/student/SubmitRepairView.vue';
+import WorkbenchView from '../views/worker/WorkbenchView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -24,6 +25,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Home',
     component: HomeView,
     meta: { title: '服务主页', requiresAuth: true }
+  },
+  {
+    path: '/worker/workbench',
+    name: 'WorkerWorkbench',
+    component: WorkbenchView,
+    meta: { title: '师傅工作台', requiresAuth: true }
   },
   {
     path: '/student/submit',
@@ -51,10 +58,17 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore();
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({ path: '/login', query: { redirect: to.fullPath } });
-  } else {
-    next();
+    return next({ path: '/login', query: { redirect: to.fullPath } });
   }
+
+  // 师傅角色智能分流
+  if (authStore.isAuthenticated && authStore.userInfo?.userType === 'REPAIR_WORKER') {
+    if (to.path === '/' || to.path === '/home' || to.path === '/student/submit') {
+      return next('/worker/workbench');
+    }
+  }
+
+  next();
 });
 
 export default router;

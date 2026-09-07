@@ -84,3 +84,32 @@ export interface WorkOrderManualDispatchRequest {
 export interface WorkOrderCancelRequest {
   cancelReason: string;
 }
+
+export interface WorkerOrderListRequest {
+  tab?: 'ASSIGNED' | 'IN_PROGRESS' | 'HISTORY';
+  page?: number;
+  size?: number;
+  keyword?: string;
+}
+
+export interface WorkerWorkbenchCountVO {
+  assignedCount: number;
+  inProgressCount: number;
+  historyCount: number;
+}
+
+export interface WorkerOrderListResultVO {
+  orders: PageResult<DispatchOrderItemVO>;
+  counts: WorkerWorkbenchCountVO;
+}
+
+export interface WorkOrderSuspendRequest {
+  suspendReasonType: string;
+  reasonDetail: string;
+  estimatedResumeTime?: string;
+}
+
+export interface WorkOrderTransferApplyRequest {
+  transferReason: string;
+  recommendSkillCode: string;
+}

@@ -17,7 +17,24 @@
     </div>
 
     <div style="margin: 20px 16px;">
-      <van-button round block type="primary" size="large" to="/student/submit">
+      <van-button
+        v-if="authStore.userInfo?.userType === 'REPAIR_WORKER'"
+        round
+        block
+        type="primary"
+        size="large"
+        to="/worker/workbench"
+      >
+        进入师傅专属工作台
+      </van-button>
+      <van-button
+        v-else
+        round
+        block
+        type="primary"
+        size="large"
+        to="/student/submit"
+      >
         发起极速报修提单
       </van-button>
       <van-button round block plain type="primary" style="margin-top: 12px;" to="/profile">

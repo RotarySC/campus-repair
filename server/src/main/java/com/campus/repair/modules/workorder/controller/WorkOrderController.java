@@ -76,4 +76,57 @@ public class WorkOrderController {
         workOrderService.cancelOrder(id, user.getUserId(), request);
         return R.success();
     }
+
+    // ==================== 维修师傅移动作业台接口 ====================
+
+    @Operation(summary = "维修师傅获取个人工作台工单列表")
+    @GetMapping("/worker-pool")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    public R<com.campus.repair.modules.workorder.vo.WorkerOrderListResultVO> getWorkerOrders(
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            com.campus.repair.modules.workorder.dto.WorkerOrderListRequest request) {
+        return R.success(workOrderService.getWorkerOrders(user.getUserId(), request));
+    }
+
+    @Operation(summary = "维修师傅接单出发")
+    @PostMapping("/{id}/accept")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    public R<Void> acceptOrder(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user) {
+        workOrderService.acceptOrder(id, user.getUserId());
+        return R.success();
+    }
+
+    @Operation(summary = "维修师傅申请工单挂起")
+    @PostMapping("/{id}/suspend")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    public R<Void> suspendOrder(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderSuspendRequest request) {
+        workOrderService.suspendOrder(id, user.getUserId(), request);
+        return R.success();
+    }
+
+    @Operation(summary = "维修师傅解除工单挂起恢复施工")
+    @PostMapping("/{id}/resume")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    public R<Void> resumeOrder(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user) {
+        workOrderService.resumeOrder(id, user.getUserId());
+        return R.success();
+    }
+
+    @Operation(summary = "维修师傅申请工单转派")
+    @PostMapping("/{id}/transfer-apply")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    public R<Void> transferApply(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderTransferApplyRequest request) {
+        workOrderService.transferApply(id, user.getUserId(), request);
+        return R.success();
+    }
 }

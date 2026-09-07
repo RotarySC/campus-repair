@@ -408,4 +408,251 @@ public class WorkOrderService {
 
         log.info("[WorkOrderService] 工单 {} 已核实作废: {}", order.getOrderNo(), request.getCancelReason());
     }
+
+    // ==================== 师傅移动端专属业务实现 ====================
+
+    public com.campus.repair.modules.workorder.vo.WorkerOrderListResultVO getWorkerOrders(
+            Long workerUserId,
+            com.campus.repair.modules.workorder.dto.WorkerOrderListRequest request) {
+
+        // 1. 统计师傅工作台三栏红点数量
+        long assignedCount = countWorkerOrdersByTab(workerUserId, "ASSIGNED");
+        long inProgressCount = countWorkerOrdersByTab(workerUserId, "IN_PROGRESS");
+        long historyCount = countWorkerOrdersByTab(workerUserId, "HISTORY");
+
+        com.campus.repair.modules.workorder.vo.WorkerWorkbenchCountVO counts =
+                com.campus.repair.modules.workorder.vo.WorkerWorkbenchCountVO.builder()
+                        .assignedCount(assignedCount)
+                        .inProgressCount(inProgressCount)
+                        .historyCount(historyCount)
+                        .build();
+
+        // 2. 分页构建查询
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> pageParam =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                        request.getPage() != null ? request.getPage() : 1,
+                        request.getSize() != null ? request.getSize() : 20
+                );
+
+        LambdaQueryWrapper<RepairOrder> query = buildWorkerOrderQuery(workerUserId, request.getTab(), request.getKeyword());
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> orderPage = orderMapper.selectPage(pageParam, query);
+
+        // 3. 组装 VO
+        List<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> voList = orderPage.getRecords().stream().map(order -> {
+            com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo = new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
+            org.springframework.beans.BeanUtils.copyProperties(order, vo);
+
+            Long rootCampusId = spatialNodeService.resolveRootCampusId(order.getSpaceId());
+            vo.setCampusId(rootCampusId);
+            if (rootCampusId != null) {
+                SpatialNode rootNode = spatialNodeService.getNodeById(rootCampusId);
+                if (rootNode != null) {
+                    vo.setCampusName(rootNode.getName());
+                }
+            }
+
+            List<com.campus.repair.modules.workorder.entity.RepairOrderLog> logs = orderLogService.getTimeline(order.getId());
+            if (logs != null && !logs.isEmpty()) {
+                com.campus.repair.modules.workorder.entity.RepairOrderLog lastLog = logs.get(logs.size() - 1);
+                vo.setDispatchReason(lastLog.getReasonOrRemark());
+            }
+            return vo;
+        }).collect(java.util.stream.Collectors.toList());
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> resultPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
+        resultPage.setRecords(voList);
+
+        return com.campus.repair.modules.workorder.vo.WorkerOrderListResultVO.builder()
+                .orders(resultPage)
+                .counts(counts)
+                .build();
+    }
+
+    private long countWorkerOrdersByTab(Long workerUserId, String tab) {
+        LambdaQueryWrapper<RepairOrder> query = buildWorkerOrderQuery(workerUserId, tab, null);
+        return orderMapper.selectCount(query);
+    }
+
+    private LambdaQueryWrapper<RepairOrder> buildWorkerOrderQuery(Long workerUserId, String tab, String keyword) {
+        LambdaQueryWrapper<RepairOrder> query = new LambdaQueryWrapper<>();
+        query.eq(RepairOrder::getWorkerId, workerUserId);
+
+        if ("IN_PROGRESS".equalsIgnoreCase(tab)) {
+            query.in(RepairOrder::getStatus, List.of("IN_PROGRESS", "SUSPENDED"));
+        } else if ("HISTORY".equalsIgnoreCase(tab)) {
+            query.in(RepairOrder::getStatus, List.of("PENDING_ACCEPTANCE", "COMPLETED", "REWORK_PENDING", "CANCELLED"));
+        } else {
+            // ASSIGNED: 待承接
+            query.eq(RepairOrder::getStatus, "ASSIGNED");
+        }
+
+        if (StringUtils.hasText(keyword)) {
+            String kw = keyword.trim();
+            query.and(wrapper -> wrapper.like(RepairOrder::getOrderNo, kw)
+                    .or().like(RepairOrder::getApplicantName, kw)
+                    .or().like(RepairOrder::getDescription, kw)
+                    .or().like(RepairOrder::getSpaceFullPath, kw));
+        }
+
+        return query;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void acceptOrder(Long orderId, Long workerUserId) {
+        RepairOrder order = getAndVerifyWorkerOrder(orderId, workerUserId);
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        // 状态机校验: ASSIGNED -> IN_PROGRESS
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS);
+
+        LocalDateTime now = LocalDateTime.now();
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name());
+        order.setAcceptedTime(now);
+        orderMapper.updateById(order);
+
+        SysUser worker = userService.getUserById(workerUserId);
+        String workerName = worker != null ? worker.getRealName() : order.getWorkerName();
+
+        orderLogService.recordLog(
+                order,
+                workerUserId,
+                workerName,
+                "WORKER",
+                "ACCEPT",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name(),
+                "师傅已接单出发，前往故障现场处置"
+        );
+
+        log.info("[WorkOrderService] 师傅 {} 接单出发: orderNo={}", workerName, order.getOrderNo());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void suspendOrder(Long orderId, Long workerUserId, com.campus.repair.modules.workorder.dto.WorkOrderSuspendRequest request) {
+        RepairOrder order = getAndVerifyWorkerOrder(orderId, workerUserId);
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        // 状态机校验: IN_PROGRESS -> SUSPENDED
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.SUSPENDED);
+
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.SUSPENDED.name());
+        order.setSuspendCount(order.getSuspendCount() != null ? order.getSuspendCount() + 1 : 1);
+        orderMapper.updateById(order);
+
+        SysUser worker = userService.getUserById(workerUserId);
+        String workerName = worker != null ? worker.getRealName() : order.getWorkerName();
+
+        String remark = String.format("工单挂起原因[%s]: %s (预计恢复时间: %s)",
+                request.getSuspendReasonType(),
+                request.getReasonDetail(),
+                StringUtils.hasText(request.getEstimatedResumeTime()) ? request.getEstimatedResumeTime() : "待定");
+
+        orderLogService.recordLog(
+                order,
+                workerUserId,
+                workerName,
+                "WORKER",
+                "SUSPEND",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.SUSPENDED.name(),
+                remark
+        );
+
+        log.info("[WorkOrderService] 工单 {} 申请挂起成功: {}", order.getOrderNo(), remark);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void resumeOrder(Long orderId, Long workerUserId) {
+        RepairOrder order = getAndVerifyWorkerOrder(orderId, workerUserId);
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        // 状态机校验: SUSPENDED -> IN_PROGRESS
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS);
+
+        // 计算本次挂起时长 (分钟)，委托给 orderLogService 计算
+        long suspendMinutes = orderLogService.calculateSuspendDurationMinutes(orderId);
+
+        int totalSuspendMinutes = (order.getTotalSuspendMinutes() != null ? order.getTotalSuspendMinutes() : 0) + (int) suspendMinutes;
+        order.setTotalSuspendMinutes(totalSuspendMinutes);
+
+        // 顺延 SLA 截止时限
+        if (order.getSlaDeadline() != null) {
+            order.setSlaDeadline(order.getSlaDeadline().plusMinutes(suspendMinutes));
+        }
+
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name());
+        orderMapper.updateById(order);
+
+        SysUser worker = userService.getUserById(workerUserId);
+        String workerName = worker != null ? worker.getRealName() : order.getWorkerName();
+
+        orderLogService.recordLog(
+                order,
+                workerUserId,
+                workerName,
+                "WORKER",
+                "RESUME",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name(),
+                String.format("师傅解除挂起恢复施工 (本次挂起耗时: %d 分钟，SLA时限已顺延)", suspendMinutes)
+        );
+
+        log.info("[WorkOrderService] 工单 {} 解除挂起恢复施工", order.getOrderNo());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void transferApply(Long orderId, Long workerUserId, com.campus.repair.modules.workorder.dto.WorkOrderTransferApplyRequest request) {
+        RepairOrder order = getAndVerifyWorkerOrder(orderId, workerUserId);
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        // 状态机校验: IN_PROGRESS -> MANUAL_DISPATCH
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.MANUAL_DISPATCH);
+
+        // 1. 移出原师傅个人负荷
+        workerService.decrementLoad(workerUserId);
+
+        // 2. 更新工单状态为 MANUAL_DISPATCH，更新建议工种，保留原 workerId 以便调度中心识别“师傅转派”
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.MANUAL_DISPATCH.name());
+        order.setWorkerSkillCode(request.getRecommendSkillCode().trim());
+        order.setDispatchType("MANUAL");
+        orderMapper.updateById(order);
+
+        SysUser worker = userService.getUserById(workerUserId);
+        String workerName = worker != null ? worker.getRealName() : order.getWorkerName();
+
+        String remark = String.format("师傅申请转派: %s (建议工种: %s)", request.getTransferReason().trim(), request.getRecommendSkillCode().trim());
+
+        orderLogService.recordLog(
+                order,
+                workerUserId,
+                workerName,
+                "WORKER",
+                "TRANSFER_APPLY",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.MANUAL_DISPATCH.name(),
+                remark
+        );
+
+        log.info("[WorkOrderService] 师傅 {} 申请转派工单 {}: {}", workerName, order.getOrderNo(), remark);
+    }
+
+    private RepairOrder getAndVerifyWorkerOrder(Long orderId, Long workerUserId) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        if (!workerUserId.equals(order.getWorkerId())) {
+            throw new org.springframework.security.access.AccessDeniedException("越权拦截：您不是该工单当前指派的维修师傅，无法操作");
+        }
+        return order;
+    }
 }
