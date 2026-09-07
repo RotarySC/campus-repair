@@ -207,13 +207,24 @@ class DispatchConsoleIntegrationTest {
     @DisplayName("人工指派与改派流转：负荷原子增减与状态机跃迁校验")
     void testManualDispatchAndReassign() {
         // 1. 提交工单并置为待人工调度
+        RepairCategory catNoAuto = new RepairCategory();
+        catNoAuto.setName("非自动派工单");
+        catNoAuto.setLevel(2);
+        catNoAuto.setWorkerSkillCode("MANUAL_ONLY_SKILL");
+        catNoAuto.setSlaHours(12);
+        catNoAuto = categoryService.createCategory(catNoAuto);
+
         WorkOrderSubmitRequest req = new WorkOrderSubmitRequest();
         req.setSpaceId(testRoomId);
-        req.setCategoryId(testCategoryId);
+        req.setCategoryId(catNoAuto.getId());
         req.setDescription("洗手池水阀损坏");
         req.setUrgencyLevel(1);
         req.setAppointmentPeriod("上午08:30-11:30");
         WorkOrderSubmitResultVO res = workOrderService.submitOrder(1L, req);
+
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException ignored) {}
 
         RepairOrder order = orderMapper.selectById(res.getOrderId());
         order.setStatus(OrderStatusEnum.MANUAL_DISPATCH.name());

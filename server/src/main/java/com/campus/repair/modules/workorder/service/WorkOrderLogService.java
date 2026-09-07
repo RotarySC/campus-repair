@@ -18,6 +18,11 @@ public class WorkOrderLogService {
 
     public void recordLog(RepairOrder order, Long operatorId, String operatorName, String operatorRole,
                           String actionType, String fromStatus, String toStatus, String remark) {
+        recordLog(order, operatorId, operatorName, operatorRole, actionType, fromStatus, toStatus, remark, order.getFaultImages());
+    }
+
+    public void recordLog(RepairOrder order, Long operatorId, String operatorName, String operatorRole,
+                          String actionType, String fromStatus, String toStatus, String remark, String evidenceImages) {
         RepairOrderLog log = new RepairOrderLog();
         log.setOrderId(order.getId());
         log.setOrderNo(order.getOrderNo());
@@ -28,7 +33,7 @@ public class WorkOrderLogService {
         log.setFromStatus(fromStatus);
         log.setToStatus(toStatus);
         log.setReasonOrRemark(remark);
-        log.setEvidenceImages(order.getFaultImages());
+        log.setEvidenceImages(evidenceImages != null ? evidenceImages : order.getFaultImages());
         log.setCreatedAt(LocalDateTime.now());
 
         logMapper.insert(log);

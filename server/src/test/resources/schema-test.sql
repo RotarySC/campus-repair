@@ -1,3 +1,7 @@
+DROP TABLE IF EXISTS repair_material_consume;
+DROP TABLE IF EXISTS spare_part_inbound;
+DROP TABLE IF EXISTS spare_part;
+DROP TABLE IF EXISTS repair_order_evaluation;
 DROP TABLE IF EXISTS repair_order_log;
 DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS worker_profile;
@@ -141,4 +145,66 @@ CREATE TABLE repair_order_log (
   reason_or_remark VARCHAR(500),
   evidence_images VARCHAR(2000),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE spare_part (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  part_code VARCHAR(32) NOT NULL,
+  part_name VARCHAR(64) NOT NULL,
+  category_type VARCHAR(32) NOT NULL,
+  specification VARCHAR(64),
+  unit VARCHAR(16) NOT NULL,
+  guide_price DECIMAL(10,2) NOT NULL,
+  stock_quantity INT NOT NULL DEFAULT 0,
+  safety_stock_threshold INT NOT NULL DEFAULT 5,
+  status TINYINT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted TINYINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE spare_part_inbound (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  inbound_no VARCHAR(32) NOT NULL UNIQUE,
+  part_id BIGINT NOT NULL,
+  part_name VARCHAR(64) NOT NULL,
+  batch_date DATE NOT NULL,
+  quantity INT NOT NULL,
+  unit_price DECIMAL(10,2) NOT NULL,
+  total_amount DECIMAL(10,2) NOT NULL,
+  operator_id BIGINT NOT NULL,
+  operator_name VARCHAR(32) NOT NULL,
+  remark VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE repair_material_consume (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT NOT NULL,
+  order_no VARCHAR(32) NOT NULL,
+  worker_id BIGINT NOT NULL,
+  part_id BIGINT NOT NULL,
+  part_name VARCHAR(64) NOT NULL,
+  consume_quantity INT NOT NULL,
+  unit_price DECIMAL(10,2) NOT NULL,
+  total_cost DECIMAL(10,2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE repair_order_evaluation (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT NOT NULL UNIQUE,
+  order_no VARCHAR(32) NOT NULL,
+  repair_summary VARCHAR(1000) NOT NULL,
+  repair_images VARCHAR(2000) NOT NULL,
+  finish_reported_at TIMESTAMP NOT NULL,
+  evaluator_id BIGINT,
+  rating_star TINYINT,
+  rating_tags VARCHAR(500),
+  evaluation_comment VARCHAR(500),
+  evaluated_at TIMESTAMP,
+  is_auto_confirmed TINYINT NOT NULL DEFAULT 0,
+  rework_flag TINYINT NOT NULL DEFAULT 0,
+  arbitration_admin_id BIGINT,
+  arbitration_note VARCHAR(500)
 );

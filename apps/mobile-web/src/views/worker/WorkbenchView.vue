@@ -155,6 +155,14 @@
               <!-- 维修中/已挂起态动作 -->
               <template v-if="order.status === 'IN_PROGRESS'">
                 <van-button
+                  type="primary"
+                  size="small"
+                  round
+                  @click="goToFinish(order)"
+                >
+                  完工填报
+                </van-button>
+                <van-button
                   type="warning"
                   plain
                   size="small"
@@ -392,6 +400,11 @@ async function fetchOrders() {
   } finally {
     loading.value = false;
   }
+}
+
+// 师傅业务动作 0: 前往完工填报台
+function goToFinish(order: DispatchOrderItemVO) {
+  router.push(`/worker/finish/${order.id}`);
 }
 
 // 师傅业务动作 1: 接单出发

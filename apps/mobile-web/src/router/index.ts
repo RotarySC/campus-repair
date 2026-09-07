@@ -6,6 +6,7 @@ import HomeView from '../views/home/HomeView.vue';
 import ProfileView from '../views/profile/ProfileView.vue';
 import SubmitRepairView from '../views/student/SubmitRepairView.vue';
 import WorkbenchView from '../views/worker/WorkbenchView.vue';
+import WorkerFinishView from '../views/worker/WorkerFinishView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -31,6 +32,12 @@ const routes: RouteRecordRaw[] = [
     name: 'WorkerWorkbench',
     component: WorkbenchView,
     meta: { title: '师傅工作台', requiresAuth: true }
+  },
+  {
+    path: '/worker/finish/:id',
+    name: 'WorkerFinish',
+    component: WorkerFinishView,
+    meta: { title: '完工填报与耗材核销', requiresAuth: true }
   },
   {
     path: '/student/submit',

@@ -18,10 +18,12 @@
   - 前端设计规范：`docs/20260906-1430-campus-repair-system-frontend-design.md`
   - 功能特性 Spec：`.scratch/campus-repair-system/spec.md`
   - 代码审查整改报告：`docs/20260906-1750-campus-repair-system-code-review.md`
+  - 增量代码审查整改报告：`docs/20260907-0845-campus-repair-system-incremental-code-review.md`
+  - 团队工程规范与踩坑指南：`AGENTS.md`
 
 ---
 
-## 2. 已完成的业务里程碑 (Completed Milestones @ c4f2978)
+## 2. 已完成的业务里程碑 (Completed Milestones @ d218e27)
 
 - [x] **Issue 01 (`01-full-stack-scaffold-and-unified-auth.md`)**：
   - 全栈双端脚手架搭建与环境调优；
@@ -73,23 +75,41 @@
   - 卡片集成绿色 `tel:` 拨号直呼协议，支持一键呼叫报修人；
   - 打通师傅【接单出发】接口（`POST /api/v1/work-orders/{id}/accept`），推进状态为 `IN_PROGRESS` 并固化接单出发时间戳；
   - 打通师傅【工单挂起】接口（`POST /api/v1/work-orders/{id}/suspend`），记录挂起类型与预计恢复时间，SLA 倒计时自动冻结；
-  - 打通师傅【解除挂起】接口（`POST /api/v1/work-orders/{id}/resume`），自动计算累计挂起分钟数并顺延 SLA 截止时间；
+  - 打通师傅【解除挂起】接口（`POST /api/v1/work-orders/{id}/resume`），通过 `WorkOrderLogService.calculateSuspendDurationMinutes` 自动计算累计挂起分钟数并顺延 SLA 截止时间；
   - 打通师傅【申请转派】接口（`POST /api/v1/work-orders/{id}/transfer-apply`），支持推荐新工种，移出当前师傅个人在修负荷，工单流转为 `MANUAL_DISPATCH` 回退调度中心待人工处理；
-  - 编写并运行集成测试 `WorkerWorkbenchIntegrationTest`（全套 27 个测试用例 100% 通过），严格验证越权拦截（AccessDeniedException）、状态机跃迁约束与负荷增减一致性。
+  - 编写并运行集成测试 `WorkerWorkbenchIntegrationTest`（全套 27 个测试用例 100% 通过），严格验证越权拦截（`AccessDeniedException`）、状态机跃迁约束与负荷增减一致性。
+- [x] **Issue 08 (`08-completion-reporting-watermark-and-inventory-deduction.md`)**：
+  - 耗材备件物料主台账表 (`spare_part`)、维修现场核销流水表 (`repair_material_consume`) 及完工质检详情表 (`repair_order_evaluation`) 正式建立；
+  - 交付耗材备件台账分页检索（`GET /api/v1/inventory/parts`）与工单核销流水追溯（`GET /api/v1/inventory/consumptions/{orderId}`）REST 接口；
+  - 交付客户端 Canvas 防伪防篡改水印工具 `packages/shared/src/utils/watermark.ts`，自动在完工照片右下角绘制半透明底卡与【工单单号 + 作业师傅 + 当前时间戳】水印层；
+  - 落地维修师傅单页完工填报与耗材核销移动工作台（`apps/mobile-web/src/views/worker/WorkerFinishView.vue`，路由 `/worker/finish/:id`），支持多张现场带水印照片上传、维修总结录入、物料搜索弹窗选入与动态步进器（受限于物理库存上限硬约束），实时计算工单直接耗材总成本；
+  - 打通师傅【完工填报与耗材核销】核心接口（`POST /api/v1/work-orders/{id}/finish`），采用行级条件原子更新（`UPDATE spare_part SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?`）杜绝并发超卖，库存不足时严格回滚；释放师傅在修负荷（`current_load - 1`），自动汇总材料费回填 `repair_order.material_cost`，工单跃迁至 `PENDING_ACCEPTANCE`（待验收）并写入流转审计日志（`actionType = FINISH_UPLOAD`）；
+  - 编写并运行集成测试套件 `InventoryAndFinishIntegrationTest`（包含 10 线程并发争抢紧俏备件防超卖原子压测、多物料核销流转、库存不足阻断回滚、越权拦截等），全套 33 个单元与集成测试 100% 通过。
 
 ---
 
 ## 3. 当前活跃前沿与后续任务规划 (Active Frontier & Next Tasks)
 
-目前所有代码均已干净验证，后端 27 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
+目前所有代码均已干净验证并合并至 `master`，后端 33 个单元/集成测试用例全部通过，前端全包 TypeScript 静态检查零报错。
 后续未阻塞、可立即开工的任务为：
 
-1. **Issue 08 (`.scratch/campus-repair-system/issues/08-material-stock-and-offline-verification.md`)**：
-   - **耗材备件轻量进销存与领用核销**：
-   - 耗材备件台账管理与安全库存预警（`spare_part`）；
-   - 采购批量入库单登记（`spare_part_inbound`）；
-   - 维修师傅现场完工填报与耗材领用原子出库核销（`deductStockAtomic`，防止超卖变负）；
-   - 导出一键采购补货建议报表。
+1. **Issue 09 (`.scratch/campus-repair-system/issues/09-acceptance-evaluation-and-rework-arbitration.md`)**：
+   - **现场完工拍照水印比对、师生验收与评价返工仲裁**：
+   - 师傅完工照片与总结在移动端师生工单详情中呈现对比视图；
+   - 师生端 1~5 星打分评价与标签（`POST /api/v1/work-orders/{id}/evaluate`），≤ 2 星触发差评返工（`REWORK_PENDING`）；
+   - 后勤主管仲裁督办接口（`POST /api/v1/work-orders/{id}/arbitrate-rework`），决策退回原师傅或换派新技师；
+   - 72 小时超时自动确认核销定时任务引擎（SLA 扫描）。
+
+2. **Issue 10 (`.scratch/campus-repair-system/issues/10-notifications-center-and-audit-timeline.md`)**：
+   - **全端站内消息中心与流转时间轴审计**：
+   - 站内信表 `sys_notification` 与已读/未读状态管理、未读徽标计数；
+   - 抽象 `Notifier` SPI 领域消息通知器。
+
+3. **Issue 11 (`.scratch/campus-repair-system/issues/11-inventory-ledger-and-purchase-advice.md`)**：
+   - **耗材进销存台账管理端、采购入库与补货建议导出**：
+   - PC 管理端耗材台账 CRUD 与低库存常驻警告条；
+   - 采购入库登记表单（`POST /api/v1/inventory/inbound`）；
+   - 基于 EasyExcel 导出缺料补货建议清单。
 
 ---
 
@@ -102,7 +122,7 @@
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 
-# 2. 运行后端全量测试套件 (包含全部 18 个单元与集成测试)
+# 2. 运行后端全量测试套件 (包含全部 33 个单元与集成测试)
 mvn test -f server/pom.xml
 
 # 3. 运行前端全量 TypeScript 类型检查
@@ -115,5 +135,5 @@ mvn test -f server/pom.xml
 
 ## 5. 给接手 Agent 的建议技能 (Suggested Skills)
 
-- `/implement`：建议在新会话启动时直接调用，针对 `Issue 06`（调度中心双栏分屏工作台）或 `Issue 07`（师傅移动工作台）按照垂直切片规则进行实现。
+- `/implement`：在新会话启动时直接调用，针对 `Issue 09`（师生评价验收与差评返工仲裁）按照垂直切片规则进行实现。
 - `/code-review`：在新功能切片完成后，调用审查技能以确保代码严格遵循架构规范与需求规格。

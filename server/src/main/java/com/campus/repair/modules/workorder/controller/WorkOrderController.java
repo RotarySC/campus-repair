@@ -129,4 +129,15 @@ public class WorkOrderController {
         workOrderService.transferApply(id, user.getUserId(), request);
         return R.success();
     }
+
+    @Operation(summary = "维修师傅现场完工填报与耗材核销")
+    @PostMapping("/{id}/finish")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    public R<Void> finishOrder(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderFinishRequest request) {
+        workOrderService.finishOrder(id, user.getUserId(), request);
+        return R.success();
+    }
 }

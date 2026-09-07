@@ -44,6 +44,8 @@ public class WorkOrderService {
     private final WorkOrderLogService orderLogService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final com.campus.repair.modules.inventory.service.InventoryService inventoryService;
+    private final com.campus.repair.modules.workorder.mapper.RepairOrderEvaluationMapper evaluationMapper;
 
     // 活跃状态集合：存在这些状态的工单算作未结单（全量非终态，无时间窗口限制）
     private static final Set<String> ACTIVE_STATUSES = Set.of(
@@ -643,6 +645,76 @@ public class WorkOrderService {
         );
 
         log.info("[WorkOrderService] 师傅 {} 申请转派工单 {}: {}", workerName, order.getOrderNo(), remark);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void finishOrder(Long orderId, Long workerUserId, com.campus.repair.modules.workorder.dto.WorkOrderFinishRequest request) {
+        RepairOrder order = getAndVerifyWorkerOrder(orderId, workerUserId);
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        // 状态机校验: IN_PROGRESS -> PENDING_ACCEPTANCE
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.PENDING_ACCEPTANCE);
+
+        // 1. 原子扣减物料库存并核算耗材直接成本（若不足则抛异常并回滚）
+        BigDecimal totalMaterialCost = inventoryService.deductMaterialForOrder(
+                order.getId(),
+                order.getOrderNo(),
+                workerUserId,
+                request.getMaterialConsumptions()
+        );
+
+        // 2. 师傅释放工单负荷（从在修状态变为待验收）
+        workerService.decrementLoad(workerUserId);
+
+        // 3. 更新工单状态为 PENDING_ACCEPTANCE，固化 finishTime 与 materialCost
+        LocalDateTime now = LocalDateTime.now();
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.PENDING_ACCEPTANCE.name());
+        order.setFinishTime(now);
+        order.setMaterialCost(totalMaterialCost);
+        orderMapper.updateById(order);
+
+        // 4. 插入或覆盖完工详情记录 repair_order_evaluation
+        String imagesJson;
+        try {
+            imagesJson = objectMapper.writeValueAsString(request.getRepairImages());
+        } catch (Exception e) {
+            imagesJson = "[]";
+        }
+
+        com.campus.repair.modules.workorder.entity.RepairOrderEvaluation eval = new com.campus.repair.modules.workorder.entity.RepairOrderEvaluation();
+        eval.setOrderId(order.getId());
+        eval.setOrderNo(order.getOrderNo());
+        eval.setRepairSummary(request.getRepairSummary().trim());
+        eval.setRepairImages(imagesJson);
+        eval.setFinishReportedAt(now);
+        eval.setIsAutoConfirmed(0);
+        eval.setReworkFlag(0);
+        evaluationMapper.insert(eval);
+
+        // 5. 记录流转审计日志
+        SysUser worker = userService.getUserById(workerUserId);
+        String workerName = worker != null ? worker.getRealName() : order.getWorkerName();
+
+        int consumeCount = request.getMaterialConsumptions() != null ? request.getMaterialConsumptions().size() : 0;
+        String remark = String.format("师傅现场完工上报: %s (耗材物料消耗 %d 项，直接成本: ¥%.2f)",
+                request.getRepairSummary().trim(), consumeCount, totalMaterialCost);
+
+        orderLogService.recordLog(
+                order,
+                workerUserId,
+                workerName,
+                "WORKER",
+                "FINISH_UPLOAD",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.PENDING_ACCEPTANCE.name(),
+                remark,
+                imagesJson
+        );
+
+        log.info("[WorkOrderService] 师傅 {} 完工上报工单 {}: 材料成本 ¥{}, 状态跃迁至 PENDING_ACCEPTANCE",
+                workerName, order.getOrderNo(), totalMaterialCost);
     }
 
     private RepairOrder getAndVerifyWorkerOrder(Long orderId, Long workerUserId) {
