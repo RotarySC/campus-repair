@@ -6,6 +6,8 @@ import UserManageView from '../views/system/UserManageView.vue';
 import SpatialManageView from '../views/spatial/SpatialManageView.vue';
 import DispatchCenterView from '../views/dispatch/DispatchCenterView.vue';
 import InventoryManageView from '../views/inventory/InventoryManageView.vue';
+import CockpitView from '../views/analytics/CockpitView.vue';
+import WorkOrderReportView from '../views/analytics/WorkOrderReportView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -43,6 +45,18 @@ const routes: RouteRecordRaw[] = [
     name: 'InventoryManage',
     component: InventoryManageView,
     meta: { title: '耗材备件进销存', requiresAuth: true }
+  },
+  {
+    path: '/cockpit',
+    name: 'Cockpit',
+    component: CockpitView,
+    meta: { title: '运营指挥大屏', requiresAuth: true }
+  },
+  {
+    path: '/reports/orders',
+    name: 'WorkOrderReport',
+    component: WorkOrderReportView,
+    meta: { title: '工单多维检索报表', requiresAuth: true }
   },
   {
     path: '/:pathMatch(.*)*',

@@ -3,6 +3,7 @@ export * from './types/dispatch';
 export * from './types/inventory';
 export * from './types/evaluation';
 export * from './types/notification';
+export * from './types/analytics';
 export * from './constants/status';
 export * from './api/http';
 export * from './utils/compressor';

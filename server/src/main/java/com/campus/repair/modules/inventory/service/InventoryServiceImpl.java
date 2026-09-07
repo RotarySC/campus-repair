@@ -40,6 +40,8 @@ public class InventoryServiceImpl implements InventoryService {
     private final SparePartMapper sparePartMapper;
     private final RepairMaterialConsumeMapper consumeMapper;
     private final SparePartInboundMapper inboundMapper;
+    private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
+    private static final java.util.concurrent.atomic.AtomicLong LOCAL_INBOUND_COUNTER = new java.util.concurrent.atomic.AtomicLong(1);
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -206,9 +208,29 @@ public class InventoryServiceImpl implements InventoryService {
         LocalDate batchDate = request.getBatchDate() != null ? request.getBatchDate() : LocalDate.now();
         BigDecimal totalAmount = request.getUnitPrice().multiply(BigDecimal.valueOf(request.getQuantity()));
 
-        // 生成入库流水单号: IN + yyyyMMdd + 6位序列/随机数
+        // 生成入库流水单号: IN + yyyyMMdd + 6位单调自增序列
         String dateStr = DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDate.now());
-        String inboundNo = String.format("IN%s%06d", dateStr, ThreadLocalRandom.current().nextInt(100000, 999999));
+        long seq = 1L;
+        String key = "inventory:inbound:seq:" + dateStr;
+        try {
+            if (redisTemplate != null && redisTemplate.getConnectionFactory() != null) {
+                Long rSeq = redisTemplate.opsForValue().increment(key);
+                if (rSeq != null) {
+                    seq = rSeq;
+                    if (seq == 1) {
+                        redisTemplate.expire(key, 2, java.util.concurrent.TimeUnit.DAYS);
+                    }
+                } else {
+                    seq = LOCAL_INBOUND_COUNTER.getAndIncrement();
+                }
+            } else {
+                seq = LOCAL_INBOUND_COUNTER.getAndIncrement();
+            }
+        } catch (Exception e) {
+            seq = LOCAL_INBOUND_COUNTER.getAndIncrement();
+        }
+
+        String inboundNo = String.format("IN%s%06d", dateStr, seq);
 
         SparePartInbound inbound = new SparePartInbound();
         inbound.setInboundNo(inboundNo);

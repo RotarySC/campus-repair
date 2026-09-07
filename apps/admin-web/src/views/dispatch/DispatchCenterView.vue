@@ -14,6 +14,8 @@
           <el-button :icon="Bell" circle @click="showNotificationDrawer = true" title="站内通知" />
         </el-badge>
         <el-button :icon="Refresh" :loading="loadingOrders" circle @click="refreshAll" title="刷新调度数据" />
+        <el-button type="success" plain size="small" @click="router.push('/cockpit')">指挥大屏</el-button>
+        <el-button type="primary" plain size="small" @click="router.push('/reports/orders')">工单报表</el-button>
         <el-button type="warning" plain size="small" @click="router.push('/inventory')">耗材库存台账</el-button>
         <el-button type="primary" plain size="small" @click="router.push('/')">返回控制台</el-button>
         <el-button type="danger" plain size="small" @click="handleLogout">退出</el-button>

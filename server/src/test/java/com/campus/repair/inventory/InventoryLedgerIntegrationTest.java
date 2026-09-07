@@ -142,6 +142,7 @@ public class InventoryLedgerIntegrationTest {
         in.setPartId(p.getId());
         in.setQuantity(5);
         in.setUnitPrice(new BigDecimal("110.00"));
+        in.setBatchDate(LocalDate.now());
         inventoryService.registerInbound(1L, "管理员", in);
 
         // 1. 获取库存指标概况

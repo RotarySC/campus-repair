@@ -22,6 +22,7 @@ public class SparePartInboundRequest {
     @DecimalMin(value = "0.00", message = "实际采购单价不能为负数")
     private BigDecimal unitPrice;
 
+    @NotNull(message = "采购批次日期不能为空")
     private LocalDate batchDate;
 
     private String remark;
