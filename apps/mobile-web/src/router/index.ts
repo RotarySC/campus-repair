@@ -5,6 +5,7 @@ import RegisterView from '../views/auth/RegisterView.vue';
 import HomeView from '../views/home/HomeView.vue';
 import ProfileView from '../views/profile/ProfileView.vue';
 import SubmitRepairView from '../views/student/SubmitRepairView.vue';
+import OrderDetailView from '../views/student/OrderDetailView.vue';
 import WorkbenchView from '../views/worker/WorkbenchView.vue';
 import WorkerFinishView from '../views/worker/WorkerFinishView.vue';
 
@@ -26,6 +27,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Home',
     component: HomeView,
     meta: { title: '服务主页', requiresAuth: true }
+  },
+  {
+    path: '/orders/:id',
+    name: 'OrderDetail',
+    component: OrderDetailView,
+    meta: { title: '工单详情与评价验收', requiresAuth: true }
   },
   {
     path: '/worker/workbench',

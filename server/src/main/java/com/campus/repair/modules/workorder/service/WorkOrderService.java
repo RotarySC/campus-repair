@@ -16,6 +16,7 @@ import com.campus.repair.modules.workorder.event.OrderCreatedEvent;
 import com.campus.repair.modules.workorder.mapper.RepairOrderMapper;
 import com.campus.repair.modules.workorder.vo.DuplicateCheckResultVO;
 import com.campus.repair.modules.workorder.vo.WorkOrderSubmitResultVO;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -738,6 +739,327 @@ public class WorkOrderService {
         // 6. 发布待验收领域事件，触发师生验收通知
         eventPublisher.publishEvent(new com.campus.repair.modules.workorder.event.OrderPendingAcceptanceEvent(
                 this, order.getId(), order.getOrderNo(), order.getStudentUserId()));
+    }
+
+    /**
+     * 师生确认完工并进行满意度评价
+     * ratingStar >= 3: 正常闭环结单 -> COMPLETED
+     * ratingStar <= 2: 触发差评返工 -> REWORK_PENDING，调度中心置顶
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void evaluateOrder(Long orderId, Long studentUserId, com.campus.repair.modules.workorder.dto.WorkOrderEvaluateRequest request) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        if (!studentUserId.equals(order.getStudentUserId())) {
+            throw new org.springframework.security.access.AccessDeniedException("越权拦截：您不是该报修单的申请人，无权评价");
+        }
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        if (currentStatus != com.campus.repair.modules.workorder.enums.OrderStatusEnum.PENDING_ACCEPTANCE) {
+            throw new BusinessException(ErrorCode.ORDER_STATE_TRANSITION_INVALID.getCode(),
+                    String.format("当前工单状态为 [%s]，仅有处于待验收 (PENDING_ACCEPTANCE) 状态的工单才可评价", currentStatus.name()));
+        }
+
+        boolean isRework = request.getRatingStar() <= 2;
+        if (isRework && !StringUtils.hasText(request.getComment())) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "打分不高于2星时，必须填写未解决的问题说明以便安排返工！");
+        }
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum targetStatus =
+                isRework ? com.campus.repair.modules.workorder.enums.OrderStatusEnum.REWORK_PENDING
+                         : com.campus.repair.modules.workorder.enums.OrderStatusEnum.COMPLETED;
+
+        stateMachine.verifyTransition(currentStatus, targetStatus);
+
+        LocalDateTime now = LocalDateTime.now();
+        order.setStatus(targetStatus.name());
+        if (!isRework) {
+            order.setClosedTime(now);
+        } else {
+            order.setReworkCount((order.getReworkCount() != null ? order.getReworkCount() : 0) + 1);
+        }
+        orderMapper.updateById(order);
+
+        // 更新评价表
+        com.campus.repair.modules.workorder.entity.RepairOrderEvaluation eval = evaluationMapper.selectOne(
+                new LambdaQueryWrapper<com.campus.repair.modules.workorder.entity.RepairOrderEvaluation>()
+                        .eq(com.campus.repair.modules.workorder.entity.RepairOrderEvaluation::getOrderId, order.getId())
+        );
+        if (eval == null) {
+            eval = new com.campus.repair.modules.workorder.entity.RepairOrderEvaluation();
+            eval.setOrderId(order.getId());
+            eval.setOrderNo(order.getOrderNo());
+            eval.setRepairSummary("现场维修完成");
+            eval.setRepairImages("[]");
+            eval.setFinishReportedAt(now);
+        }
+
+        eval.setEvaluatorId(studentUserId);
+        eval.setRatingStar(request.getRatingStar());
+        try {
+            eval.setRatingTags(objectMapper.writeValueAsString(request.getRatingTags() != null ? request.getRatingTags() : List.of()));
+        } catch (Exception e) {
+            eval.setRatingTags("[]");
+        }
+        eval.setEvaluationComment(request.getComment());
+        eval.setEvaluatedAt(now);
+        eval.setIsAutoConfirmed(0);
+        eval.setReworkFlag(isRework ? 1 : 0);
+
+        if (eval.getId() == null) {
+            evaluationMapper.insert(eval);
+        } else {
+            evaluationMapper.updateById(eval);
+        }
+
+        // 记录流转审计日志
+        SysUser student = userService.getUserById(studentUserId);
+        String studentName = student != null ? student.getRealName() : order.getApplicantName();
+
+        if (isRework) {
+            String reworkRemark = String.format("师生提交差评触发返工 (%d 星): %s", request.getRatingStar(), request.getComment());
+            orderLogService.recordLog(
+                    order,
+                    studentUserId,
+                    studentName,
+                    "STUDENT",
+                    "REWORK_TRIGGER",
+                    currentStatus.name(),
+                    targetStatus.name(),
+                    reworkRemark
+            );
+            log.warn("[WorkOrderService] 工单 {} 被师生打出 {} 星差评，转入返工待派: {}", order.getOrderNo(), request.getRatingStar(), request.getComment());
+        } else {
+            String acceptRemark = String.format("师生确认验收满意结单 (%d 星)%s",
+                    request.getRatingStar(),
+                    StringUtils.hasText(request.getComment()) ? " 评语: " + request.getComment() : "");
+            orderLogService.recordLog(
+                    order,
+                    studentUserId,
+                    studentName,
+                    "STUDENT",
+                    "MANUAL_ACCEPT",
+                    currentStatus.name(),
+                    targetStatus.name(),
+                    acceptRemark
+            );
+            log.info("[WorkOrderService] 工单 {} 师生验收闭环结单: {} 星", order.getOrderNo(), request.getRatingStar());
+        }
+    }
+
+    /**
+     * 72小时超时自动结单确认
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void autoConfirmAcceptance(Long orderId) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            return;
+        }
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        if (currentStatus != com.campus.repair.modules.workorder.enums.OrderStatusEnum.PENDING_ACCEPTANCE) {
+            return; // 幂等保护
+        }
+
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.COMPLETED);
+
+        LocalDateTime now = LocalDateTime.now();
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.COMPLETED.name());
+        order.setClosedTime(now);
+        orderMapper.updateById(order);
+
+        // 更新评价记录标记
+        com.campus.repair.modules.workorder.entity.RepairOrderEvaluation eval = evaluationMapper.selectOne(
+                new LambdaQueryWrapper<com.campus.repair.modules.workorder.entity.RepairOrderEvaluation>()
+                        .eq(com.campus.repair.modules.workorder.entity.RepairOrderEvaluation::getOrderId, order.getId())
+        );
+        if (eval != null) {
+            eval.setIsAutoConfirmed(1);
+            eval.setRatingStar(5); // 默认五星好评
+            eval.setEvaluationComment("超过72小时未确认，系统自动确认结单");
+            eval.setEvaluatedAt(now);
+            evaluationMapper.updateById(eval);
+        }
+
+        orderLogService.recordLog(
+                order,
+                0L,
+                "系统调度器",
+                "SYSTEM",
+                "AUTO_ACCEPT",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.COMPLETED.name(),
+                "超过72小时师生未主动评价，系统自动核销闭环结单"
+        );
+        log.info("[WorkOrderService] 工单 {} 超出72小时未验收，系统自动闭环结单", order.getOrderNo());
+    }
+
+    /**
+     * 后勤主管对差评/返工单进行仲裁督办
+     * RETRY_ORIGINAL_WORKER: 指派回原师傅 -> ASSIGNED
+     * REASSIGN_NEW_WORKER: 换派新技师 -> ASSIGNED
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void arbitrateRework(Long orderId, Long adminUserId, com.campus.repair.modules.workorder.dto.WorkOrderArbitrateReworkRequest request) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.valueOf(order.getStatus());
+
+        if (currentStatus != com.campus.repair.modules.workorder.enums.OrderStatusEnum.REWORK_PENDING) {
+            throw new BusinessException(ErrorCode.ORDER_STATE_TRANSITION_INVALID.getCode(),
+                    String.format("工单状态为 [%s]，仅有处于返工待派 (REWORK_PENDING) 的工单才可进行主管仲裁！", currentStatus.name()));
+        }
+
+        stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED);
+
+        Long targetWorkerId;
+        String decisionDesc;
+
+        if ("RETRY_ORIGINAL_WORKER".equalsIgnoreCase(request.getArbitrationDecision())) {
+            targetWorkerId = order.getWorkerId();
+            if (targetWorkerId == null) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "原工单无历史师傅信息，无法退回原师傅，请选择换派新技师！");
+            }
+            decisionDesc = "退回原维修师傅限期整改二次上门";
+        } else if ("REASSIGN_NEW_WORKER".equalsIgnoreCase(request.getArbitrationDecision())) {
+            if (request.getTargetWorkerId() == null) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "换派新技师时必须指定目标维修师傅！");
+            }
+            targetWorkerId = request.getTargetWorkerId();
+            decisionDesc = "仲裁改派资深技师处理";
+        } else {
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "不支持的仲裁决策类型: " + request.getArbitrationDecision());
+        }
+
+        // 校验目标师傅
+        SysUser targetWorker = userService.getUserById(targetWorkerId);
+        if (targetWorker == null || targetWorker.getStatus() != 1) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND.getCode(), "指定维修师傅不存在或已停用");
+        }
+
+        // 师傅原子增加负荷
+        boolean success = workerService.incrementLoadAtomic(targetWorker.getId());
+        if (!success) {
+            throw new BusinessException(ErrorCode.WORKER_LOAD_EXCEEDED.getCode(), "指派失败：目标师傅当前负荷已达上限或非在岗状态");
+        }
+
+        order.setWorkerId(targetWorker.getId());
+        order.setWorkerName(targetWorker.getRealName());
+        order.setWorkerPhone(targetWorker.getPhone());
+        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED.name());
+        order.setDispatchedTime(LocalDateTime.now());
+        order.setDispatchType("MANUAL");
+        orderMapper.updateById(order);
+
+        // 更新评价记录中的仲裁信息
+        com.campus.repair.modules.workorder.entity.RepairOrderEvaluation eval = evaluationMapper.selectOne(
+                new LambdaQueryWrapper<com.campus.repair.modules.workorder.entity.RepairOrderEvaluation>()
+                        .eq(com.campus.repair.modules.workorder.entity.RepairOrderEvaluation::getOrderId, order.getId())
+        );
+        if (eval != null) {
+            eval.setArbitrationAdminId(adminUserId);
+            eval.setArbitrationNote(request.getArbitrationNote());
+            evaluationMapper.updateById(eval);
+        }
+
+        // 记录流转审计
+        SysUser admin = userService.getUserById(adminUserId);
+        String adminName = admin != null ? admin.getRealName() : "后勤主管";
+
+        String remark = String.format("后勤主管仲裁督办 [%s]: %s (指派给师傅: %s)",
+                decisionDesc, request.getArbitrationNote().trim(), targetWorker.getRealName());
+
+        orderLogService.recordLog(
+                order,
+                adminUserId,
+                adminName,
+                "ADMIN",
+                "REWORK_ASSIGN",
+                currentStatus.name(),
+                com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED.name(),
+                remark
+        );
+        log.info("[WorkOrderService] 主管 {} 完成工单 {} 返工仲裁: {}", adminName, order.getOrderNo(), remark);
+    }
+
+    /**
+     * 获取工单完工与评价对比详情（Visual Diff）
+     */
+    public com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO getOrderEvaluationDetail(Long orderId) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO vo = new com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO();
+        vo.setOrderId(order.getId());
+        vo.setOrderNo(order.getOrderNo());
+        vo.setDescription(order.getDescription());
+        vo.setMaterialCost(order.getMaterialCost());
+
+        // 报修原图
+        try {
+            if (StringUtils.hasText(order.getFaultImages())) {
+                vo.setFaultImages(objectMapper.readValue(order.getFaultImages(), new TypeReference<List<String>>() {}));
+            } else {
+                vo.setFaultImages(List.of());
+            }
+        } catch (Exception e) {
+            vo.setFaultImages(List.of());
+        }
+
+        // 完工与评价信息
+        com.campus.repair.modules.workorder.entity.RepairOrderEvaluation eval = evaluationMapper.selectOne(
+                new LambdaQueryWrapper<com.campus.repair.modules.workorder.entity.RepairOrderEvaluation>()
+                        .eq(com.campus.repair.modules.workorder.entity.RepairOrderEvaluation::getOrderId, order.getId())
+        );
+
+        if (eval != null) {
+            vo.setRepairSummary(eval.getRepairSummary());
+            vo.setFinishReportedAt(eval.getFinishReportedAt());
+            vo.setRatingStar(eval.getRatingStar());
+            vo.setEvaluationComment(eval.getEvaluationComment());
+            vo.setEvaluatedAt(eval.getEvaluatedAt());
+            vo.setIsAutoConfirmed(eval.getIsAutoConfirmed());
+            vo.setReworkFlag(eval.getReworkFlag());
+            vo.setArbitrationNote(eval.getArbitrationNote());
+
+            try {
+                if (StringUtils.hasText(eval.getRepairImages())) {
+                    vo.setRepairImages(objectMapper.readValue(eval.getRepairImages(), new TypeReference<List<String>>() {}));
+                } else {
+                    vo.setRepairImages(List.of());
+                }
+            } catch (Exception e) {
+                vo.setRepairImages(List.of());
+            }
+
+            try {
+                if (StringUtils.hasText(eval.getRatingTags())) {
+                    vo.setRatingTags(objectMapper.readValue(eval.getRatingTags(), new TypeReference<List<String>>() {}));
+                } else {
+                    vo.setRatingTags(List.of());
+                }
+            } catch (Exception e) {
+                vo.setRatingTags(List.of());
+            }
+        } else {
+            vo.setRepairImages(List.of());
+            vo.setRatingTags(List.of());
+        }
+
+        return vo;
     }
 
     private RepairOrder getAndVerifyWorkerOrder(Long orderId, Long workerUserId) {

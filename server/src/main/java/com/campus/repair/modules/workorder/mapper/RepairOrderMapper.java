@@ -23,4 +23,7 @@ public interface RepairOrderMapper extends BaseMapper<RepairOrder> {
 
     @Select("SELECT COUNT(*) FROM repair_order WHERE worker_id = #{workerId} AND status IN ('ASSIGNED', 'IN_PROGRESS', 'SUSPENDED') AND deleted = 0")
     int countWorkerActiveOrders(@Param("workerId") Long workerId);
+
+    @Select("SELECT * FROM repair_order WHERE status = 'PENDING_ACCEPTANCE' AND finish_time <= #{thresholdTime} AND deleted = 0")
+    java.util.List<RepairOrder> selectPendingAcceptanceTimeoutOrders(@Param("thresholdTime") LocalDateTime thresholdTime);
 }

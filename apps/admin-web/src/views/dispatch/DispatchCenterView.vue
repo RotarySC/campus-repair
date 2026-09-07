@@ -158,6 +158,14 @@
               </span>
               <div class="action-btn-group">
                 <el-button
+                  v-if="order.status === 'REWORK_PENDING'"
+                  type="warning"
+                  size="small"
+                  @click.stop="openArbitrateModal(order)"
+                >
+                  返工仲裁
+                </el-button>
+                <el-button
                   type="danger"
                   link
                   size="small"
@@ -342,6 +350,68 @@
       <template #footer>
         <el-button @click="cancelModalVisible = false">取消</el-button>
         <el-button type="danger" :loading="canceling" @click="submitCancelOrder">确认作废</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 主管返工仲裁弹窗 -->
+    <el-dialog
+      v-model="arbitrateModalVisible"
+      title="后勤主管差评返工仲裁督办"
+      width="540px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        title="该工单因师生打出 ≤2 星差评转入返工督办。主管可决策退回原师傅限期整改，或指定资深技师二次上门。"
+        type="error"
+        :closable="false"
+        style="margin-bottom: 16px;"
+      />
+
+      <el-form label-position="top">
+        <el-form-item label="返工工单">
+          <strong>{{ arbitratingOrder?.orderNo }} - {{ arbitratingOrder?.categoryFullName }}</strong>
+          <div style="font-size: 13px; color: #E6A23C; margin-top: 4px;">
+            原指派师傅: {{ arbitratingOrder?.workerName || '未知' }} | 申请人: {{ arbitratingOrder?.applicantName }}
+          </div>
+        </el-form-item>
+
+        <el-form-item label="仲裁决策方案">
+          <el-radio-group v-model="arbitrationDecision">
+            <el-radio label="RETRY_ORIGINAL_WORKER">退回原师傅限期整改</el-radio>
+            <el-radio label="REASSIGN_NEW_WORKER">换派资深技师二次上门</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="arbitrationDecision === 'REASSIGN_NEW_WORKER'" label="选择重派维修师傅 (必选)">
+          <el-select
+            v-model="selectedNewWorkerId"
+            placeholder="请选择改派的目标技师"
+            style="width: 100%;"
+            filterable
+          >
+            <el-option
+              v-for="w in workers"
+              :key="w.userId"
+              :label="`${w.realName} (${WorkerSkillLabels[w.skillCode] || w.skillCode} - 当前负荷: ${w.currentLoad}/${w.maxLoad})`"
+              :value="w.userId"
+              :disabled="w.currentLoad >= w.maxLoad || w.onDutyStatus !== 1"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="主管督办处理说明 (必填)">
+          <el-input
+            v-model="arbitrationNoteInput"
+            type="textarea"
+            :rows="3"
+            placeholder="请客观录入回访核实结论与现场督办要求，如：回访确认角阀微渗，已联系高级技师带加厚配件二次上门彻底更换..."
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="arbitrateModalVisible = false">取消</el-button>
+        <el-button type="primary" :loading="arbitrating" @click="submitArbitrateRework">确认仲裁指派</el-button>
       </template>
     </el-dialog>
   </div>
@@ -541,6 +611,60 @@ async function handleDispatchToWorker(worker: WorkerBoardVO) {
     ElMessage.error(err.response?.data?.message || err.message || '网络调度异常');
   } finally {
     dispatchingId.value = null;
+  }
+}
+
+// 仲裁弹窗相关状态
+const arbitrateModalVisible = ref(false);
+const arbitratingOrder = ref<DispatchOrderItemVO | null>(null);
+const arbitrationDecision = ref<'RETRY_ORIGINAL_WORKER' | 'REASSIGN_NEW_WORKER'>('RETRY_ORIGINAL_WORKER');
+const selectedNewWorkerId = ref<number | null>(null);
+const arbitrationNoteInput = ref('');
+const arbitrating = ref(false);
+
+function openArbitrateModal(order: DispatchOrderItemVO) {
+  arbitratingOrder.value = order;
+  arbitrationDecision.value = 'RETRY_ORIGINAL_WORKER';
+  selectedNewWorkerId.value = null;
+  arbitrationNoteInput.value = '';
+  arbitrateModalVisible.value = true;
+}
+
+async function submitArbitrateRework() {
+  if (!arbitratingOrder.value) return;
+  if (arbitrationDecision.value === 'REASSIGN_NEW_WORKER' && !selectedNewWorkerId.value) {
+    ElMessage.warning('换派模式下必须选择目标维修师傅');
+    return;
+  }
+  if (!arbitrationNoteInput.value.trim()) {
+    ElMessage.warning('主管督办说明不能为空');
+    return;
+  }
+
+  arbitrating.value = true;
+  try {
+    const payload = {
+      arbitrationDecision: arbitrationDecision.value,
+      targetWorkerId: arbitrationDecision.value === 'REASSIGN_NEW_WORKER' ? selectedNewWorkerId.value : undefined,
+      arbitrationNote: arbitrationNoteInput.value.trim()
+    };
+
+    const res = await httpClient.post<any, ApiResponse<null>>(
+      `/work-orders/${arbitratingOrder.value.id}/arbitrate-rework`,
+      payload
+    );
+
+    if (res.code === 200) {
+      ElMessage.success(`工单 ${arbitratingOrder.value.orderNo} 仲裁督办完成，已重新指派并推进`);
+      arbitrateModalVisible.value = false;
+      refreshAll();
+    } else {
+      ElMessage.error(res.message || '仲裁操作失败');
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.message || err.message || '网络请求异常');
+  } finally {
+    arbitrating.value = false;
   }
 }
 

@@ -146,4 +146,34 @@ public class WorkOrderController {
         workOrderService.finishOrder(id, user.getUserId(), request);
         return R.success();
     }
+
+    // ==================== 完工验收、评价与主管返工仲裁接口 ====================
+
+    @Operation(summary = "师生确认完工并对服务进行满意度评价")
+    @PostMapping("/{id}/evaluate")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
+    public R<Void> evaluateOrder(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderEvaluateRequest request) {
+        workOrderService.evaluateOrder(id, user.getUserId(), request);
+        return R.success();
+    }
+
+    @Operation(summary = "后勤主管对差评或返工工单进行仲裁督办")
+    @PostMapping("/{id}/arbitrate-rework")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    public R<Void> arbitrateRework(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderArbitrateReworkRequest request) {
+        workOrderService.arbitrateRework(id, user.getUserId(), request);
+        return R.success();
+    }
+
+    @Operation(summary = "获取工单完工与评价前后实况对比信息")
+    @GetMapping("/{id}/evaluation-detail")
+    public R<com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO> getEvaluationDetail(@PathVariable Long id) {
+        return R.success(workOrderService.getOrderEvaluationDetail(id));
+    }
 }
