@@ -20,4 +20,7 @@ public interface RepairOrderMapper extends BaseMapper<RepairOrder> {
             "FROM repair_order " +
             "WHERE worker_id = #{workerId} AND accepted_time IS NOT NULL AND finish_time IS NOT NULL AND deleted = 0")
     Double calculateWorkerAvgRepairHours(@Param("workerId") Long workerId);
+
+    @Select("SELECT COUNT(*) FROM repair_order WHERE worker_id = #{workerId} AND status IN ('ASSIGNED', 'IN_PROGRESS', 'SUSPENDED') AND deleted = 0")
+    int countWorkerActiveOrders(@Param("workerId") Long workerId);
 }

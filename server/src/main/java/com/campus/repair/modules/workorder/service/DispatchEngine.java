@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class DispatchEngine {
     private final SpatialNodeService spatialNodeService;
     private final WorkOrderStateMachine stateMachine;
     private final WorkOrderLogService orderLogService;
+    private final ApplicationEventPublisher eventPublisher;
     private final org.springframework.beans.factory.ObjectProvider<RedissonClient> redissonClientProvider;
 
     // 当未连接物理 Redis 时采用本地细粒度锁兜底
@@ -114,6 +116,12 @@ public class DispatchEngine {
             }
 
             try {
+                // 双重校验 (Double-Check): 在锁内真实核查工单主表当前活跃在修负荷
+                int realActiveLoad = orderMapper.countWorkerActiveOrders(candidate.getUserId());
+                if (realActiveLoad >= candidate.getMaxLoad()) {
+                    continue; // 实际负荷已满载，顺延下一位候选人
+                }
+
                 // 结合数据库原子带条件更新 current_load < max_load 锁定配额
                 int affected = workerProfileMapper.incrementCurrentLoadAtomic(candidate.getUserId());
                 if (affected > 0) {
@@ -138,6 +146,11 @@ public class DispatchEngine {
                             OrderStatusEnum.ASSIGNED.name(),
                             String.format("智能匹配成功: 工种[%s], 指派师傅[%s]", skillCode, candidate.getRealName())
                     );
+
+                    // 发布领域事件，触发消息通知与流转广播
+                    eventPublisher.publishEvent(new com.campus.repair.modules.workorder.event.OrderAssignedEvent(
+                            this, order.getId(), order.getOrderNo(), candidate.getUserId(), candidate.getRealName(), "AUTO"
+                    ));
 
                     log.info("[DispatchEngine] 工单 {} 成功指派给师傅 {} (userId={})",
                             order.getOrderNo(), candidate.getRealName(), candidate.getUserId());

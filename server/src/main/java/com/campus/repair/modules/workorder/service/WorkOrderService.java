@@ -171,6 +171,7 @@ public class WorkOrderService {
         long allCount = countDispatchOrders(null);
         long failCount = countDispatchOrders("DISPATCH_FAIL");
         long transferCount = countDispatchOrders("TRANSFER_APPLY");
+        long assignedCount = countDispatchOrders("ASSIGNED");
         long urgentCount = countDispatchOrders("URGENT");
         long reworkCount = countDispatchOrders("REWORK");
 
@@ -179,6 +180,7 @@ public class WorkOrderService {
                         .allCount(allCount)
                         .dispatchFailCount(failCount)
                         .transferApplyCount(transferCount)
+                        .assignedCount(assignedCount)
                         .urgentCount(urgentCount)
                         .reworkCount(reworkCount)
                         .build();
@@ -236,7 +238,7 @@ public class WorkOrderService {
     private LambdaQueryWrapper<RepairOrder> buildDispatchPoolQuery(com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request, boolean withOrderBy) {
         LambdaQueryWrapper<RepairOrder> query = new LambdaQueryWrapper<>();
 
-        // 调度池核心业务范围：待人工调度 MANUAL_DISPATCH 或 返工待指派 REWORK_PENDING
+        // 调度池核心业务范围：待人工调度 MANUAL_DISPATCH、返工待指派 REWORK_PENDING 以及可改派工单 ASSIGNED
         String filter = request.getCategoryFilter();
         if ("REWORK".equalsIgnoreCase(filter)) {
             query.eq(RepairOrder::getStatus, "REWORK_PENDING");
@@ -247,12 +249,14 @@ public class WorkOrderService {
         } else if ("TRANSFER_APPLY".equalsIgnoreCase(filter)) {
             query.eq(RepairOrder::getStatus, "MANUAL_DISPATCH")
                  .isNotNull(RepairOrder::getWorkerId); // 之前指派过师傅后被转派回调度池
+        } else if ("ASSIGNED".equalsIgnoreCase(filter)) {
+            query.eq(RepairOrder::getStatus, "ASSIGNED"); // 已指派待承接，可执行强制改派
         } else if ("URGENT".equalsIgnoreCase(filter)) {
-            query.in(RepairOrder::getStatus, List.of("MANUAL_DISPATCH", "REWORK_PENDING"))
+            query.in(RepairOrder::getStatus, List.of("MANUAL_DISPATCH", "REWORK_PENDING", "ASSIGNED"))
                  .eq(RepairOrder::getUrgencyLevel, 2);
         } else {
-            // ALL: MANUAL_DISPATCH 或 REWORK_PENDING
-            query.in(RepairOrder::getStatus, List.of("MANUAL_DISPATCH", "REWORK_PENDING"));
+            // ALL: MANUAL_DISPATCH, REWORK_PENDING, ASSIGNED
+            query.in(RepairOrder::getStatus, List.of("MANUAL_DISPATCH", "REWORK_PENDING", "ASSIGNED"));
         }
 
         if (request.getUrgencyLevel() != null) {
@@ -348,6 +352,11 @@ public class WorkOrderService {
                 remark
         );
 
+        // 发布领域事件，触发分派消息通知
+        eventPublisher.publishEvent(new com.campus.repair.modules.workorder.event.OrderAssignedEvent(
+                this, order.getId(), order.getOrderNo(), targetWorker.getId(), targetWorker.getRealName(), "MANUAL"
+        ));
+
         log.info("[WorkOrderService] 工单 {} 人工指派成功给师傅 {} (userId={})", order.getOrderNo(), targetWorker.getRealName(), targetWorker.getId());
     }
 
@@ -391,6 +400,11 @@ public class WorkOrderService {
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED.name(),
                 "工单作废: " + request.getCancelReason().trim()
         );
+
+        // 发布领域事件，触发通知报修人工单已作废
+        eventPublisher.publishEvent(new com.campus.repair.modules.workorder.event.OrderCancelledEvent(
+                this, order.getId(), order.getOrderNo(), order.getStudentUserId(), request.getCancelReason().trim()
+        ));
 
         log.info("[WorkOrderService] 工单 {} 已核实作废: {}", order.getOrderNo(), request.getCancelReason());
     }

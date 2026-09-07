@@ -49,6 +49,14 @@
             </div>
             <div
               class="tab-pill"
+              :class="{ active: currentCategory === 'ASSIGNED' }"
+              @click="handleCategoryChange('ASSIGNED')"
+            >
+              已指派可改派
+              <span class="badge">{{ counts.assignedCount || 0 }}</span>
+            </div>
+            <div
+              class="tab-pill"
               :class="{ active: currentCategory === 'URGENT' }"
               @click="handleCategoryChange('URGENT')"
             >
@@ -380,6 +388,7 @@ const counts = ref<DispatchPoolCategoryCountVO>({
   allCount: 0,
   dispatchFailCount: 0,
   transferApplyCount: 0,
+  assignedCount: 0,
   urgentCount: 0,
   reworkCount: 0
 });

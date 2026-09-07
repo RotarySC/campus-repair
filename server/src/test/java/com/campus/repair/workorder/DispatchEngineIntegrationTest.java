@@ -68,9 +68,13 @@ class DispatchEngineIntegrationTest {
         // 合法跃迁测试
         assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.DRAFT, OrderStatusEnum.PENDING_DISPATCH));
         assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.PENDING_DISPATCH, OrderStatusEnum.ASSIGNED));
+        assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.PENDING_DISPATCH, OrderStatusEnum.CANCELLED));
         assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.ASSIGNED, OrderStatusEnum.IN_PROGRESS));
+        assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.ASSIGNED, OrderStatusEnum.CANCELLED));
         assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.IN_PROGRESS, OrderStatusEnum.PENDING_ACCEPTANCE));
+        assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.IN_PROGRESS, OrderStatusEnum.CANCELLED));
         assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.PENDING_ACCEPTANCE, OrderStatusEnum.COMPLETED));
+        assertDoesNotThrow(() -> stateMachine.verifyTransition(OrderStatusEnum.REWORK_PENDING, OrderStatusEnum.CANCELLED));
 
         // 非法跃迁拦截 (如草稿直接结单，或待派单直接变维修中)
         assertThrows(RuntimeException.class, () -> stateMachine.verifyTransition(OrderStatusEnum.DRAFT, OrderStatusEnum.COMPLETED));

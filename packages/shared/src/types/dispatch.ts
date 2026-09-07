@@ -38,6 +38,7 @@ export interface DispatchPoolCategoryCountVO {
   allCount: number;
   dispatchFailCount: number;
   transferApplyCount: number;
+  assignedCount: number;
   urgentCount: number;
   reworkCount: number;
 }

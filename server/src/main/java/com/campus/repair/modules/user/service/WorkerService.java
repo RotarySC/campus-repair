@@ -3,7 +3,7 @@ package com.campus.repair.modules.user.service;
 import com.campus.repair.modules.user.dto.WorkerBoardQueryRequest;
 import com.campus.repair.modules.user.mapper.WorkerProfileMapper;
 import com.campus.repair.modules.user.vo.WorkerBoardVO;
-import com.campus.repair.modules.workorder.mapper.RepairOrderMapper;
+import com.campus.repair.modules.workorder.service.WorkOrderStatisticsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +17,7 @@ import java.util.List;
 public class WorkerService {
 
     private final WorkerProfileMapper workerProfileMapper;
-    private final RepairOrderMapper repairOrderMapper;
+    private final WorkOrderStatisticsService workOrderStatisticsService;
 
     public List<WorkerBoardVO> getWorkerBoardList(WorkerBoardQueryRequest request) {
         List<WorkerBoardVO> list = workerProfileMapper.selectWorkerBoardList(
@@ -40,12 +40,12 @@ public class WorkerService {
             vo.setLoadRate(Math.min(rate, 100));
             vo.setIsOverloaded(currentLoad >= maxLoad);
 
-            // 查询该师傅今日完工单数
-            Integer todayDone = repairOrderMapper.countWorkerTodayFinished(vo.getUserId(), todayStart, todayEnd);
+            // 查询该师傅今日完工单数 (调用领域统计服务，无直接 Mapper 穿透)
+            Integer todayDone = workOrderStatisticsService.countWorkerTodayFinished(vo.getUserId(), todayStart, todayEnd);
             vo.setTodayCompletedCount(todayDone != null ? todayDone : 0);
 
-            // 预估平均修复时长 (从工单历史计算，若无历史默认约 1.5 小时)
-            Double avgHours = repairOrderMapper.calculateWorkerAvgRepairHours(vo.getUserId());
+            // 预估平均修复时长
+            Double avgHours = workOrderStatisticsService.calculateWorkerAvgRepairHours(vo.getUserId());
             vo.setAvgRepairHours(avgHours != null ? Math.round(avgHours * 10.0) / 10.0 : 1.5);
         }
 

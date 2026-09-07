@@ -16,11 +16,11 @@ public class WorkOrderStateMachine {
 
     static {
         VALID_TRANSITIONS.put(OrderStatusEnum.DRAFT, Set.of(OrderStatusEnum.PENDING_DISPATCH));
-        VALID_TRANSITIONS.put(OrderStatusEnum.PENDING_DISPATCH, Set.of(OrderStatusEnum.ASSIGNED, OrderStatusEnum.MANUAL_DISPATCH));
+        VALID_TRANSITIONS.put(OrderStatusEnum.PENDING_DISPATCH, Set.of(OrderStatusEnum.ASSIGNED, OrderStatusEnum.MANUAL_DISPATCH, OrderStatusEnum.CANCELLED));
         VALID_TRANSITIONS.put(OrderStatusEnum.MANUAL_DISPATCH, Set.of(OrderStatusEnum.ASSIGNED, OrderStatusEnum.CANCELLED));
-        VALID_TRANSITIONS.put(OrderStatusEnum.ASSIGNED, Set.of(OrderStatusEnum.IN_PROGRESS, OrderStatusEnum.MANUAL_DISPATCH));
-        VALID_TRANSITIONS.put(OrderStatusEnum.IN_PROGRESS, Set.of(OrderStatusEnum.SUSPENDED, OrderStatusEnum.PENDING_ACCEPTANCE, OrderStatusEnum.MANUAL_DISPATCH));
-        VALID_TRANSITIONS.put(OrderStatusEnum.SUSPENDED, Set.of(OrderStatusEnum.IN_PROGRESS));
+        VALID_TRANSITIONS.put(OrderStatusEnum.ASSIGNED, Set.of(OrderStatusEnum.IN_PROGRESS, OrderStatusEnum.MANUAL_DISPATCH, OrderStatusEnum.CANCELLED));
+        VALID_TRANSITIONS.put(OrderStatusEnum.IN_PROGRESS, Set.of(OrderStatusEnum.SUSPENDED, OrderStatusEnum.PENDING_ACCEPTANCE, OrderStatusEnum.MANUAL_DISPATCH, OrderStatusEnum.CANCELLED));
+        VALID_TRANSITIONS.put(OrderStatusEnum.SUSPENDED, Set.of(OrderStatusEnum.IN_PROGRESS, OrderStatusEnum.CANCELLED));
         VALID_TRANSITIONS.put(OrderStatusEnum.PENDING_ACCEPTANCE, Set.of(OrderStatusEnum.COMPLETED, OrderStatusEnum.REWORK_PENDING));
         VALID_TRANSITIONS.put(OrderStatusEnum.REWORK_PENDING, Set.of(OrderStatusEnum.ASSIGNED, OrderStatusEnum.CANCELLED));
     }

@@ -55,12 +55,18 @@
   - 无可用师傅或瞬时满载时优雅降级为待人工调度（`MANUAL_DISPATCH`）；
   - 编写集成测试覆盖状态机转移、最小负载优先指派、全员满载降级与 10 线程高并发派单压测防超派。
 - [x] **Issue 06 (`06-logistics-dispatch-console-and-intervention.md`)**：
-  - 交付后勤调度中心待办工单池分页检索与五大维度分类过滤接口（全部待办、派单失败、师傅转派、加急异常单、差评返工待派）及红点计数统计；
+  - 交付后勤调度中心待办工单池分页检索与六大维度分类过滤接口（全部待办、派单失败、师傅转派、已指派可改派、加急异常单、差评返工待派）及红点计数统计；
   - 交付师傅在修负荷、出勤状态与近期战绩实时看板视图接口（返回 `current_load / max_load` 彩色进度条数据、今日完工单数及平均修复时长）；
   - 交付同屏秒级人工指派与强制改派接口（`POST /api/v1/work-orders/{id}/dispatch`），支持原师傅负荷扣减与新师傅原子增载；
   - 交付工单核实作废接口（`POST /api/v1/work-orders/{id}/cancel`），强制录入作废原因，终止流转为 `CANCELLED`，释放师傅负荷且防范重复扣减；
   - PC 管理端（`apps/admin-web`）落地调度中心双栏分屏工作台（左栏 55% 工单卡片流与快捷筛选，右栏 45% 联动工种与校区双维度的师傅负载彩色看板），支持秒级一键派单；
-  - 编写集成测试套件 `DispatchConsoleIntegrationTest` 覆盖调度池筛选准确性、看板数据计算、人工指派与改派原子负荷转移、虚假工单与返工单作废等场景（全套 23 个测试用例全部通过）。
+  - 编写集成测试套件 `DispatchConsoleIntegrationTest` 覆盖调度池筛选准确性、看板数据计算、人工指派与改派原子负荷转移、虚假工单与返工单作废等场景。
+- [x] **增量审查缺陷整改 (`docs/20260907-0845-campus-repair-system-incremental-code-review.md`)**：
+  - 在 `WorkOrderStateMachine` 扩充放行 `PENDING_DISPATCH/ASSIGNED/IN_PROGRESS/SUSPENDED/REWORK_PENDING -> CANCELLED` 全场景作废流转；
+  - 在待办调度池中纳入并开放 `ASSIGNED`（已指派待承接）分类过滤与红点统计，打通调度中心“强制改派”完整闭环；
+  - 建立 `WorkOrderStatisticsService` 领域统计服务，彻底消除 `WorkerService` 对 `RepairOrderMapper` 的逆向依赖；
+  - 在 `DispatchEngine` 加锁决策中补齐真实活跃工单双重校验（`countWorkerActiveOrders < maxLoad`）；
+  - 发布 `OrderAssignedEvent` 与 `OrderCancelledEvent` 领域事件，支撑后续分派与作废通知。
 
 ---
 
