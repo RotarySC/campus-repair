@@ -287,6 +287,8 @@
         @confirm="onConfirmSkill"
         @cancel="showSkillPicker = false"
       />
+    </van-popup>
+
     <!-- 站内消息通知中心弹层 -->
     <van-popup
       v-model:show="showNotifPopup"

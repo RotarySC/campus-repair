@@ -27,6 +27,7 @@ public class LoginResponseVO {
         private String username;
         private String realName;
         private String phone;
+        private String department;
         private String userType;
         private List<String> roleCodes;
         private Integer isFirstLogin;

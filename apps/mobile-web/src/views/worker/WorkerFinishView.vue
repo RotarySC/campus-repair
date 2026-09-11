@@ -266,18 +266,18 @@ async function afterReadImage(item: any) {
 
     item.message = '上传中...';
 
-    // 2. 上传至后端
+    // 2. 上传至后端统一文件服务端点（相对 baseURL /api/v1，勿写绝对路径以免被拦截器二次拼接）
     const formData = new FormData();
     formData.append('file', watermarkedBlob, file.name || 'finish_watermarked.jpg');
 
-    const res = await httpClient.post<ApiResponse<string>>('/api/v1/files/upload', formData, {
+    const res = await httpClient.post<any, ApiResponse<{ url: string }>>('/common/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
 
-    if (res.data.code === 200 && res.data.data) {
+    if (res.code === 200 && res.data?.url) {
       item.status = 'done';
-      item.url = res.data.data;
-      uploadedImageUrls.value.push(res.data.data);
+      item.url = res.data.url;
+      uploadedImageUrls.value.push(res.data.url);
     } else {
       item.status = 'failed';
       item.message = '上传失败';

@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
@@ -46,13 +48,13 @@ public class FileUploadController {
 
         try {
             String dateFolder = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-            File targetFolder = new File(uploadDir, dateFolder);
-            if (!targetFolder.exists()) {
-                targetFolder.mkdirs();
-            }
+            // 注意：MultipartFile#transferTo(File) 对相对路径以 Servlet 临时目录为基准解析，
+            // 必须显式归一化为绝对路径，否则会抛 FileNotFoundException（.../tomcat.8080.xxx/uploads/...）
+            Path targetFolder = Paths.get(uploadDir).toAbsolutePath().normalize().resolve(dateFolder);
+            Files.createDirectories(targetFolder);
 
             String filename = UUID.randomUUID().toString().replace("-", "") + ext;
-            File targetFile = new File(targetFolder, filename);
+            Path targetFile = targetFolder.resolve(filename);
             file.transferTo(targetFile);
 
             String fileUrl = "/uploads/" + dateFolder + "/" + filename;

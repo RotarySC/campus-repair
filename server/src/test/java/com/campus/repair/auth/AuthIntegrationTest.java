@@ -15,13 +15,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Duration;
+
 import static org.hamcrest.Matchers.startsWith;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -178,5 +182,61 @@ class AuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.username").value("admin"));
+    }
+
+    @Test
+    @DisplayName("Redis 不可用时降级为内存存储，登录仍可成功（local 无外置依赖）")
+    void testLoginSucceedsWhenRedisUnavailable() throws Exception {
+        stubRedisUnavailable();
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("admin");
+        request.setPassword("password");
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.userInfo.username").value("admin"));
+    }
+
+    @Test
+    @DisplayName("Redis 不可用时连续输错计数由内存兜底，第 4 次仍强制验证码拦截")
+    void testFailedAttemptCounterFallsBackToMemory() throws Exception {
+        stubRedisUnavailable();
+
+        // 使用不存在的独立账号，避免污染其他用例共享的内存计数状态
+        String probeUsername = "redis-down-probe";
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername(probeUsername);
+        request.setPassword("whatever");
+
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(1001));
+        }
+
+        // 第 4 次即便不校验密码，也应先被验证码拦截（证明内存计数确实累加并持久于本次会话）
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1003));
+    }
+
+    /**
+     * 模拟真实故障形态：连接已建立但读写命令全部失败（RedisConnectionFailureException）
+     */
+    private void stubRedisUnavailable() {
+        RedisConnectionFailureException down = new RedisConnectionFailureException("Unable to connect to Redis");
+        Mockito.when(valueOperations.get(anyString())).thenThrow(down);
+        Mockito.doThrow(down).when(valueOperations).set(anyString(), anyString(), any(Duration.class));
+        Mockito.when(redisTemplate.delete(anyString())).thenThrow(down);
     }
 }

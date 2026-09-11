@@ -13,7 +13,6 @@ import com.campus.repair.modules.user.mapper.SysUserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -23,10 +22,10 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -36,13 +35,15 @@ public class AuthService {
     private final SysUserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
-    private final StringRedisTemplate redisTemplate;
+    private final AuthStateStore authStateStore;
 
     @Value("${app.security.max-failed-attempts-for-captcha:3}")
     private int maxFailedAttemptsForCaptcha;
 
     private static final String CAPTCHA_KEY_PREFIX = "auth:captcha:";
     private static final String FAILED_ATTEMPTS_PREFIX = "auth:failed_attempts:";
+    private static final Duration CAPTCHA_TTL = Duration.ofMinutes(3);
+    private static final Duration FAILED_ATTEMPTS_TTL = Duration.ofMinutes(15);
     private static final SecureRandom RANDOM = new SecureRandom();
 
     public CaptchaResponseVO generateCaptcha() {
@@ -77,8 +78,8 @@ public class AuthService {
             ImageIO.write(image, "png", baos);
             String base64Image = "data:image/png;base64," + Base64.getEncoder().encodeToString(baos.toByteArray());
 
-            // 存入 Redis，有效期 3 分钟
-            redisTemplate.opsForValue().set(CAPTCHA_KEY_PREFIX + captchaKey, code, 3, TimeUnit.MINUTES);
+            // 存入认证态存储（Redis 优先，Redis 不可用时进程内兜底），有效期 3 分钟
+            authStateStore.set(CAPTCHA_KEY_PREFIX + captchaKey, code, CAPTCHA_TTL);
 
             return new CaptchaResponseVO(captchaKey, base64Image);
         } catch (Exception e) {
@@ -90,7 +91,7 @@ public class AuthService {
     public LoginResponseVO login(LoginRequest request) {
         String usernameOrPhone = request.getUsername().trim();
         String failedKey = FAILED_ATTEMPTS_PREFIX + usernameOrPhone;
-        String failedCountStr = redisTemplate.opsForValue().get(failedKey);
+        String failedCountStr = authStateStore.get(failedKey);
         int failedCount = failedCountStr != null ? Integer.parseInt(failedCountStr) : 0;
 
         // 若连续输错超过限制，强制校验图形验证码
@@ -98,12 +99,12 @@ public class AuthService {
             if (!StringUtils.hasText(request.getCaptchaKey()) || !StringUtils.hasText(request.getCaptchaCode())) {
                 throw new BusinessException(ErrorCode.CAPTCHA_REQUIRED);
             }
-            String cachedCode = redisTemplate.opsForValue().get(CAPTCHA_KEY_PREFIX + request.getCaptchaKey());
+            String cachedCode = authStateStore.get(CAPTCHA_KEY_PREFIX + request.getCaptchaKey());
             if (cachedCode == null || !cachedCode.equalsIgnoreCase(request.getCaptchaCode().trim())) {
                 throw new BusinessException(ErrorCode.CAPTCHA_ERROR);
             }
             // 验证码单次消费删除
-            redisTemplate.delete(CAPTCHA_KEY_PREFIX + request.getCaptchaKey());
+            authStateStore.delete(CAPTCHA_KEY_PREFIX + request.getCaptchaKey());
         }
 
         // 匹配学号/工号/手机号
@@ -124,7 +125,7 @@ public class AuthService {
         }
 
         // 登录成功，清理失败计数器
-        redisTemplate.delete(failedKey);
+        authStateStore.delete(failedKey);
 
         // 获取用户角色列表
         List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
@@ -145,6 +146,7 @@ public class AuthService {
                         .username(user.getUsername())
                         .realName(user.getRealName())
                         .phone(user.getPhone())
+                        .department(user.getDepartment())
                         .userType(user.getUserType())
                         .roleCodes(roleCodes)
                         .isFirstLogin(user.getIsFirstLogin())
@@ -183,6 +185,7 @@ public class AuthService {
                         .username(user.getUsername())
                         .realName(user.getRealName())
                         .phone(user.getPhone())
+                        .department(user.getDepartment())
                         .userType(user.getUserType())
                         .roleCodes(roleCodes)
                         .isFirstLogin(user.getIsFirstLogin())
@@ -194,7 +197,7 @@ public class AuthService {
 
     private void recordFailedAttempt(String usernameOrPhone, int currentFailed) {
         int next = currentFailed + 1;
-        redisTemplate.opsForValue().set(FAILED_ATTEMPTS_PREFIX + usernameOrPhone,
-                String.valueOf(next), 15, TimeUnit.MINUTES);
+        authStateStore.set(FAILED_ATTEMPTS_PREFIX + usernameOrPhone,
+                String.valueOf(next), FAILED_ATTEMPTS_TTL);
     }
 }

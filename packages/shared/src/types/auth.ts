@@ -10,6 +10,7 @@ export interface UserInfo {
   username: string;
   realName: string;
   phone: string;
+  department?: string;
   userType: 'SUPER_ADMIN' | 'LOGISTICS_ADMIN' | 'REPAIR_WORKER' | 'USER_STUDENT' | 'USER_TEACHER';
   roleCodes: string[];
   isFirstLogin: number;

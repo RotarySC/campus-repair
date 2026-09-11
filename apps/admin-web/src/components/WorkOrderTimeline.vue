@@ -64,7 +64,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { httpClient } from '../../stores/auth';
+import { httpClient } from '../stores/auth';
 import {
   ApiResponse,
   OrderTimelineLogVO,

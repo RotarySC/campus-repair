@@ -49,6 +49,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // 认证相关开放接口
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        // 现场实况/完工防伪照片等上传静态资源（<img> 无法携带 Bearer 头，须匿名可读）
+                        .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         // Swagger & Knife4j
                         .requestMatchers(
                                 "/doc.html",

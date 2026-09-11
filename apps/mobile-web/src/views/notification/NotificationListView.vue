@@ -78,7 +78,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showSuccessToast } from 'vant';
-import { httpClient, useAuthStore } from '../stores/auth';
+import { httpClient, useAuthStore } from '../../stores/auth';
 import {
   ApiResponse,
   NotificationItemVO,

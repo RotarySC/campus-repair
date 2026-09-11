@@ -29,3 +29,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# 现场照片上传目录（运行时产物，由 app.file.upload-dir 指定）
+uploads/

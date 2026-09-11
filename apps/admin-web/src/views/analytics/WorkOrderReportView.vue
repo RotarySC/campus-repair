@@ -194,7 +194,7 @@
           <el-table-column prop="status" label="状态" width="100" align="center">
             <template #default="{ row }">
               <el-tag size="small" :type="getStatusTagType(row.status)">
-                {{ OrderStatusLabels[row.status] || row.status }}
+                {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
               </el-tag>
             </template>
           </el-table-column>
@@ -480,7 +480,7 @@ function getStatusTagType(status: string): '' | 'success' | 'warning' | 'info' |
   switch (status) {
     case 'COMPLETED': return 'success';
     case 'REWORK_PENDING': return 'danger';
-    case 'IN_PROGRESS': return 'primary';
+    case 'IN_PROGRESS': return '';
     case 'SUSPENDED': return 'warning';
     default: return 'info';
   }
