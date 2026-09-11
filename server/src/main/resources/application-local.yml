@@ -12,7 +12,8 @@ spring:
       mode: always
       encoding: UTF-8
       schema-locations: classpath:schema-test.sql
-      data-locations: classpath:data-test.sql
+      # data-test.sql：最小账号种子（与测试共用）；data-demo.sql：仅本地演示用的完整业务数据
+      data-locations: classpath:data-test.sql, classpath:data-demo.sql
 
 mybatis-plus:
   configuration:

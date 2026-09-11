@@ -45,6 +45,9 @@ node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin
 - **本机运行前置条件（实测）**：本机 6379 未监听、Docker daemon 未运行（`npipe:////./pipe/dockerDesktopLinuxEngine` 不存在）。无 Redis 已可正常登录与跑通业务（见上条），但需先启动 Docker Desktop 才能执行 `docker run`。
 - **`spring-boot:run` 的 JVM 不会被 job 取消带走**：后台跑 `mvn spring-boot:run` 后取消该 job，只终止了 Maven 包装进程，派生的 `java.exe` 仍占着 8080，导致下一次启动静默失败（`Error starting ApplicationContext`，根因是端口占用）。重启前必须 `Get-Process java | Stop-Process -Force`，再确认 8080 已 CLOSED。
 - **本地自举配置已入库（`a46a8af`）**：`application.yml` 的 `spring.profiles.active` 现为 `${SPRING_PROFILES_ACTIVE:local}` —— 本地零配置可启动，生产用环境变量覆盖即可、无须改文件；H2 依赖为编译期依赖（作为 local 默认库）；`application-local.yml` / `data-test.sql` / `schema-test.sql` 已提交（后两者与 `server/src/test/resources/` 下同名文件逐字节相同，改一处记得同步另一处）。
+- **演示数据（`data-demo.sql`，2026-09-11 新增）**：`application-local.yml` 的 `data-locations` 追加了 `classpath:data-demo.sql`，**只在 local profile 加载**；`application-test.yml` 仍只加载 `data-test.sql`，因此**演示数据对 50 个测试零影响**（实测 50/50 全绿）。内容：8 个扩展账号、6 名师傅档案、19 节点四级空间、12 项故障字典、20 张覆盖全部状态的工单、60+ 条审计日志、10 条评价（含自动核销 `rating_star=NULL`）、13 项物料（5 项低于安全线）+ 8 条入库 + 10 条核销、16 条站内信。想回到“干净的空库”只需临时注释掉该 data-location。注意：`current_load` 必须与在办工单数一致、`closed_time` 必须晚于 `finish_time`、自动核销单的关闭时间应晚于完工约 72h，否则负荷看板/KPI 会自相矛盾。
+- **演示账号（密码统一 `password`）**：`admin` 超管、`logistics01` 后勤调度、`worker01`~`worker06` 六名不同工种师傅、`student01`/`student02` 学生、`teacher01` 教工。`student01` 的 `is_first_login=1` 会强制改密，演示请用 `student02`/`teacher01`。
+- **管理端角色守卫（2026-09-11）**：`apps/admin-web` 的 `/403` 路由（`views/error/ForbiddenView.vue`）承载“已登录但非管理端角色”的落点；守卫逻辑在 `router/index.ts` 的 `isAdminUser()`，仅放行 `SUPER_ADMIN` / `LOGISTICS_ADMIN`（取 `roleCodes`，为空则退回 `userType`），与后端 `@PreAuthorize` 一致。师生/师傅登录管理端会看到明确的 403 说明而不是“页面能开、接口全 403”的空转。
 
 ## 3. 业务状态流转与核心约定 (State Machine & Conventions)
 

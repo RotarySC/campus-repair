@@ -161,12 +161,14 @@ docker exec campus-redis redis-cli ping
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 
-# 2. 编译并启动后端（默认采用内存 H2 模式；数据库无外置依赖，登录仍需 Redis，见第零步）
+# 2. 编译并启动后端（默认采用内存 H2 模式；数据库无外置依赖，Redis 未启动时会自动降级，见第零步）
 cd server
 mvn spring-boot:run
 ```
 > 后端启动后将监听：`http://localhost:8080`  
 > OpenAPI 3 接口调试文档地址：`http://localhost:8080/doc.html`
+
+> **开箱即有演示数据**：`local` 模式会自动加载 `server/src/main/resources/data-demo.sql`（6 名不同工种师傅、19 节点四级空间、12 项故障字典、20 张覆盖全部状态的工单、流转审计日志、质检评价、耗材进销存与站内信），启动后仪表盘、调度台、师傅工作台、耗材台账立刻有内容可看。该文件**只在 local 加载**，测试套件不受影响；想要干净空库只需注释掉 `application-local.yml` 里 `data-locations` 中的 `classpath:data-demo.sql`。
 
 #### 第二步：启动前端管理端与移动端应用 (Web)
 打开新终端，进入项目根目录：
@@ -202,7 +204,24 @@ pnpm run dev:mobile
 
 > **说明**：`student01` 的 `is_first_login=1`，首次登录会强制要求修改弱初始密码；`admin`、`worker01` 无需改密。
 
-### 4.2 生产 MySQL 种子账号（`sql/data.sql`）
+### 4.2 演示数据扩展账号（`data-demo.sql`，仅 `local` 模式加载）
+
+除上表 3 个基础账号外，本地演示环境还内置下列账号，**密码同为 `password`**，用于演示多工种派单、师傅负荷看板与多角色通知：
+
+| 角色类型 | 登录账号 | 姓名 / 工种 | 用于演示 |
+| :--- | :--- | :--- | :--- |
+| **后勤管理员** | `logistics01` | 王调度 | 调度台人工指派/改派/作废、返工仲裁、采购入库 |
+| **维修师傅** | `worker02` | 张电工（电工电气） | 电气类工单、挂起缺料、负荷看板 |
+| **维修师傅** | `worker03` | 赵空调（暖通空调） | 暖通类工单、SLA 逾期样本 |
+| **维修师傅** | `worker04` | 孙锁匠（门窗锁具） | 五金类工单、差评返工后二次闭环 |
+| **维修师傅** | `worker05` | 周网络（弱电网络） | 西校区工单、历史归档单、**离岗状态**样本 |
+| **维修师傅** | `worker06` | 吴综合（综合维修） | 跨工种兜底派单 |
+| **报修学生** | `student02` | 李同学 | 无需改密即可直接提单与评价 |
+| **报修教工** | `teacher01` | 陈老师 | 教工报修、加急单、教学区空间 |
+
+> 提示：`student01` 首次登录会强制改密，快速演示请用 `student02` 或 `teacher01`。
+
+### 4.3 生产 MySQL 种子账号（`sql/data.sql`）
 
 `sql/data.sql` 预置 4 个账号：`admin`（超级管理员）、`logistics01`（后勤主管/调度）、`worker01`（维修师傅）、`2023010101`（报修学生，用学号登录）。**注意**：该脚本中的 BCrypt 密码哈希是占位示例（第 11 行注释标注密码 `Admin@2026`），实测该哈希并不匹配 `Admin@2026` / `InitPass@2026` / `password` 等常见口令，使用前需自行重置密码。
 
