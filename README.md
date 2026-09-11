@@ -50,7 +50,7 @@
 | **单体后端框架** | Java 17 LTS + Spring Boot 3.2.5 | 现代化 Spring 生态，高吞吐虚拟线程支持 |
 | **持久层组件** | MyBatis-Plus 3.5.5 | 强类型 LambdaQuery、自动时间审计填充、乐观锁与逻辑删除 |
 | **安全鉴权** | Spring Security 6.2 + JJWT 0.12 | 双 Token 认证（2h Access Token + 7d Refresh Token）、密码输错 3 次锁定 |
-| **数据流转与锁** | Redis 7.0 + Redisson 3.25 | 分布式流水号发号器、技师派单排他锁与备件库存原子扣减锁 |
+| **数据流转与锁** | Redis 7.0 + Redisson 3.27 | 分布式流水号发号器、技师派单排他锁与备件库存原子扣减锁（未部署 Redis 时自动降级为进程内兜底） |
 | **Excel 引擎** | Alibaba EasyExcel 3.3.4 | 万人级人员批量流式导入解析、报表导出 OOM 安全保障 |
 | **定时任务** | Spring Task (`@Scheduled`) | 72 小时超时自动核销结单扫描、SLA 逾期预警扫描 |
 | **前端工程体系** | Vue 3 (Composition API) + Vite 5 + TS | Monorepo 工程架构，pnpm workspace 统一管理依赖 |
@@ -136,8 +136,22 @@
 - **Java 环境**：Java 17 LTS（Windows 开发者无需安装，项目内置 `.tools/jdk/jdk-17.0.2`）
 - **构建工具**：Apache Maven 3.9+（项目内置 `.tools/maven/apache-maven-3.9.16`）
 - **Node.js**：Node.js >= 18.18.0，包管理器推荐 `pnpm` (v9+)
+- **Redis 7.0+（推荐用 Docker；多实例/生产必需）**：登录/验证码/连续输错防刷、派单并发锁、备件库存防超卖、单号发号器**优先**使用 Redis（`localhost:6379`）。本机未部署 Redis 时，认证限流与验证码自动降级为进程内内存存储、发号器改用本地计数器、派单锁改用本地可重入锁，登录与全业务流程仍然可用（见 3.2 第零步）。
 
 ### 3.2 启动步骤
+
+#### 第零步：启动 Redis（推荐；多实例/生产必需）
+登录流程（验证码、连续输错 3 次防刷、双 Token 刷新）以及派单/库存并发锁、单号发号器**优先**走 Redis（`localhost:6379`）。推荐用 Docker 一键启动：
+
+```powershell
+# 启动 Redis 7 容器（首次会自动从 Docker Hub 拉取镜像）
+docker run -d --name campus-redis -p 6379:6379 redis:7
+
+# 验证是否就绪（应输出 PONG）
+docker exec campus-redis redis-cli ping
+```
+
+> 若本机已有 Redis 运行在 6379，可跳过此步。**未启动 Redis 也能完整跑通**：认证限流/验证码由 `AuthStateStore` 自动降级为进程内内存存储（单实例语义），单号发号器与派单锁同样具备本地兜底，这正是本项目「开箱即用」的保证；数据库部分为内存 H2，本身无外置依赖。但**多实例部署或生产环境必须提供 Redis**：否则失败计数与验证码无法跨节点共享，防爆破能力会下降。
 
 #### 第一步：编译与运行后端服务 (Server)
 在 PowerShell 中运行（自动使用项目内置 JDK 17 与 Maven）：
@@ -147,7 +161,7 @@
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 
-# 2. 编译并启动后端（默认采用内存 H2 模式，开箱即用无外置依赖）
+# 2. 编译并启动后端（默认采用内存 H2 模式；数据库无外置依赖，登录仍需 Redis，见第零步）
 cd server
 mvn spring-boot:run
 ```
@@ -174,15 +188,23 @@ pnpm run dev:mobile
 
 ## 4. 默认内置角色与测试账号
 
-系统内置 5 类标准测试账户，密码均为 `InitPass@2026`（初始状态已支持快捷体验）：
+系统内置多类标准角色。以下两组为项目实际提供的种子账号：
+
+### 4.1 本地 H2 种子账号（`local` 模式，开箱即用）
+
+数据源：`server/src/main/resources/data-test.sql`（`local` 模式实际生效），**统一密码 `password`**（BCrypt）：
 
 | 角色类型 | 登录账号 (用户名/手机号) | 默认密码 | 角色说明与推荐视图 |
 | :--- | :--- | :--- | :--- |
-| **超级管理员** | `admin` / `13800000000` | `InitPass@2026` | 拥有全部权限，可访问系统字典、人员导入、大屏看板与调度台 |
-| **后勤调度主管** | `dispatcher` / `13800000001` | `InitPass@2026` | 负责调度中心分屏派单、差评返工仲裁、采购入库与报表分析 |
-| **维修师傅 A (水暖)**| `worker_shuinuan` / `13800000002`| `InitPass@2026` | 负责水暖管道工种，使用移动端工作台接单出发、施工挂起与完工填报 |
-| **维修师傅 B (电工)**| `worker_diangong` / `13800000003`| `InitPass@2026` | 负责电工电气工种，支持在岗负荷实时流转与物料扣减 |
-| **报修师生** | `student01` / `13800000004` | `InitPass@2026` | 使用移动端极速报修提单、防重检测预警、实况对比质检验收与满意度评价 |
+| **超级管理员** | `admin` / `13800000000` | `password` | 拥有全部权限，可访问系统字典、人员导入、大屏看板与调度台 |
+| **维修师傅** | `worker01` / `13800000002` | `password` | 水暖维修，使用移动端工作台接单出发、施工挂起与完工填报 |
+| **报修学生** | `student01` / `13800000003` | `password` | 使用移动端极速报修提单、防重检测预警、实况对比质检验收与满意度评价 |
+
+> **说明**：`student01` 的 `is_first_login=1`，首次登录会强制要求修改弱初始密码；`admin`、`worker01` 无需改密。
+
+### 4.2 生产 MySQL 种子账号（`sql/data.sql`）
+
+`sql/data.sql` 预置 4 个账号：`admin`（超级管理员）、`logistics01`（后勤主管/调度）、`worker01`（维修师傅）、`2023010101`（报修学生，用学号登录）。**注意**：该脚本中的 BCrypt 密码哈希是占位示例（第 11 行注释标注密码 `Admin@2026`），实测该哈希并不匹配 `Admin@2026` / `InitPass@2026` / `password` 等常见口令，使用前需自行重置密码。
 
 ---
 
@@ -191,7 +213,7 @@ pnpm run dev:mobile
 系统全流程坚持测试先行与代码审查闭环，所有状态机流转、并发锁与数据一致性均具备完整的单元与集成测试套件防护：
 
 ```powershell
-# 1. 运行后端 48 项单元与高并发集成测试套件
+# 1. 运行后端 50 项单元与高并发集成测试套件
 mvn test -f server/pom.xml
 
 # 2. 运行前端 Monorepo 全量静态类型检查
@@ -201,7 +223,7 @@ mvn test -f server/pom.xml
 ```
 
 ### 核心测试套件分布
-- `AuthIntegrationTest`：双 Token 鉴权、密码错输 3 次图形验证码、Token 静默刷新拦截；
+- `AuthIntegrationTest`：双 Token 鉴权、密码错输 3 次图形验证码、Token 静默刷新拦截、Redis 不可用时的内存降级兜底（登录成功 + 失败计数兜底）；
 - `UserIntegrationTest`：师生自主注册防重、EasyExcel 万人批量导入错误行捕获、首次改密；
 - `SpatialDictIntegrationTest`：四级空间树与两级分类树级联、节点软停用机制过滤；
 - `WorkOrderIntegrationTest`：单号生成全局单调性、同空间同分类活跃单防重复异步预警；

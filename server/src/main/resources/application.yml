@@ -7,7 +7,8 @@ spring:
   application:
     name: campus-repair-server
   profiles:
-    active: dev
+    # 默认 local（内存 H2 + 无外置依赖，开箱即用）；生产用 SPRING_PROFILES_ACTIVE=dev 覆盖即可
+    active: ${SPRING_PROFILES_ACTIVE:local}
   jackson:
     time-zone: GMT+8
     date-format: yyyy-MM-dd HH:mm:ss
