@@ -372,6 +372,7 @@ onMounted(() => {
   padding: 16px;
   background: #ffffff;
   border-radius: 8px;
+  min-height: calc(100vh - var(--topbar-h, 56px) - 32px);
 }
 .tab-toolbar {
   display: flex;

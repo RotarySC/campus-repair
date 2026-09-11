@@ -1,25 +1,5 @@
 <template>
   <div class="dashboard-layout">
-    <el-header class="header">
-      <div class="header-left">
-        <el-icon :size="24" color="#1677FF"><Management /></el-icon>
-        <span class="system-title">校园设施报修运维综合管理平台</span>
-      </div>
-      <div class="header-right">
-        <span class="user-greeting">欢迎您，{{ authStore.userInfo?.realName }} ({{ authStore.userInfo?.userType }})</span>
-        <el-badge :value="unreadCount" :max="99" :hidden="unreadCount === 0" class="notif-badge">
-          <el-button :icon="Bell" circle @click="showNotificationDrawer = true" title="消息通知中心" />
-        </el-badge>
-        <el-button type="success" size="small" @click="router.push('/cockpit')">运营指挥大屏 (16:9)</el-button>
-        <el-button type="primary" size="small" @click="router.push('/dispatch')">调度中心工作台</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/reports/orders')">工单多维检索报表</el-button>
-        <el-button type="warning" plain size="small" @click="router.push('/inventory')">耗材进销存台账</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/spatial')">空间网格与分类维护</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/system/users')">用户台账管理</el-button>
-        <el-button type="danger" plain size="small" @click="handleLogout">退出登录</el-button>
-      </div>
-    </el-header>
-
     <el-main class="main-content">
       <el-card class="welcome-card">
         <template #header>
@@ -33,88 +13,19 @@
         <p>系统角色：<strong>{{ authStore.userInfo?.roleCodes.join(', ') }}</strong></p>
       </el-card>
     </el-main>
-
-    <!-- 站内通知中心抽屉 -->
-    <el-drawer
-      v-model="showNotificationDrawer"
-      title="站内消息通知中心"
-      size="420px"
-      direction="rtl"
-    >
-      <NotificationCenterDrawer @unread-updated="fetchUnreadCount" />
-    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuthStore, httpClient } from '../../stores/auth';
-import { Management, Bell } from '@element-plus/icons-vue';
-import NotificationCenterDrawer from '../../components/NotificationCenterDrawer.vue';
-import { ApiResponse } from '@campus/shared';
+import { useAuthStore } from '../../stores/auth';
 
-const router = useRouter();
 const authStore = useAuthStore();
-
-const showNotificationDrawer = ref(false);
-const unreadCount = ref(0);
-
-onMounted(() => {
-  fetchUnreadCount();
-});
-
-async function fetchUnreadCount() {
-  try {
-    const res = await httpClient.get<any, ApiResponse<number>>('/notifications/unread-count');
-    if (res.code === 200 && typeof res.data === 'number') {
-      unreadCount.value = res.data;
-    }
-  } catch (e) {
-    // 忽略异常
-  }
-}
-
-function handleLogout() {
-  authStore.logout();
-  router.push('/login');
-}
 </script>
 
 <style scoped>
 .dashboard-layout {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-h, 56px));
   background-color: #F5F7FA;
-}
-.header {
-  height: 64px;
-  background-color: #ffffff;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 24px;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.system-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1F2937;
-}
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.user-greeting {
-  font-size: 14px;
-  color: #4B5563;
 }
 .main-content {
   padding: 24px;

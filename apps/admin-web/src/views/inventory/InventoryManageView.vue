@@ -1,18 +1,5 @@
 <template>
   <div class="inventory-view">
-    <!-- 顶部常驻导航条 -->
-    <header class="header-bar">
-      <div class="header-left">
-        <el-icon :size="22" color="#1677FF"><Box /></el-icon>
-        <span class="header-title">耗材备件进销存台账管理与采购建议</span>
-      </div>
-      <div class="header-right">
-        <el-button type="primary" plain size="small" @click="router.push('/dispatch')">调度中心</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/')">系统主页</el-button>
-        <el-button type="danger" plain size="small" @click="handleLogout">退出</el-button>
-      </div>
-    </header>
-
     <div class="view-content">
       <!-- 1. 低库存常驻红色预警横幅 (当有低于安全库存时显示) -->
       <div v-if="summary.lowStockCount > 0" class="low-stock-alert-banner">
@@ -393,16 +380,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-  Box,
   WarningFilled,
   Search,
   Plus,
   Download
 } from '@element-plus/icons-vue';
-import { useAuthStore, httpClient } from '../../stores/auth';
+import { httpClient } from '../../stores/auth';
 import {
   ApiResponse,
   SparePartVO,
@@ -412,9 +397,6 @@ import {
   InventorySummaryVO,
   SparePartCategoryOptions
 } from '@campus/shared';
-
-const router = useRouter();
-const authStore = useAuthStore();
 
 const summary = ref<InventorySummaryVO>({
   totalPartCount: 0,
@@ -667,44 +649,14 @@ async function handleExportAdvice() {
     exporting.value = false;
   }
 }
-
-function handleLogout() {
-  authStore.logout();
-  router.push('/login');
-}
 </script>
 
 <style scoped>
 .inventory-view {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--topbar-h, 56px));
   background-color: #F5F7FA;
   display: flex;
   flex-direction: column;
-}
-
-.header-bar {
-  height: 60px;
-  background: #FFFFFF;
-  padding: 0 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.header-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #1F2937;
-}
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .view-content {

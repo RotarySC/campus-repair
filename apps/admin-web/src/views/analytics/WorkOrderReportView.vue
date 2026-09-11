@@ -1,18 +1,5 @@
 <template>
   <div class="report-view">
-    <header class="header-bar">
-      <div class="header-left">
-        <el-icon :size="22" color="#1677FF"><Document /></el-icon>
-        <span class="header-title">工单全生命周期多维检索与分析报表</span>
-      </div>
-      <div class="header-right">
-        <el-button type="success" plain size="small" @click="router.push('/cockpit')">进入运营指挥大屏</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/dispatch')">调度中心</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/')">主控制台</el-button>
-        <el-button type="danger" plain size="small" @click="handleLogout">退出</el-button>
-      </div>
-    </header>
-
     <div class="view-body">
       <!-- 多维高级组合检索表单卡片 -->
       <el-card shadow="never" class="search-card">
@@ -266,13 +253,12 @@ import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-  Document,
   Search,
   Refresh,
   Download,
   FolderChecked
 } from '@element-plus/icons-vue';
-import { useAuthStore, httpClient } from '../../stores/auth';
+import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import {
   ApiResponse,
@@ -284,7 +270,6 @@ import {
 } from '@campus/shared';
 
 const router = useRouter();
-const authStore = useAuthStore();
 
 const loadingTable = ref(false);
 const exporting = ref(false);
@@ -485,44 +470,14 @@ function getStatusTagType(status: string): '' | 'success' | 'warning' | 'info' |
     default: return 'info';
   }
 }
-
-function handleLogout() {
-  authStore.logout();
-  router.push('/login');
-}
 </script>
 
 <style scoped>
 .report-view {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--topbar-h, 56px));
   background-color: #F5F7FA;
   display: flex;
   flex-direction: column;
-}
-
-.header-bar {
-  height: 60px;
-  background: #FFFFFF;
-  padding: 0 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.header-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #1F2937;
-}
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .view-body {

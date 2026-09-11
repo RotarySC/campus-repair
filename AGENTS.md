@@ -5,7 +5,7 @@
 - **单体后端 (Server)**：`server/`，Java 17 + Spring Boot 3.2.5 + MyBatis-Plus。开发工具内嵌于 `.tools/jdk/jdk-17.0.2` 与 `.tools/maven/apache-maven-3.9.16`。测试数据库使用内存 H2（MySQL 兼容模式）。
 - **前端 Monorepo (Web)**：Vue 3 + TypeScript 5.4 + Vite 5 + pnpm workspace。
   - `packages/shared`：共享 DTO/VO 接口定义、业务状态枚举与 HTTP/Canvas 工具。
-  - `apps/admin-web`：PC 管理端与调度中心（Element Plus，端口 3000）。
+  - `apps/admin-web`：PC 管理端与调度中心（Element Plus，端口 3000）。**统一外壳为 `src/layouts/AdminLayout.vue`**：固定侧边栏（240px，可折叠至 64px，折叠态存 `localStorage.admin_sidebar_collapsed`）+ 固定顶栏（页标题取路由 `meta.title`、通知红点 + 账号菜单）。业务页面作为 `/` 的**嵌套子路由**渲染进内容区，各自不再有页头导航；`/login` 与 `/cockpit`（16:9 全屏大屏）刻意不套外壳。
   - `apps/mobile-web`：移动端师生提单与师傅作业台（Vant 4，端口 3001）。
 
 ## 2. 常用构建与测试验证命令 (Verified Commands)
@@ -24,6 +24,11 @@ mvn test -f server/pom.xml
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json
 ./node_modules/.bin/tsc.CMD --noEmit -p apps/admin-web/tsconfig.json
 ./node_modules/.bin/tsc.CMD --noEmit -p apps/mobile-web/tsconfig.json
+
+# 注意：上面的 tsc 并不解析 .vue 单文件组件，SFC 模板/脚本里的类型错误它查不出来。
+# 需要真实 SFC 类型检查时用 vue-tsc（等价于各包 package.json 的 typecheck 脚本）：
+node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json
+node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/mobile-web/tsconfig.json
 ```
 
 ### 2.1 本地运行环境要点 (Verified Local Run Facts)
@@ -39,7 +44,7 @@ mvn test -f server/pom.xml
 - **实测基线（2026-09-11，修复后）**：`mvn test -f server/pom.xml` → `Tests run: 50, Failures: 0, Errors: 0` / BUILD SUCCESS；`tsc --noEmit` 对 `packages/shared`、`apps/admin-web`、`apps/mobile-web` 三包全部 exit 0；起服务实测「无 Redis 登录 200 → 上传 200 → 匿名取图 200 image/png」全链路通过。
 - **本机运行前置条件（实测）**：本机 6379 未监听、Docker daemon 未运行（`npipe:////./pipe/dockerDesktopLinuxEngine` 不存在）。无 Redis 已可正常登录与跑通业务（见上条），但需先启动 Docker Desktop 才能执行 `docker run`。
 - **`spring-boot:run` 的 JVM 不会被 job 取消带走**：后台跑 `mvn spring-boot:run` 后取消该 job，只终止了 Maven 包装进程，派生的 `java.exe` 仍占着 8080，导致下一次启动静默失败（`Error starting ApplicationContext`，根因是端口占用）。重启前必须 `Get-Process java | Stop-Process -Force`，再确认 8080 已 CLOSED。
-- **未提交的本地自举改动（提交前须复核）**：工作树中 `application.yml` 的 `spring.profiles.active` 已由 `dev` 改为 `local`，`server/pom.xml` 的 H2 依赖去掉了 `<scope>test</scope>`，另新增（未跟踪）`application-local.yml` / `data-test.sql` / `schema-test.sql`（后两者与 `server/src/test/resources/` 下同名文件逐字节相同）。直接提交会让 H2 进入生产运行时 classpath，并把开发 profile 变成默认值。
+- **本地自举配置已入库（`a46a8af`）**：`application.yml` 的 `spring.profiles.active` 现为 `${SPRING_PROFILES_ACTIVE:local}` —— 本地零配置可启动，生产用环境变量覆盖即可、无须改文件；H2 依赖为编译期依赖（作为 local 默认库）；`application-local.yml` / `data-test.sql` / `schema-test.sql` 已提交（后两者与 `server/src/test/resources/` 下同名文件逐字节相同，改一处记得同步另一处）。
 
 ## 3. 业务状态流转与核心约定 (State Machine & Conventions)
 
@@ -76,3 +81,5 @@ mvn test -f server/pom.xml
   3. **`MultipartFile#transferTo(File)` 会以 Servlet 临时目录解析相对路径**：`upload-dir: ./uploads/` 是相对路径，原实现直接 `transferTo(new File("./uploads/..."))` 会抛 `FileNotFoundException: ...\Temp\tomcat.8080.xxx\uploads\...`。必须 `Paths.get(uploadDir).toAbsolutePath().normalize()` 后再 `transferTo(Path)`。**该缺陷 MockMvc 测不出来**（`MockMultipartFile.transferTo` 不做临时目录解析），只能起真实服务用 HTTP 上传验证。
 - **`/uploads` 与 API 的部署约束**：前端 HTTP 客户端 baseURL 是相对路径 `/api/v1`，图片 URL 也是相对路径，因此生产环境必须由同源反向代理同时转发 `/api` 与 `/uploads` 到后端；若前后端分域部署，需要各自补齐代理或改为绝对资源地址。
 - **测试套件对 Redis 无感**：唯一覆盖登录的 `AuthIntegrationTest` 用 `@MockBean StringRedisTemplate` 遮蔽真实 Redis，`application-test.yml` 也只排除了 Redisson 自动配置；因此测试全绿不能证明「本地无 Redis 可登录」。该文件现有 2 个用例专门模拟 `RedisConnectionFailureException` 覆盖内存降级（登录成功 + 失败计数兜底），改动认证链路时请一并维护。
+- **管理端外壳布局约定（2026-09-11 新增）**：新增管理端页面时**不要自带页头/导航/退出按钮**——直接写成内容组件并挂到 `router/index.ts` 里 `AdminLayout` 的 `children` 下，页标题写在路由 `meta.title`（顶栏会自动显示）。外壳暴露两个 CSS 变量给子页面用：`--topbar-h`（56px）与内容区高度换算 `calc(100vh - var(--topbar-h, 56px))`；`.sidebar` / `.brand` / `.topbar` 均显式声明了 `box-sizing: border-box`，否则 1px 边框会撑出整页滚动条并使侧边栏与内容区错位 1px（本会话实测踩到）。导航项顺序/图标定义在 `AdminLayout.vue` 的 `navItems`。全屏大屏类页面（如 `/cockpit`）应作为**顶层路由**放在外壳之外。
+- **在 Windows 上编辑 `.vue` 可能把 Vite 监听搞崩**：编辑器/工具采用「临时文件 + 原子重命名」写盘时（本仓库的 edit 工具即如此，会生成 `.<Name>.vue.<pid>.<uuid>.tmpdir/`），Vite 的 fs watcher 会抛 `Error: EBUSY: resource busy or locked, watch ...tmpdir/...` 并**直接终止 dev server**（本会话实际发生，页面随即失去 HMR）。此时删掉残留 `*.tmpdir` 并重启 `pnpm run dev:admin` 即可；`localStorage` 里的登录态与折叠态不会丢。

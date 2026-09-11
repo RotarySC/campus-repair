@@ -1,28 +1,6 @@
 <template>
   <div class="dispatch-console">
-    <!-- 顶部综合导航条 -->
-    <header class="console-header">
-      <div class="header-left">
-        <el-icon :size="22" color="#1677FF"><Headset /></el-icon>
-        <span class="console-title">后勤调度中心干预控制台</span>
-        <el-tag effect="plain" type="primary" class="live-tag">
-          <span class="dot live-pulse"></span> 实时调度作业中
-        </el-tag>
-      </div>
-      <div class="header-right">
-        <el-badge :value="unreadNotifCount" :max="99" :hidden="unreadNotifCount === 0">
-          <el-button :icon="Bell" circle @click="showNotificationDrawer = true" title="站内通知" />
-        </el-badge>
-        <el-button :icon="Refresh" :loading="loadingOrders" circle @click="refreshAll" title="刷新调度数据" />
-        <el-button type="success" plain size="small" @click="router.push('/cockpit')">指挥大屏</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/reports/orders')">工单报表</el-button>
-        <el-button type="warning" plain size="small" @click="router.push('/inventory')">耗材库存台账</el-button>
-        <el-button type="primary" plain size="small" @click="router.push('/')">返回控制台</el-button>
-        <el-button type="danger" plain size="small" @click="handleLogout">退出</el-button>
-      </div>
-    </header>
-
-    <!-- 主工作区：双栏分屏工作台 -->
+    <!-- 主工作区：双栏分屏工作台（页面级导航已上移到 AdminLayout 固定侧边栏） -->
     <div class="split-workbench">
       <!-- 左栏 55% 待办调度池 -->
       <section class="left-pane">
@@ -79,14 +57,28 @@
             </div>
           </div>
 
-          <div class="search-bar">
-            <el-input
-              v-model="searchKeyword"
-              placeholder="搜索单号 / 报修人 / 故障描述..."
-              clearable
-              :prefix-icon="Search"
-              size="small"
-              @change="fetchOrders"
+          <div class="pane-actions">
+            <div class="pane-search">
+              <el-input
+                v-model="searchKeyword"
+                placeholder="搜索单号 / 报修人 / 故障描述..."
+                clearable
+                :prefix-icon="Search"
+                size="small"
+                @change="fetchOrders"
+              />
+            </div>
+            <el-tag effect="plain" type="primary" class="live-tag">
+              <span class="dot live-pulse"></span>
+              实时调度作业中
+            </el-tag>
+            <el-button
+              :icon="Refresh"
+              :loading="loadingOrders"
+              circle
+              title="刷新调度数据"
+              aria-label="刷新调度数据"
+              @click="refreshAll"
             />
           </div>
         </div>
@@ -450,37 +442,22 @@
       <WorkOrderTimeline v-if="timelineOrder" :order-id="timelineOrder.id" />
     </el-drawer>
 
-    <!-- 站内消息通知中心抽屉 -->
-    <el-drawer
-      v-model="showNotificationDrawer"
-      title="站内消息通知中心"
-      size="420px"
-      direction="rtl"
-    >
-      <NotificationCenterDrawer
-        @unread-updated="fetchUnreadNotifCount"
-        @select-order="handleSelectOrderFromNotif"
-      />
-    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-  Headset,
   Refresh,
   Search,
   Location,
   Warning,
-  Phone,
-  Bell
+  Phone
 } from '@element-plus/icons-vue';
-import { useAuthStore, httpClient } from '../../stores/auth';
+import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
-import NotificationCenterDrawer from '../../components/NotificationCenterDrawer.vue';
 import {
   ApiResponse,
   OrderStatusEnum,
@@ -492,8 +469,8 @@ import {
   WorkerBoardVO
 } from '@campus/shared';
 
+const route = useRoute();
 const router = useRouter();
-const authStore = useAuthStore();
 
 // 左栏工单池数据状态
 const currentCategory = ref('ALL');
@@ -531,28 +508,12 @@ const cancelReasonInput = ref('');
 const timelineDrawerVisible = ref(false);
 const timelineOrder = ref<DispatchOrderItemVO | null>(null);
 
-// 消息通知抽屉状态
-const showNotificationDrawer = ref(false);
-const unreadNotifCount = ref(0);
-
-async function fetchUnreadNotifCount() {
-  try {
-    const res = await httpClient.get<any, ApiResponse<number>>('/notifications/unread-count');
-    if (res.code === 200 && typeof res.data === 'number') {
-      unreadNotifCount.value = res.data;
-    }
-  } catch (e) {
-    // 忽略异常
-  }
-}
-
 function openTimelineModal(order: DispatchOrderItemVO) {
   timelineOrder.value = order;
   timelineDrawerVisible.value = true;
 }
 
 async function handleSelectOrderFromNotif(orderId: number) {
-  showNotificationDrawer.value = false;
   try {
     const res = await httpClient.get<any, ApiResponse<DispatchOrderItemVO>>(`/work-orders/${orderId}`);
     if (res.code === 200 && res.data) {
@@ -564,6 +525,17 @@ async function handleSelectOrderFromNotif(orderId: number) {
   }
 }
 
+// 全局通知抽屉（AdminLayout）点击“关联工单”后，携带 orderId 跳转到本页，这里自动打开审计时间轴
+watch(
+  () => route.query.orderId,
+  (orderId) => {
+    if (!orderId) return;
+    handleSelectOrderFromNotif(Number(orderId));
+    router.replace({ path: route.path, query: {} });
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
   refreshAll();
 });
@@ -571,7 +543,6 @@ onMounted(() => {
 function refreshAll() {
   fetchOrders();
   fetchWorkers();
-  fetchUnreadNotifCount();
 }
 
 async function fetchOrders() {
@@ -806,43 +777,27 @@ function formatTime(isoStr?: string): string {
   if (!isoStr) return '--';
   return isoStr.replace('T', ' ').substring(0, 16);
 }
-
-function handleLogout() {
-  authStore.logout();
-  router.push('/login');
-}
 </script>
 
 <style scoped>
 .dispatch-console {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* 外壳顶部条固定 56px，本页工作台占满剩余视口且自身不滚动 */
+  height: calc(100vh - var(--topbar-h, 56px));
   background-color: #F0F2F5;
   overflow: hidden;
 }
 
-.console-header {
-  height: 56px;
-  background-color: #FFFFFF;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 20px;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-  z-index: 10;
-}
-
-.header-left {
+.pane-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-.console-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #1F2937;
+.pane-search {
+  flex: 1;
+  min-width: 0;
 }
 
 .live-tag {
