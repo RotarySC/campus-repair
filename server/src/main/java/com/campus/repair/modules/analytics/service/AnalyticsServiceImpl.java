@@ -191,7 +191,9 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             if (StringUtils.hasText(path)) {
                 String[] parts = path.split("/");
                 if (parts.length >= 2) {
-                    label = parts[0].trim() + " · " + parts[1].trim();
+                    // 用真实路径前缀（与 space_full_path 同分隔符），这样图表标签本身即可作为
+                    // 报表检索关键字做 LIKE 命中，点击下钻不会查出空结果
+                    label = parts[0].trim() + "/" + parts[1].trim();
                 } else {
                     label = parts[0].trim();
                 }

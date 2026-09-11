@@ -5,6 +5,11 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     port: 3000,
+    watch: {
+      // 编辑器/工具的原子写会生成 .<name>.<pid>.<uuid>.tmpdir 临时目录，
+      // Windows 上 chokidar 监听它时抛 EBUSY 会直接终止 dev server（实测踩到）
+      ignored: ['**/.*.tmpdir/**', '**/.*.tmpdir', '**/*.tmp']
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
