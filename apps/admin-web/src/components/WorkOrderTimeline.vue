@@ -66,7 +66,6 @@ import { ref, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { httpClient } from '../stores/auth';
 import {
-  ApiResponse,
   OrderTimelineLogVO,
   ActionTypeLabels,
   OrderStatusLabels,
@@ -92,7 +91,7 @@ async function fetchTimeline() {
   if (!props.orderId) return;
   loading.value = true;
   try {
-    const res = await httpClient.get<any, ApiResponse<OrderTimelineLogVO[]>>(`/work-orders/${props.orderId}/timeline`);
+    const res = await httpClient.get<OrderTimelineLogVO[]>(`/work-orders/${props.orderId}/timeline`);
     if (res.code === 200 && res.data) {
       timelineList.value = res.data;
     }

@@ -101,7 +101,6 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { httpClient } from '../../stores/auth';
-import { ApiResponse } from '@campus/shared';
 
 const loading = ref(false);
 const importing = ref(false);
@@ -130,7 +129,7 @@ function getUserTypeTag(type: string) {
 async function loadData() {
   loading.value = true;
   try {
-    const res = await httpClient.get<any, ApiResponse<any>>('/users/page', {
+    const res = await httpClient.get<any>('/users/page', {
       params: query
     });
     if (res.code === 200) {
@@ -152,7 +151,7 @@ function handleSearch() {
 async function toggleStatus(row: any, val: boolean) {
   const newStatus = val ? 1 : 0;
   try {
-    const res = await httpClient.put<any, ApiResponse<null>>(`/users/${row.id}/status`, null, {
+    const res = await httpClient.put<null>(`/users/${row.id}/status`, null, {
       params: { status: newStatus }
     });
     if (res.code === 200) {
@@ -171,7 +170,7 @@ function handleResetPassword(row: any) {
     inputValue: 'InitPass@2026'
   }).then(async ({ value }) => {
     try {
-      const res = await httpClient.put<any, ApiResponse<null>>(`/users/${row.id}/password/reset`, null, {
+      const res = await httpClient.put<null>(`/users/${row.id}/password/reset`, null, {
         params: { newPassword: value }
       });
       if (res.code === 200) {
@@ -190,7 +189,7 @@ async function handleCustomUpload(options: any) {
 
   importing.value = true;
   try {
-    const res = await httpClient.post<any, ApiResponse<any>>('/users/import', formData, {
+    const res = await httpClient.post<any>('/users/import', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     if (res.code === 200) {

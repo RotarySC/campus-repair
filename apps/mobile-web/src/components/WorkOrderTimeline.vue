@@ -76,7 +76,6 @@ import { ref, watch } from 'vue';
 import { showToast, showImagePreview } from 'vant';
 import { httpClient } from '../stores/auth';
 import {
-  ApiResponse,
   OrderTimelineLogVO,
   ActionTypeLabels,
   OrderStatusLabels,
@@ -102,9 +101,9 @@ async function fetchTimeline() {
   if (!props.orderId) return;
   loading.value = true;
   try {
-    const res = await httpClient.get<ApiResponse<OrderTimelineLogVO[]>>(`/api/v1/work-orders/${props.orderId}/timeline`);
-    if (res.data.code === 200 && res.data.data) {
-      timelineList.value = res.data.data;
+    const res = await httpClient.get<OrderTimelineLogVO[]>(`/api/v1/work-orders/${props.orderId}/timeline`);
+    if (res.code === 200 && res.data) {
+      timelineList.value = res.data;
     }
   } catch (e: any) {
     showToast('获取流转时间轴失败');

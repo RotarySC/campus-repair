@@ -131,7 +131,7 @@ import { reactive, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showNotify, showDialog } from 'vant';
 import { useAuthStore, httpClient } from '../../stores/auth';
-import { ApiResponse, compressImage } from '@campus/shared';
+import { compressImage } from '@campus/shared';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -211,7 +211,7 @@ function transformTreeToCascader(nodes: any[], isCategory = false): any[] {
 
 async function loadSpaceOptions() {
   try {
-    const res = await httpClient.get<any, ApiResponse<any[]>>('/spatial/tree', {
+    const res = await httpClient.get<any[]>('/spatial/tree', {
       params: { onlyEnabled: true }
     });
     if (res.code === 200) {
@@ -222,7 +222,7 @@ async function loadSpaceOptions() {
 
 async function loadCategoryOptions() {
   try {
-    const res = await httpClient.get<any, ApiResponse<any[]>>('/categories/tree', {
+    const res = await httpClient.get<any[]>('/categories/tree', {
       params: { onlyEnabled: true }
     });
     if (res.code === 200) {
@@ -255,7 +255,7 @@ async function triggerDuplicateCheck() {
     return;
   }
   try {
-    const res = await httpClient.post<any, ApiResponse<any>>('/work-orders/check-duplicate', {
+    const res = await httpClient.post<any>('/work-orders/check-duplicate', {
       spaceId: form.spaceId,
       categoryId: form.categoryId
     });
@@ -280,7 +280,7 @@ async function afterReadImage(fileItem: any) {
     const formData = new FormData();
     formData.append('file', compressedFile);
 
-    const res = await httpClient.post<any, ApiResponse<{ url: string }>>('/common/upload', formData, {
+    const res = await httpClient.post<{ url: string }>('/common/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
 
@@ -320,7 +320,7 @@ async function onSubmit() {
       faultImages: uploadedUrls.value
     };
 
-    const res = await httpClient.post<any, ApiResponse<any>>('/work-orders/submit', payload);
+    const res = await httpClient.post<any>('/work-orders/submit', payload);
     if (res.code === 200) {
       localStorage.removeItem(DRAFT_STORAGE_KEY);
       showDialog({

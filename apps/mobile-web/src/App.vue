@@ -34,7 +34,6 @@ import { ref, reactive, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { showToast, showNotify } from 'vant';
 import { useAuthStore, httpClient } from './stores/auth';
-import { ApiResponse } from '@campus/shared';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -70,7 +69,7 @@ async function handleForceChange(action: string) {
   }
 
   try {
-    const res = await httpClient.put<any, ApiResponse<null>>('/users/password/change', pwdForm);
+    const res = await httpClient.put<null>('/users/password/change', pwdForm);
     if (res.code === 200) {
       showToast('密码修改成功，欢迎进入系统');
       if (authStore.userInfo) {

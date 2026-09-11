@@ -80,7 +80,6 @@ import { useRouter } from 'vue-router';
 import { showToast, showSuccessToast } from 'vant';
 import { httpClient, useAuthStore } from '../../stores/auth';
 import {
-  ApiResponse,
   NotificationItemVO,
   NotificationCategoryLabels
 } from '@campus/shared';
@@ -115,12 +114,12 @@ async function fetchData() {
       params.category = activeTab.value;
     }
 
-    const res = await httpClient.get<ApiResponse<{ records: NotificationItemVO[]; total: number }>>('/notifications/my', {
+    const res = await httpClient.get<{ records: NotificationItemVO[]; total: number }>('/notifications/my', {
       params
     });
 
-    if (res.data.code === 200 && res.data.data) {
-      notifications.value = res.data.data.records || [];
+    if (res.code === 200 && res.data) {
+      notifications.value = res.data.records || [];
     }
   } catch (e: any) {
     showToast('获取通知列表失败');
@@ -140,8 +139,8 @@ function onRefresh() {
 
 async function handleMarkSingleRead(item: NotificationItemVO) {
   try {
-    const res = await httpClient.put<ApiResponse<boolean>>(`/api/v1/notifications/${item.id}/read`);
-    if (res.data.code === 200) {
+    const res = await httpClient.put<boolean>(`/api/v1/notifications/${item.id}/read`);
+    if (res.code === 200) {
       item.isRead = 1;
       emit('unread-updated');
     }
@@ -152,8 +151,8 @@ async function handleMarkSingleRead(item: NotificationItemVO) {
 
 async function handleMarkAllRead() {
   try {
-    const res = await httpClient.put<ApiResponse<number>>('/api/v1/notifications/read-all');
-    if (res.data.code === 200) {
+    const res = await httpClient.put<number>('/api/v1/notifications/read-all');
+    if (res.code === 200) {
       showSuccessToast('全部通知已标为已读');
       notifications.value.forEach(n => n.isRead = 1);
       emit('unread-updated');

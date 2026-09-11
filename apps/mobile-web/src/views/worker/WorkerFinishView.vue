@@ -188,7 +188,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { showToast, showSuccessToast, showFailToast, UploaderFileListItem } from 'vant';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import {
-  ApiResponse,
   DispatchOrderItemVO,
   SparePartVO,
   WorkOrderFinishRequest,
@@ -230,9 +229,9 @@ onMounted(() => {
 
 async function fetchOrderDetail() {
   try {
-    const res = await httpClient.get<ApiResponse<DispatchOrderItemVO>>(`/api/v1/work-orders/${orderId}`);
-    if (res.data.code === 200 && res.data.data) {
-      orderInfo.value = res.data.data;
+    const res = await httpClient.get<DispatchOrderItemVO>(`/api/v1/work-orders/${orderId}`);
+    if (res.code === 200 && res.data) {
+      orderInfo.value = res.data;
     }
   } catch (e) {
     // 允许通过
@@ -270,7 +269,7 @@ async function afterReadImage(item: any) {
     const formData = new FormData();
     formData.append('file', watermarkedBlob, file.name || 'finish_watermarked.jpg');
 
-    const res = await httpClient.post<any, ApiResponse<{ url: string }>>('/common/upload', formData, {
+    const res = await httpClient.post<{ url: string }>('/common/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
 
@@ -303,15 +302,15 @@ function openMaterialPicker() {
 async function searchParts() {
   loadingParts.value = true;
   try {
-    const res = await httpClient.get<ApiResponse<{ records: SparePartVO[] }>>('/api/v1/inventory/parts', {
+    const res = await httpClient.get<{ records: SparePartVO[] }>('/api/v1/inventory/parts', {
       params: {
         keyword: searchKeyword.value.trim(),
         page: 1,
         size: 50
       }
     });
-    if (res.data.code === 200 && res.data.data) {
-      availableParts.value = res.data.data.records || [];
+    if (res.code === 200 && res.data) {
+      availableParts.value = res.data.records || [];
     }
   } catch (e: any) {
     showFailToast('获取耗材台账失败');
@@ -372,14 +371,14 @@ async function onSubmitFinish() {
       }))
     };
 
-    const res = await httpClient.post<ApiResponse<void>>(`/api/v1/work-orders/${orderId}/finish`, payload);
-    if (res.data.code === 200) {
+    const res = await httpClient.post<void>(`/api/v1/work-orders/${orderId}/finish`, payload);
+    if (res.code === 200) {
       showSuccessToast('完工上报成功，已流转待验收');
       setTimeout(() => {
         router.push('/worker/workbench');
       }, 1000);
     } else {
-      showFailToast(res.data.message || '完工填报失败');
+      showFailToast(res.message || '完工填报失败');
     }
   } catch (err: any) {
     showFailToast(err.message || '网络请求异常');

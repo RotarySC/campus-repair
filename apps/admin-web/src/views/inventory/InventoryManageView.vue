@@ -389,7 +389,6 @@ import {
 } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
 import {
-  ApiResponse,
   SparePartVO,
   SparePartCreateUpdateRequest,
   SparePartInboundRequest,
@@ -455,7 +454,7 @@ onMounted(() => {
 
 async function fetchSummary() {
   try {
-    const res = await httpClient.get<any, ApiResponse<InventorySummaryVO>>('/inventory/summary');
+    const res = await httpClient.get<InventorySummaryVO>('/inventory/summary');
     if (res.code === 200 && res.data) {
       summary.value = res.data;
     }
@@ -473,7 +472,7 @@ async function fetchParts() {
       lowStockOnly: onlyLowStock.value ? true : undefined
     };
 
-    const res = await httpClient.get<any, ApiResponse<{ records: SparePartVO[]; total: number }>>('/inventory/parts', {
+    const res = await httpClient.get<{ records: SparePartVO[]; total: number }>('/inventory/parts', {
       params
     });
 
@@ -532,7 +531,7 @@ async function submitEditForm() {
 
   saving.value = true;
   try {
-    const res = await httpClient.post<any, ApiResponse<SparePartVO>>('/inventory/parts', editForm);
+    const res = await httpClient.post<SparePartVO>('/inventory/parts', editForm);
     if (res.code === 200) {
       ElMessage.success(editForm.id ? '编辑成功' : '新增物料成功');
       editDialogVisible.value = false;
@@ -559,7 +558,7 @@ async function handleDelete(row: SparePartVO) {
       cancelButtonText: '取消'
     });
 
-    const res = await httpClient.delete<any, ApiResponse<null>>(`/inventory/parts/${row.id}`);
+    const res = await httpClient.delete<null>(`/inventory/parts/${row.id}`);
     if (res.code === 200) {
       ElMessage.success('物料档案已删除');
       fetchSummary();
@@ -586,7 +585,7 @@ async function submitInboundForm() {
 
   inbounding.value = true;
   try {
-    const res = await httpClient.post<any, ApiResponse<SparePartInboundVO>>('/inventory/inbound', inboundForm);
+    const res = await httpClient.post<SparePartInboundVO>('/inventory/inbound', inboundForm);
     if (res.code === 200) {
       ElMessage.success('采购批量入库成功，库存已原子更新！');
       inboundDialogVisible.value = false;
@@ -605,7 +604,7 @@ async function openHistoryDialog(row: SparePartVO) {
   historyDrawerVisible.value = true;
   loadingHistory.value = true;
   try {
-    const res = await httpClient.get<any, ApiResponse<SparePartInboundVO[]>>(`/inventory/inbound/history/${row.id}`);
+    const res = await httpClient.get<SparePartInboundVO[]>(`/inventory/inbound/history/${row.id}`);
     if (res.code === 200 && res.data) {
       inboundHistory.value = res.data;
     }

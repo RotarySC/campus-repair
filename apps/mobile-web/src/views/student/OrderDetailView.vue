@@ -177,7 +177,6 @@ import { showToast, showSuccessToast, showFailToast, showImagePreview } from 'va
 import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import {
-  ApiResponse,
   DispatchOrderItemVO,
   WorkOrderEvaluationVO,
   WorkOrderEvaluateRequest,
@@ -251,15 +250,15 @@ async function fetchData() {
   loading.value = true;
   try {
     const [orderRes, evalRes] = await Promise.all([
-      httpClient.get<ApiResponse<DispatchOrderItemVO>>(`/api/v1/work-orders/${orderId}`),
-      httpClient.get<ApiResponse<WorkOrderEvaluationVO>>(`/api/v1/work-orders/${orderId}/evaluation-detail`)
+      httpClient.get<DispatchOrderItemVO>(`/api/v1/work-orders/${orderId}`),
+      httpClient.get<WorkOrderEvaluationVO>(`/api/v1/work-orders/${orderId}/evaluation-detail`)
     ]);
 
-    if (orderRes.data.code === 200 && orderRes.data.data) {
-      order.value = orderRes.data.data;
+    if (orderRes.code === 200 && orderRes.data) {
+      order.value = orderRes.data;
     }
-    if (evalRes.data.code === 200 && evalRes.data.data) {
-      evaluation.value = evalRes.data.data;
+    if (evalRes.code === 200 && evalRes.data) {
+      evaluation.value = evalRes.data;
     }
   } catch (err: any) {
     showFailToast('获取工单信息失败');
@@ -301,8 +300,8 @@ async function onSubmitEvaluation() {
       comment: comment.value.trim()
     };
 
-    const res = await httpClient.post<ApiResponse<void>>(`/api/v1/work-orders/${orderId}/evaluate`, req);
-    if (res.data.code === 200) {
+    const res = await httpClient.post<void>(`/api/v1/work-orders/${orderId}/evaluate`, req);
+    if (res.code === 200) {
       if (ratingStar.value <= 2) {
         showSuccessToast('已提交差评反馈，已转入返工督办');
       } else {
@@ -310,7 +309,7 @@ async function onSubmitEvaluation() {
       }
       fetchData();
     } else {
-      showFailToast(res.data.message || '评价提交失败');
+      showFailToast(res.message || '评价提交失败');
     }
   } catch (e: any) {
     showFailToast(e.response?.data?.message || e.message || '请求异常');

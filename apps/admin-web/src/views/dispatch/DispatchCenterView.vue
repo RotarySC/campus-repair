@@ -459,7 +459,6 @@ import {
 import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import {
-  ApiResponse,
   OrderStatusEnum,
   OrderStatusLabels,
   WorkerSkillLabels,
@@ -515,7 +514,7 @@ function openTimelineModal(order: DispatchOrderItemVO) {
 
 async function handleSelectOrderFromNotif(orderId: number) {
   try {
-    const res = await httpClient.get<any, ApiResponse<DispatchOrderItemVO>>(`/work-orders/${orderId}`);
+    const res = await httpClient.get<DispatchOrderItemVO>(`/work-orders/${orderId}`);
     if (res.code === 200 && res.data) {
       timelineOrder.value = res.data;
       timelineDrawerVisible.value = true;
@@ -548,7 +547,7 @@ function refreshAll() {
 async function fetchOrders() {
   loadingOrders.value = true;
   try {
-    const res = await httpClient.get<any, ApiResponse<DispatchPoolResultVO>>('/work-orders/dispatch-pool', {
+    const res = await httpClient.get<DispatchPoolResultVO>('/work-orders/dispatch-pool', {
       params: {
         page: currentPage.value,
         size: pageSize.value,
@@ -599,7 +598,7 @@ async function fetchWorkers() {
       }
     }
 
-    const res = await httpClient.get<any, ApiResponse<WorkerBoardVO[]>>('/workers/dispatch-board', {
+    const res = await httpClient.get<WorkerBoardVO[]>('/workers/dispatch-board', {
       params
     });
 
@@ -656,7 +655,7 @@ async function handleDispatchToWorker(worker: WorkerBoardVO) {
   // 秒级一键直接指派，无需反复弹窗打断，由按钮 loading 与顶部 ElMessage 承接即时反馈
   dispatchingId.value = worker.userId;
   try {
-    const res = await httpClient.post<any, ApiResponse<null>>(`/work-orders/${selectedOrder.value.id}/dispatch`, {
+    const res = await httpClient.post<null>(`/work-orders/${selectedOrder.value.id}/dispatch`, {
       workerId: worker.userId,
       dispatchRemark: `后勤调度中心指派【${worker.realName}】处理`
     });
@@ -709,7 +708,7 @@ async function submitArbitrateRework() {
       arbitrationNote: arbitrationNoteInput.value.trim()
     };
 
-    const res = await httpClient.post<any, ApiResponse<null>>(
+    const res = await httpClient.post<null>(
       `/work-orders/${arbitratingOrder.value.id}/arbitrate-rework`,
       payload
     );
@@ -743,7 +742,7 @@ async function submitCancelOrder() {
 
   canceling.value = true;
   try {
-    const res = await httpClient.post<any, ApiResponse<null>>(`/work-orders/${cancelingOrder.value.id}/cancel`, {
+    const res = await httpClient.post<null>(`/work-orders/${cancelingOrder.value.id}/cancel`, {
       cancelReason: cancelReasonInput.value.trim()
     });
 

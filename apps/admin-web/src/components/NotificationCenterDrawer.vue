@@ -71,7 +71,6 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { httpClient } from '../stores/auth';
 import {
-  ApiResponse,
   NotificationItemVO,
   NotificationCategoryLabels
 } from '@campus/shared';
@@ -105,7 +104,7 @@ async function fetchData() {
       params.isRead = filterRead.value;
     }
 
-    const res = await httpClient.get<any, ApiResponse<{ records: NotificationItemVO[]; total: number }>>('/notifications/my', {
+    const res = await httpClient.get<{ records: NotificationItemVO[]; total: number }>('/notifications/my', {
       params
     });
 
@@ -127,7 +126,7 @@ function handleFilterChange() {
 
 async function handleMarkSingleRead(item: NotificationItemVO) {
   try {
-    const res = await httpClient.put<any, ApiResponse<boolean>>(`/notifications/${item.id}/read`);
+    const res = await httpClient.put<boolean>(`/notifications/${item.id}/read`);
     if (res.code === 200) {
       item.isRead = 1;
       emit('unread-updated');
@@ -139,7 +138,7 @@ async function handleMarkSingleRead(item: NotificationItemVO) {
 
 async function handleMarkAllRead() {
   try {
-    const res = await httpClient.put<any, ApiResponse<number>>('/notifications/read-all');
+    const res = await httpClient.put<number>('/notifications/read-all');
     if (res.code === 200) {
       ElMessage.success('已将全部通知标为已读');
       notifications.value.forEach(n => n.isRead = 1);

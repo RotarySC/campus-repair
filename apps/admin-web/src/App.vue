@@ -39,7 +39,6 @@ import { ref, reactive, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useAuthStore, httpClient } from './stores/auth';
-import { ApiResponse } from '@campus/shared';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -76,7 +75,7 @@ async function handleForceChange() {
 
   changing.value = true;
   try {
-    const res = await httpClient.put<any, ApiResponse<null>>('/users/password/change', pwdForm);
+    const res = await httpClient.put<null>('/users/password/change', pwdForm);
     if (res.code === 200) {
       ElMessage.success('密码修改成功，欢迎进入系统');
       if (authStore.userInfo) {

@@ -72,7 +72,6 @@ import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showNotify } from 'vant';
 import { httpClient } from '../../stores/auth';
-import { ApiResponse } from '@campus/shared';
 
 const router = useRouter();
 const loading = ref(false);
@@ -89,7 +88,7 @@ const form = reactive({
 async function onSubmit() {
   loading.value = true;
   try {
-    const res = await httpClient.post<any, ApiResponse<null>>('/auth/register', form);
+    const res = await httpClient.post<null>('/auth/register', form);
     if (res.code === 200) {
       showToast('注册成功，请使用新密码登录');
       router.push('/login');

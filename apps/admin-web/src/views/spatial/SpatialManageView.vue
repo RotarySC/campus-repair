@@ -167,7 +167,6 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { httpClient } from '../../stores/auth';
-import { ApiResponse } from '@campus/shared';
 
 const activeTab = ref('spatial');
 const onlyEnabled = ref(false);
@@ -188,7 +187,7 @@ const adminUserOptions = ref<any[]>([]);
 
 async function loadAdminUsers() {
   try {
-    const res = await httpClient.get<any, ApiResponse<any>>('/users/page', {
+    const res = await httpClient.get<any>('/users/page', {
       params: { page: 1, size: 100 }
     });
     if (res.code === 200) adminUserOptions.value = res.data.records;
@@ -226,7 +225,7 @@ function getLevelTagType(level: number) {
 
 async function loadSpatialTree() {
   try {
-    const res = await httpClient.get<any, ApiResponse<any[]>>('/spatial/tree', {
+    const res = await httpClient.get<any[]>('/spatial/tree', {
       params: { onlyEnabled: onlyEnabled.value }
     });
     if (res.code === 200) spatialTree.value = res.data;
@@ -237,7 +236,7 @@ async function loadSpatialTree() {
 
 async function loadCategoryTree() {
   try {
-    const res = await httpClient.get<any, ApiResponse<any[]>>('/categories/tree');
+    const res = await httpClient.get<any[]>('/categories/tree');
     if (res.code === 200) categoryList.value = res.data;
   } catch (err: any) {
     ElMessage.error(err.message || '加载分类失败');
@@ -246,7 +245,7 @@ async function loadCategoryTree() {
 
 async function loadConfigs() {
   try {
-    const res = await httpClient.get<any, ApiResponse<any[]>>('/configs');
+    const res = await httpClient.get<any[]>('/configs');
     if (res.code === 200) configList.value = res.data;
   } catch (err: any) {
     ElMessage.error(err.message || '加载配置失败');
@@ -266,7 +265,7 @@ async function submitCreateNode() {
     return;
   }
   try {
-    const res = await httpClient.post<any, ApiResponse<any>>('/spatial/nodes', nodeForm);
+    const res = await httpClient.post<any>('/spatial/nodes', nodeForm);
     if (res.code === 200) {
       ElMessage.success('创建成功');
       nodeDialogVisible.value = false;
@@ -280,7 +279,7 @@ async function submitCreateNode() {
 async function toggleNodeStatus(node: any, val: boolean) {
   const newStatus = val ? 1 : 0;
   try {
-    const res = await httpClient.put<any, ApiResponse<null>>(`/spatial/nodes/${node.id}/status`, null, {
+    const res = await httpClient.put<null>(`/spatial/nodes/${node.id}/status`, null, {
       params: { status: newStatus }
     });
     if (res.code === 200) {
@@ -297,7 +296,7 @@ function handleDeleteNode(node: any) {
     type: 'warning'
   }).then(async () => {
     try {
-      const res = await httpClient.delete<any, ApiResponse<null>>(`/spatial/nodes/${node.id}`);
+      const res = await httpClient.delete<null>(`/spatial/nodes/${node.id}`);
       if (res.code === 200) {
         ElMessage.success('删除成功');
         loadSpatialTree();
@@ -321,7 +320,7 @@ async function submitCreateCategory() {
     return;
   }
   try {
-    const res = await httpClient.post<any, ApiResponse<any>>('/categories', categoryForm);
+    const res = await httpClient.post<any>('/categories', categoryForm);
     if (res.code === 200) {
       ElMessage.success('创建分类成功');
       categoryDialogVisible.value = false;
@@ -337,7 +336,7 @@ function handleDeleteCategory(row: any) {
     type: 'warning'
   }).then(async () => {
     try {
-      const res = await httpClient.delete<any, ApiResponse<null>>(`/categories/${row.id}`);
+      const res = await httpClient.delete<null>(`/categories/${row.id}`);
       if (res.code === 200) {
         ElMessage.success('删除成功');
         loadCategoryTree();
@@ -350,7 +349,7 @@ function handleDeleteCategory(row: any) {
 
 async function handleSaveConfig(row: any) {
   try {
-    const res = await httpClient.put<any, ApiResponse<null>>(`/configs/${row.configKey}`, null, {
+    const res = await httpClient.put<null>(`/configs/${row.configKey}`, null, {
       params: { value: row.configValue }
     });
     if (res.code === 200) ElMessage.success('参数保存成功');

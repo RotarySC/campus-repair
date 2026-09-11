@@ -1,4 +1,4 @@
-import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { ApiResponse } from '../types/auth';
 
 export interface TokenProvider {
@@ -8,7 +8,27 @@ export interface TokenProvider {
   onSessionExpired: () => void;
 }
 
-export function createHttpClient(baseURL: string, tokenProvider: TokenProvider): AxiosInstance {
+/**
+ * 已解包业务返回体 `R<T>` 的 HTTP 客户端。
+ *
+ * 响应拦截器把 axios 的 `AxiosResponse` 解包成了 `response.data`（即业务返回体 `R<T>`），
+ * 所以本客户端每个方法都直接 resolve 出 `ApiResponse<T>`：调用方必须读
+ * `res.code` / `res.data`，**不是** `res.data.code` / `res.data.data`（后者运行时恒为
+ * `undefined`，会把成功分支静默跳过）。
+ *
+ * 泛型参数只写业务数据类型：`httpClient.get<OrderVO>(url)` 得到 `ApiResponse<OrderVO>`。
+ * 注意两点：① 业务失败也可能是 HTTP 200 + `code !== 200`，必须判 `res.code`；
+ * ② 导出类二进制流不经本客户端（拦截器会解包掉），请直接用 `fetch`。
+ */
+export interface HttpClient {
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>>;
+  post<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>;
+  put<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>;
+  patch<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>;
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>>;
+}
+
+export function createHttpClient(baseURL: string, tokenProvider: TokenProvider): HttpClient {
   const instance = axios.create({
     baseURL,
     timeout: 15000,
@@ -100,5 +120,18 @@ export function createHttpClient(baseURL: string, tokenProvider: TokenProvider):
     }
   );
 
-  return instance;
+  // 拦截器已把响应解包为 response.data，故用 axios 的第二个泛型参数（R）如实声明
+  // resolve 类型就是业务返回体 R<T>，无需类型断言。
+  return {
+    get: <T = any>(url: string, config?: AxiosRequestConfig) =>
+      instance.get<T, ApiResponse<T>>(url, config),
+    post: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+      instance.post<T, ApiResponse<T>>(url, data, config),
+    put: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+      instance.put<T, ApiResponse<T>>(url, data, config),
+    patch: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+      instance.patch<T, ApiResponse<T>>(url, data, config),
+    delete: <T = any>(url: string, config?: AxiosRequestConfig) =>
+      instance.delete<T, ApiResponse<T>>(url, config)
+  };
 }

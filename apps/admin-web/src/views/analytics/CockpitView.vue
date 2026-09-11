@@ -98,7 +98,6 @@ import { useRouter } from 'vue-router';
 import * as echarts from 'echarts';
 import { httpClient } from '../../stores/auth';
 import {
-  ApiResponse,
   DashboardKpiVO,
   TrendChartVO,
   SpatialHeatVO,
@@ -193,11 +192,11 @@ function scheduleResize() {
 async function fetchAllData() {
   try {
     const [kpiRes, trendRes, spatialRes, catRes, rankRes] = await Promise.all([
-      httpClient.get<any, ApiResponse<DashboardKpiVO>>('/analytics/dashboard-kpi'),
-      httpClient.get<any, ApiResponse<TrendChartVO>>('/analytics/trend-chart?days=30'),
-      httpClient.get<any, ApiResponse<SpatialHeatVO[]>>('/analytics/spatial-distribution?limit=8'),
-      httpClient.get<any, ApiResponse<CategoryRatioVO[]>>('/analytics/category-pie'),
-      httpClient.get<any, ApiResponse<WorkerLeaderboardVO[]>>('/analytics/worker-ranking?limit=10')
+      httpClient.get<DashboardKpiVO>('/analytics/dashboard-kpi'),
+      httpClient.get<TrendChartVO>('/analytics/trend-chart?days=30'),
+      httpClient.get<SpatialHeatVO[]>('/analytics/spatial-distribution?limit=8'),
+      httpClient.get<CategoryRatioVO[]>('/analytics/category-pie'),
+      httpClient.get<WorkerLeaderboardVO[]>('/analytics/worker-ranking?limit=10')
     ]);
 
     if (kpiRes.code === 200 && kpiRes.data) {

@@ -310,7 +310,6 @@ import { showToast, showSuccessToast, showFailToast, showConfirmDialog } from 'v
 import { useAuthStore, httpClient } from '../../stores/auth';
 import NotificationListView from '../notification/NotificationListView.vue';
 import {
-  ApiResponse,
   OrderStatusLabels,
   WorkerSkillLabels,
   DispatchOrderItemVO,
@@ -369,9 +368,9 @@ const unreadNotifCount = ref(0);
 
 async function fetchUnreadCount() {
   try {
-    const res = await httpClient.get<ApiResponse<number>>('/notifications/unread-count');
-    if (res.data.code === 200 && typeof res.data.data === 'number') {
-      unreadNotifCount.value = res.data.data;
+    const res = await httpClient.get<number>('/notifications/unread-count');
+    if (res.code === 200 && typeof res.data === 'number') {
+      unreadNotifCount.value = res.data;
     }
   } catch (e) {}
 }
@@ -410,7 +409,7 @@ function onRefresh() {
 async function fetchOrders() {
   loading.value = true;
   try {
-    const res = await httpClient.get<any, ApiResponse<WorkerOrderListResultVO>>('/work-orders/worker-pool', {
+    const res = await httpClient.get<WorkerOrderListResultVO>('/work-orders/worker-pool', {
       params: {
         tab: activeTab.value,
         keyword: keyword.value || undefined,
@@ -450,7 +449,7 @@ async function handleAccept(order: DispatchOrderItemVO) {
 
   operatingId.value = order.id;
   try {
-    const res = await httpClient.post<any, ApiResponse<null>>(`/work-orders/${order.id}/accept`);
+    const res = await httpClient.post<null>(`/work-orders/${order.id}/accept`);
     if (res.code === 200) {
       showSuccessToast('已成功接单出发！');
       fetchOrders();
@@ -481,7 +480,7 @@ async function handleSuspendDialogClose(action: string): Promise<boolean> {
   }
 
   try {
-    const res = await httpClient.post<any, ApiResponse<null>>(
+    const res = await httpClient.post<null>(
       `/work-orders/${activeOrderForAction.value?.id}/suspend`,
       {
         suspendReasonType: suspendReasonTypeCode.value,
@@ -517,7 +516,7 @@ async function handleResume(order: DispatchOrderItemVO) {
 
   operatingId.value = order.id;
   try {
-    const res = await httpClient.post<any, ApiResponse<null>>(`/work-orders/${order.id}/resume`);
+    const res = await httpClient.post<null>(`/work-orders/${order.id}/resume`);
     if (res.code === 200) {
       showSuccessToast('已解除挂起，恢复施工');
       fetchOrders();
@@ -547,7 +546,7 @@ async function handleTransferDialogClose(action: string): Promise<boolean> {
   }
 
   try {
-    const res = await httpClient.post<any, ApiResponse<null>>(
+    const res = await httpClient.post<null>(
       `/work-orders/${activeOrderForAction.value?.id}/transfer-apply`,
       {
         transferReason: transferReason.value.trim(),

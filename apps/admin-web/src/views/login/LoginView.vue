@@ -35,7 +35,7 @@ import { ref, reactive, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, FormInstance } from 'element-plus';
 import { useAuthStore, httpClient } from '../../stores/auth';
-import { ApiResponse, LoginResult, CaptchaResult } from '@campus/shared';
+import { LoginResult, CaptchaResult } from '@campus/shared';
 
 const router = useRouter();
 const route = useRoute();
@@ -61,7 +61,7 @@ const rules = {
 
 async function fetchCaptcha() {
   try {
-    const res = await httpClient.post<any, ApiResponse<CaptchaResult>>('/auth/captcha');
+    const res = await httpClient.post<CaptchaResult>('/auth/captcha');
     if (res.code === 200) {
       form.captchaKey = res.data.captchaKey;
       captchaImage.value = res.data.imageBase64;
@@ -78,7 +78,7 @@ async function handleLogin() {
 
     loading.value = true;
     try {
-      const res = await httpClient.post<any, ApiResponse<LoginResult>>('/auth/login', form);
+      const res = await httpClient.post<LoginResult>('/auth/login', form);
       if (res.code === 200) {
         authStore.setAuth(res.data);
         ElMessage.success('登录成功');

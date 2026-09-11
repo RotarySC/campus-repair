@@ -261,7 +261,6 @@ import {
 import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import {
-  ApiResponse,
   OrderStatusLabels,
   WorkerSkillLabels,
   DispatchOrderItemVO,
@@ -316,9 +315,9 @@ onMounted(() => {
 async function fetchOptions() {
   try {
     const [spaceRes, catRes, workerRes] = await Promise.all([
-      httpClient.get<any, ApiResponse<any[]>>('/spatial/tree'),
-      httpClient.get<any, ApiResponse<any[]>>('/categories/tree'),
-      httpClient.get<any, ApiResponse<WorkerBoardVO[]>>('/workers/dispatch-board')
+      httpClient.get<any[]>('/spatial/tree'),
+      httpClient.get<any[]>('/categories/tree'),
+      httpClient.get<WorkerBoardVO[]>('/workers/dispatch-board')
     ]);
     if (spaceRes.code === 200 && spaceRes.data) {
       spatialOptions.value = spaceRes.data;
@@ -338,7 +337,7 @@ async function fetchOrders() {
     queryForm.page = currentPage.value;
     queryForm.size = pageSize.value;
 
-    const res = await httpClient.post<any, ApiResponse<{ records: DispatchOrderItemVO[]; total: number }>>(
+    const res = await httpClient.post<{ records: DispatchOrderItemVO[]; total: number }>(
       '/analytics/orders/search',
       queryForm
     );
@@ -453,7 +452,7 @@ async function handleArchiveClick() {
       }
     );
 
-    const res = await httpClient.post<any, ApiResponse<number>>('/analytics/orders/archive?days=180');
+    const res = await httpClient.post<number>('/analytics/orders/archive?days=180');
     if (res.code === 200) {
       ElMessage.success(`归档完成！本次共归档 ${res.data} 张历史老旧工单`);
       fetchOrders();

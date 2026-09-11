@@ -96,7 +96,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { Bell, ArrowDown, SwitchButton } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../stores/auth';
 import NotificationCenterDrawer from '../components/NotificationCenterDrawer.vue';
-import { ApiResponse } from '@campus/shared';
 
 interface NavItem {
   path: string;
@@ -169,7 +168,7 @@ function handleSelectOrder(orderId: number) {
 
 async function fetchUnreadCount() {
   try {
-    const res = await httpClient.get<any, ApiResponse<number>>('/notifications/unread-count');
+    const res = await httpClient.get<number>('/notifications/unread-count');
     if (res.code === 200 && typeof res.data === 'number') {
       unreadCount.value = res.data;
     }

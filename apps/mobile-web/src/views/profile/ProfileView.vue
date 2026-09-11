@@ -90,7 +90,6 @@ import { useRouter } from 'vue-router';
 import { showToast, showNotify } from 'vant';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import NotificationListView from '../notification/NotificationListView.vue';
-import { ApiResponse } from '@campus/shared';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -128,7 +127,7 @@ function transformTreeToCascader(nodes: any[]): any[] {
 
 async function loadSpaceOptions() {
   try {
-    const res = await httpClient.get<any, ApiResponse<any[]>>('/spatial/tree', {
+    const res = await httpClient.get<any[]>('/spatial/tree', {
       params: { onlyEnabled: true }
     });
     if (res.code === 200) {
@@ -172,9 +171,9 @@ onMounted(() => {
 
 async function fetchUnreadCount() {
   try {
-    const res = await httpClient.get<ApiResponse<number>>('/notifications/unread-count');
-    if (res.data.code === 200 && typeof res.data.data === 'number') {
-      unreadCount.value = res.data.data;
+    const res = await httpClient.get<number>('/notifications/unread-count');
+    if (res.code === 200 && typeof res.data === 'number') {
+      unreadCount.value = res.data;
     }
   } catch (e) {}
 }
@@ -186,7 +185,7 @@ async function onUpdateProfile() {
       ...profileForm,
       defaultSpaceId: profileForm.defaultSpaceId ? Number(profileForm.defaultSpaceId) : null
     };
-    const res = await httpClient.put<any, ApiResponse<null>>('/users/profile', payload);
+    const res = await httpClient.put<null>('/users/profile', payload);
     if (res.code === 200) {
       showToast('资料保存成功');
       if (authStore.userInfo) {
@@ -208,7 +207,7 @@ async function onUpdateProfile() {
 async function onChangePassword() {
   passwordLoading.value = true;
   try {
-    const res = await httpClient.put<any, ApiResponse<null>>('/users/password/change', passwordForm);
+    const res = await httpClient.put<null>('/users/password/change', passwordForm);
     if (res.code === 200) {
       showToast('密码修改成功，请重新登录');
       authStore.logout();
