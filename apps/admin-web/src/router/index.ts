@@ -57,15 +57,14 @@ const routes: RouteRecordRaw[] = [
         name: 'UserManage',
         component: UserManageView,
         meta: { title: '用户台账管理', requiresAuth: true }
+      },
+      {
+        path: 'cockpit',
+        name: 'Cockpit',
+        component: CockpitView,
+        meta: { title: '运营指挥大屏', requiresAuth: true }
       }
     ]
-  },
-  {
-    // 16:9 运营指挥大屏保持全屏留黑等比缩放，刻意不套管理外壳
-    path: '/cockpit',
-    name: 'Cockpit',
-    component: CockpitView,
-    meta: { title: '运营指挥大屏', requiresAuth: true }
   },
   {
     path: '/:pathMatch(.*)*',

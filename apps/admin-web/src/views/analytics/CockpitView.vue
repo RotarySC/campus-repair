@@ -1,138 +1,99 @@
 <template>
-  <div class="cockpit-viewport">
-    <!-- 16:9 动态等比缩放容器基准画布 (1920x1080) -->
-    <div
-      class="cockpit-canvas"
-      :style="{
-        transform: `scale(${scaleRatio}) translate(-50%, -50%)`,
-        width: '1920px',
-        height: '1080px'
-      }"
-    >
-      <!-- 大屏顶部炫酷发光科技标题栏 -->
-      <header class="cockpit-header">
-        <div class="header-decor left-decor"></div>
-        <div class="header-center">
-          <h1 class="header-title">校园综合设施维保与智慧运维指挥大屏</h1>
-          <div class="header-subtitle">CAMPUS OPERATIONS COMMAND COCKPIT & DISPATCH METRICS</div>
-        </div>
-        <div class="header-decor right-decor">
-          <span class="header-clock">{{ currentClock }}</span>
-          <button class="exit-btn" @click="handleExit">返回控制台</button>
-        </div>
-      </header>
-
-      <!-- 核心工作区：顶层 KPI 发光数字翻牌器 -->
-      <div class="kpi-banner-row">
-        <div class="kpi-glow-box">
-          <div class="kpi-label">累计报修总量</div>
-          <div class="kpi-digital color-cyan">{{ kpi.totalOrderCount }} <span class="kpi-unit">单</span></div>
-          <div class="kpi-sub">全校区全量设施台账</div>
-        </div>
-
-        <div class="kpi-glow-box">
-          <div class="kpi-label">今日新增提单</div>
-          <div class="kpi-digital color-yellow">{{ kpi.todayNewOrderCount }} <span class="kpi-unit">单</span></div>
-          <div class="kpi-sub">实时接报极速调度</div>
-        </div>
-
-        <div class="kpi-glow-box">
-          <div class="kpi-label">当前在修在办</div>
-          <div class="kpi-digital color-blue">{{ kpi.activeProcessingCount }} <span class="kpi-unit">单</span></div>
-          <div class="kpi-sub">师傅现场施工推进中</div>
-        </div>
-
-        <div class="kpi-glow-box">
-          <div class="kpi-label">完工闭环率</div>
-          <div class="kpi-digital color-green">{{ kpi.completionRatePercent }} <span class="kpi-unit">%</span></div>
-          <div class="kpi-sub">服务验收结单水准</div>
-        </div>
-
-        <div class="kpi-glow-box">
-          <div class="kpi-label">平均响应解决耗时</div>
-          <div class="kpi-digital color-orange">{{ kpi.averageResponseHours }} <span class="kpi-unit">小时</span></div>
-          <div class="kpi-sub">从提单至现场竣工核销</div>
-        </div>
-
-        <div class="kpi-glow-box">
-          <div class="kpi-label">师生好评综合均分</div>
-          <div class="kpi-digital color-gold">{{ kpi.satisfactionScore }} <span class="kpi-unit">★</span></div>
-          <div class="kpi-sub">服务质检评价口碑</div>
-        </div>
-      </div>
-
-      <!-- 下半主区：4 大 ECharts 图表与风云榜九宫排布 -->
-      <div class="charts-matrix-row">
-        <!-- 左侧：近30天双面积趋势折线图 (提单 vs 完工) -->
-        <div class="chart-panel panel-large">
-          <div class="panel-header">
-            <span class="panel-dot"></span>
-            <span class="panel-title">近 30 天提单与完工闭环趋势 (双面积折线)</span>
+  <div ref="dashboardRef" class="cockpit-dashboard">
+    <!-- 顶层核心指标：6 张 KPI 统计卡 -->
+    <el-row :gutter="16" class="kpi-row">
+      <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :lg="4">
+        <el-card shadow="never" class="kpi-card">
+          <div class="kpi-title">{{ card.label }}</div>
+          <div class="kpi-value" :style="{ color: card.color }">
+            {{ card.value }}<span class="kpi-unit">{{ card.unit }}</span>
           </div>
-          <div ref="trendChartRef" class="chart-container"></div>
-        </div>
+          <div class="kpi-sub">{{ card.sub }}</div>
+        </el-card>
+      </el-col>
+    </el-row>
 
-        <!-- 中间：空间热力分布排行 (柱状图) -->
-        <div class="chart-panel panel-medium">
-          <div class="panel-header">
-            <span class="panel-dot"></span>
-            <span class="panel-title">校园空间故障热力排行 Top 8</span>
-          </div>
-          <div ref="spatialChartRef" class="chart-container"></div>
+    <!-- 近 30 天提单与完工闭环趋势 -->
+    <el-card shadow="never" class="panel-card">
+      <template #header>
+        <div class="panel-header">
+          <span class="panel-title">近 30 天提单与完工闭环趋势</span>
+          <span class="panel-hint">每 30 秒自动刷新</span>
         </div>
-      </div>
+      </template>
+      <div v-if="hasTrendData" ref="trendChartRef" class="chart-container chart-trend"></div>
+      <el-empty v-else description="近 30 天暂无提单与完工数据" :image-size="80" />
+    </el-card>
 
-      <div class="charts-matrix-row bottom-row">
-        <!-- 左侧：故障大类占比 (环形饼图) -->
-        <div class="chart-panel panel-pie">
-          <div class="panel-header">
-            <span class="panel-dot"></span>
-            <span class="panel-title">设施故障大类结构分布占比 (环形分布)</span>
-          </div>
-          <div ref="categoryPieRef" class="chart-container"></div>
-        </div>
-
-        <!-- 右侧：师傅月度绩效战绩榜 (排行榜 Table / 卡片) -->
-        <div class="chart-panel panel-leaderboard">
-          <div class="panel-header">
-            <span class="panel-dot"></span>
-            <span class="panel-title">维修技师月度战绩荣誉榜 Top 10</span>
-          </div>
-          <div class="leaderboard-table">
-            <div class="lb-header">
-              <span class="col-rank">排名</span>
-              <span class="col-name">技师姓名</span>
-              <span class="col-skill">负责工种</span>
-              <span class="col-completed">完工单数</span>
-              <span class="col-hours">均修时效</span>
-              <span class="col-star">好评星级</span>
+    <!-- 空间热力排行 + 故障大类占比 -->
+    <el-row :gutter="16" class="panel-row">
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never" class="panel-card">
+          <template #header>
+            <div class="panel-header">
+              <span class="panel-title">校园空间故障热力排行 Top 8</span>
+              <span class="panel-hint">点击柱条可下钻检索该空间工单</span>
             </div>
-            <div class="lb-body">
-              <div
-                v-for="(w, idx) in leaderboard"
-                :key="w.userId"
-                class="lb-row"
-                :class="{ 'top-three': idx < 3 }"
-              >
-                <span class="col-rank">
-                  <span class="rank-badge" :class="`rank-${idx + 1}`">{{ idx + 1 }}</span>
-                </span>
-                <span class="col-name">{{ w.realName }}</span>
-                <span class="col-skill">{{ WorkerSkillLabels[w.skillCode] || w.skillCode }}</span>
-                <span class="col-completed highlight-text">{{ w.completedCount }} 单</span>
-                <span class="col-hours">{{ w.avgHours }} h</span>
-                <span class="col-star">★ {{ Number(w.ratingScore).toFixed(1) }}</span>
-              </div>
+          </template>
+          <div v-if="hasSpatialData" ref="spatialChartRef" class="chart-container chart-square"></div>
+          <el-empty v-else description="暂无空间故障分布数据" :image-size="80" />
+        </el-card>
+      </el-col>
+
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never" class="panel-card">
+          <template #header>
+            <div class="panel-header">
+              <span class="panel-title">设施故障大类结构分布占比</span>
             </div>
-          </div>
+          </template>
+          <div v-if="hasCategoryData" ref="categoryPieRef" class="chart-container chart-square"></div>
+          <el-empty v-else description="暂无故障分类占比数据" :image-size="80" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 维修技师月度战绩荣誉榜 -->
+    <el-card shadow="never" class="panel-card">
+      <template #header>
+        <div class="panel-header">
+          <span class="panel-title">维修技师月度战绩荣誉榜 Top 10</span>
+          <span class="panel-hint">按本月结单量与好评综合排序</span>
         </div>
-      </div>
-    </div>
+      </template>
+
+      <el-table :data="leaderboard" size="small" stripe>
+        <el-table-column label="排名" width="72" align="center">
+          <template #default="{ $index }">
+            <span class="rank-badge" :class="`rank-${$index + 1}`">{{ $index + 1 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="realName" label="技师姓名" min-width="110" />
+        <el-table-column label="负责工种" min-width="130">
+          <template #default="{ row }">
+            {{ WorkerSkillLabels[row.skillCode] || row.skillCode }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="completedCount" label="完工单数" width="110" align="right" />
+        <el-table-column label="均修时效" width="110" align="right">
+          <template #default="{ row }">
+            {{ Number(row.avgHours) > 0 ? `${row.avgHours} h` : '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="好评星级" width="110" align="right">
+          <template #default="{ row }">
+            {{ Number(row.ratingScore) > 0 ? `★ ${Number(row.ratingScore).toFixed(1)}` : '—' }}
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-empty v-if="leaderboard.length === 0" description="本月暂无技师完工战绩" :image-size="80" />
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import * as echarts from 'echarts';
 import { httpClient } from '../../stores/auth';
@@ -148,15 +109,11 @@ import {
 
 const router = useRouter();
 
-// 16:9 动态缩放比例
-const scaleRatio = ref(1);
+const dashboardRef = ref<HTMLDivElement | null>(null);
+const trendChartRef = ref<HTMLDivElement | null>(null);
+const spatialChartRef = ref<HTMLDivElement | null>(null);
+const categoryPieRef = ref<HTMLDivElement | null>(null);
 
-// 时钟
-const currentClock = ref('');
-let clockTimer: any = null;
-let refreshTimer: any = null;
-
-// KPI 数据
 const kpi = ref<DashboardKpiVO>({
   totalOrderCount: 0,
   todayNewOrderCount: 0,
@@ -165,65 +122,72 @@ const kpi = ref<DashboardKpiVO>({
   averageResponseHours: 0,
   satisfactionScore: 0
 });
-
-// 图表 DOM 引用
-const trendChartRef = ref<HTMLDivElement | null>(null);
-const spatialChartRef = ref<HTMLDivElement | null>(null);
-const categoryPieRef = ref<HTMLDivElement | null>(null);
 const leaderboard = ref<WorkerLeaderboardVO[]>([]);
+const pendingTrend = ref<TrendChartVO | null>(null);
+const spatialHeat = ref<SpatialHeatVO[]>([]);
+const categoryRatios = ref<CategoryRatioVO[]>([]);
 
 let trendChart: echarts.ECharts | null = null;
 let spatialChart: echarts.ECharts | null = null;
 let categoryPie: echarts.ECharts | null = null;
 
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let resizeObserver: ResizeObserver | null = null;
+let resizeRafId: number | null = null;
+
+const kpiCards = computed(() => {
+  const avgHours = Number(kpi.value.averageResponseHours);
+  const score = Number(kpi.value.satisfactionScore);
+  return [
+    { label: '累计报修总量', value: kpi.value.totalOrderCount, unit: '单', sub: '全校区台账', color: '#1677FF' },
+    { label: '今日新增提单', value: kpi.value.todayNewOrderCount, unit: '单', sub: '实时接报调度', color: '#FA8C16' },
+    { label: '当前在修在办', value: kpi.value.activeProcessingCount, unit: '单', sub: '现场施工推进', color: '#2F54EB' },
+    { label: '完工闭环率', value: kpi.value.completionRatePercent, unit: '%', sub: '验收结单水准', color: '#52C41A' },
+    // 无完工单 / 无有效评价时后端返回 0，此处显示占位符而不是伪造的均值
+    { label: '平均响应解决耗时', value: avgHours > 0 ? avgHours : '—', unit: avgHours > 0 ? '小时' : '', sub: '提单至竣工核销', color: '#FA541C' },
+    { label: '师生好评综合均分', value: score > 0 ? score : '—', unit: score > 0 ? '★' : '', sub: '服务质检口碑', color: '#D48806' }
+  ];
+});
+
+// 空库时不要画无意义的零值坐标轴，改用空态提示
+const hasTrendData = computed(
+  () => pendingTrend.value !== null &&
+    [...pendingTrend.value.submitCounts, ...pendingTrend.value.completedCounts].some(v => Number(v) > 0)
+);
+const hasSpatialData = computed(() => spatialHeat.value.some(d => Number(d.orderCount) > 0));
+const hasCategoryData = computed(() => categoryRatios.value.some(d => Number(d.count) > 0));
+
 onMounted(() => {
-  calcScale();
-  window.addEventListener('resize', calcScale);
-
-  updateClock();
-  clockTimer = setInterval(updateClock, 1000);
-
   fetchAllData();
-  // 运营大屏每 30 秒自动轮询无感刷新一次
+  // 仪表盘每 30 秒轮询一次，保持数据新鲜
   refreshTimer = setInterval(fetchAllData, 30000);
+
+  window.addEventListener('resize', scheduleResize);
+  // 侧边栏折叠/内容区宽度变化时也要重算图表尺寸
+  if (dashboardRef.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(scheduleResize);
+    resizeObserver.observe(dashboardRef.value);
+  }
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', calcScale);
-  if (clockTimer) clearInterval(clockTimer);
   if (refreshTimer) clearInterval(refreshTimer);
+  if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+  window.removeEventListener('resize', scheduleResize);
+  resizeObserver?.disconnect();
   trendChart?.dispose();
   spatialChart?.dispose();
   categoryPie?.dispose();
 });
 
-function calcScale() {
-  const designWidth = 1920;
-  const designHeight = 1080;
-  const clientWidth = window.innerWidth;
-  const clientHeight = window.innerHeight;
-
-  const wRatio = clientWidth / designWidth;
-  const hRatio = clientHeight / designHeight;
-  // 保持 16:9 比例等比居中留黑
-  scaleRatio.value = Math.min(wRatio, hRatio);
-}
-
-function updateClock() {
-  const d = new Date();
-  currentClock.value = d.toLocaleString('zh-CN', {
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
+function scheduleResize() {
+  if (resizeRafId !== null) return;
+  resizeRafId = requestAnimationFrame(() => {
+    resizeRafId = null;
+    trendChart?.resize();
+    spatialChart?.resize();
+    categoryPie?.resize();
   });
-}
-
-function handleExit() {
-  router.push('/');
 }
 
 async function fetchAllData() {
@@ -239,28 +203,45 @@ async function fetchAllData() {
     if (kpiRes.code === 200 && kpiRes.data) {
       kpi.value = kpiRes.data;
     }
-
-    await nextTick();
-
     if (trendRes.code === 200 && trendRes.data) {
-      renderTrendChart(trendRes.data);
+      pendingTrend.value = trendRes.data;
     }
-
     if (spatialRes.code === 200 && spatialRes.data) {
-      renderSpatialChart(spatialRes.data);
+      spatialHeat.value = spatialRes.data;
     }
-
     if (catRes.code === 200 && catRes.data) {
-      renderCategoryPie(catRes.data);
+      categoryRatios.value = catRes.data;
     }
-
     if (rankRes.code === 200 && rankRes.data) {
       leaderboard.value = rankRes.data;
+    }
+
+    // 等 v-if 控制的有数据容器渲染出来后再初始化 ECharts
+    await nextTick();
+
+    if (pendingTrend.value && hasTrendData.value) {
+      renderTrendChart(pendingTrend.value);
+    }
+    if (hasSpatialData.value) {
+      renderSpatialChart(spatialHeat.value);
+    }
+    if (hasCategoryData.value) {
+      renderCategoryPie(categoryRatios.value);
     }
   } catch (e) {
     console.error('Fetch cockpit data failed', e);
   }
 }
+
+const TOOLTIP_STYLE = {
+  backgroundColor: '#FFFFFF',
+  borderColor: '#E5E7EB',
+  borderWidth: 1,
+  textStyle: { color: '#1F2937' },
+  extraCssText: 'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);'
+};
+const AXIS_LABEL = { color: '#6B7280', fontSize: 11 };
+const SPLIT_LINE = { lineStyle: { color: '#F0F2F5' } };
 
 function renderTrendChart(data: TrendChartVO) {
   if (!trendChartRef.value) return;
@@ -270,49 +251,43 @@ function renderTrendChart(data: TrendChartVO) {
 
   trendChart.setOption({
     backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(11, 28, 64, 0.85)',
-      borderColor: '#1890FF',
-      textStyle: { color: '#FFFFFF' }
-    },
+    tooltip: { trigger: 'axis', ...TOOLTIP_STYLE },
     legend: {
       data: ['每日报修提单', '每日完工结单'],
-      textStyle: { color: '#88B0E0' },
-      right: 20,
-      top: 10
+      right: 8,
+      top: 0,
+      icon: 'roundRect',
+      textStyle: { color: '#6B7280', fontSize: 12 }
     },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '18%',
-      containLabel: true
-    },
+    grid: { left: 8, right: 16, bottom: 4, top: 40, containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
       data: data.dates,
-      axisLine: { lineStyle: { color: '#2C4C7E' } },
-      axisLabel: { color: '#88B0E0', fontSize: 11 }
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#E5E7EB' } },
+      axisLabel: AXIS_LABEL
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: 'rgba(44, 76, 126, 0.4)' } },
-      axisLabel: { color: '#88B0E0' }
+      axisTick: { show: false },
+      splitLine: SPLIT_LINE,
+      axisLabel: AXIS_LABEL
     },
     series: [
       {
         name: '每日报修提单',
         type: 'line',
         smooth: true,
+        showSymbol: false,
         data: data.submitCounts,
-        itemStyle: { color: '#1890FF' },
+        itemStyle: { color: '#1677FF' },
+        lineStyle: { width: 2, color: '#1677FF' },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(24, 144, 255, 0.5)' },
-            { offset: 1, color: 'rgba(24, 144, 255, 0.05)' }
+            { offset: 0, color: 'rgba(22, 119, 255, 0.28)' },
+            { offset: 1, color: 'rgba(22, 119, 255, 0.02)' }
           ])
         }
       },
@@ -320,12 +295,14 @@ function renderTrendChart(data: TrendChartVO) {
         name: '每日完工结单',
         type: 'line',
         smooth: true,
+        showSymbol: false,
         data: data.completedCounts,
         itemStyle: { color: '#52C41A' },
+        lineStyle: { width: 2, color: '#52C41A' },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(82, 196, 26, 0.5)' },
-            { offset: 1, color: 'rgba(82, 196, 26, 0.05)' }
+            { offset: 0, color: 'rgba(82, 196, 26, 0.24)' },
+            { offset: 1, color: 'rgba(82, 196, 26, 0.02)' }
           ])
         }
       }
@@ -344,47 +321,32 @@ function renderSpatialChart(data: SpatialHeatVO[]) {
 
   spatialChart.setOption({
     backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      backgroundColor: 'rgba(11, 28, 64, 0.85)',
-      borderColor: '#00F0FF',
-      textStyle: { color: '#FFFFFF' }
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '12%',
-      containLabel: true
-    },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...TOOLTIP_STYLE },
+    grid: { left: 8, right: 16, bottom: 4, top: 24, containLabel: true },
     xAxis: {
       type: 'category',
       data: names,
-      axisLine: { lineStyle: { color: '#2C4C7E' } },
-      axisLabel: {
-        color: '#88B0E0',
-        fontSize: 11,
-        interval: 0,
-        rotate: 20
-      }
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#E5E7EB' } },
+      axisLabel: { ...AXIS_LABEL, interval: 0, rotate: 20 }
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: 'rgba(44, 76, 126, 0.4)' } },
-      axisLabel: { color: '#88B0E0' }
+      axisTick: { show: false },
+      splitLine: SPLIT_LINE,
+      axisLabel: AXIS_LABEL
     },
     series: [
       {
         name: '报修单数',
         type: 'bar',
-        barWidth: '35%',
+        barWidth: '38%',
         data: counts,
         itemStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#00F0FF' },
-            { offset: 1, color: '#0047BA' }
+            { offset: 0, color: '#4096FF' },
+            { offset: 1, color: '#1677FF' }
           ]),
           borderRadius: [4, 4, 0, 0]
         }
@@ -414,28 +376,25 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 
   categoryPie.setOption({
     backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(11, 28, 64, 0.85)',
-      borderColor: '#FFD21E',
-      textStyle: { color: '#FFFFFF' }
-    },
+    color: ['#1677FF', '#52C41A', '#FAAD14', '#FA541C', '#722ED1', '#13C2C2', '#EB2F96', '#8C8C8C'],
+    tooltip: { trigger: 'item', ...TOOLTIP_STYLE },
     legend: {
       orient: 'vertical',
-      right: 15,
+      right: 8,
       top: 'center',
-      textStyle: { color: '#88B0E0' }
+      icon: 'circle',
+      textStyle: { color: '#6B7280', fontSize: 12 }
     },
     series: [
       {
         name: '故障类别占比',
         type: 'pie',
         radius: ['45%', '72%'],
-        center: ['40%', '50%'],
+        center: ['38%', '50%'],
         avoidLabelOverlap: false,
         itemStyle: {
           borderRadius: 6,
-          borderColor: '#06132C',
+          borderColor: '#FFFFFF',
           borderWidth: 2
         },
         label: { show: false },
@@ -444,7 +403,7 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
             show: true,
             fontSize: 14,
             fontWeight: 'bold',
-            color: '#FFFFFF'
+            color: '#1F2937'
           }
         },
         data: pieData
@@ -455,235 +414,103 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 </script>
 
 <style scoped>
-.cockpit-viewport {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  background-color: #030B1A;
-  position: relative;
-}
-
-.cockpit-canvas {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform-origin: 0 0;
-  background: radial-gradient(circle at 50% 20%, #07193F 0%, #030B1A 75%);
-  color: #FFFFFF;
-  padding: 16px 28px;
-  box-sizing: border-box;
+.cockpit-dashboard {
+  min-height: calc(100vh - var(--topbar-h, 56px));
+  padding: 20px 24px;
+  background-color: #F5F7FA;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* 顶部科技标题 */
-.cockpit-header {
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 2px solid rgba(0, 240, 255, 0.3);
-  position: relative;
-}
-.header-center {
-  text-align: center;
-  flex-grow: 1;
-}
-.header-title {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  background: linear-gradient(180deg, #FFFFFF 0%, #00F0FF 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
-}
-.header-subtitle {
-  font-size: 10px;
-  color: #5D8EC7;
-  letter-spacing: 3px;
-  margin-top: 4px;
-}
-.header-clock {
-  font-family: monospace;
-  font-size: 15px;
-  color: #00F0FF;
-  margin-right: 20px;
-}
-.exit-btn {
-  background: rgba(24, 144, 255, 0.2);
-  border: 1px solid #1890FF;
-  color: #E6F4FF;
-  padding: 5px 14px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.exit-btn:hover {
-  background: #1890FF;
-  color: #fff;
+.kpi-row,
+.panel-row {
+  /* el-row 仅处理横向 gutter，换行时需要纵向间距 */
+  row-gap: 16px;
 }
 
-/* 6 大发光 KPI 卡片 */
-.kpi-banner-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-}
-.kpi-glow-box {
-  flex: 1;
-  background: rgba(8, 28, 68, 0.65);
-  border: 1px solid rgba(0, 240, 255, 0.25);
+.kpi-card,
+.panel-card {
   border-radius: 8px;
-  padding: 12px 14px;
-  box-shadow: inset 0 0 12px rgba(0, 240, 255, 0.1);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
 }
-.kpi-label {
-  font-size: 12px;
-  color: #88B0E0;
-  margin-bottom: 4px;
+
+.kpi-title {
+  font-size: 13px;
+  color: #6B7280;
+  margin-bottom: 6px;
 }
-.kpi-digital {
-  font-size: 28px;
-  font-weight: 800;
-  font-family: 'DIN Alternate', 'Impact', sans-serif;
-  letter-spacing: 1px;
+
+.kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
 }
+
 .kpi-unit {
   font-size: 13px;
   font-weight: normal;
-  color: #88B0E0;
+  color: #9CA3AF;
+  margin-inline-start: 4px;
 }
-.kpi-sub {
-  font-size: 10px;
-  color: #5D8EC7;
-  margin-top: 2px;
-}
-.color-cyan { color: #00F0FF; text-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
-.color-yellow { color: #FFD21E; text-shadow: 0 0 10px rgba(255, 210, 30, 0.4); }
-.color-blue { color: #40A9FF; text-shadow: 0 0 10px rgba(64, 169, 255, 0.4); }
-.color-green { color: #52C41A; text-shadow: 0 0 10px rgba(82, 196, 26, 0.4); }
-.color-orange { color: #FF7A45; text-shadow: 0 0 10px rgba(255, 122, 69, 0.4); }
-.color-gold { color: #FFA940; text-shadow: 0 0 10px rgba(255, 169, 64, 0.4); }
 
-/* 图表矩阵区 */
-.charts-matrix-row {
-  display: flex;
-  gap: 16px;
-  flex: 1;
+.kpi-sub {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 6px;
 }
-.bottom-row {
-  margin-top: -4px;
-}
-.chart-panel {
-  background: rgba(8, 28, 68, 0.55);
-  border: 1px solid rgba(44, 76, 126, 0.5);
-  border-radius: 8px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-.panel-large { flex: 58; }
-.panel-medium { flex: 42; }
-.panel-pie { flex: 45; }
-.panel-leaderboard { flex: 55; }
 
 .panel-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  justify-content: space-between;
+  gap: 12px;
 }
-.panel-dot {
-  width: 6px;
-  height: 6px;
-  background-color: #00F0FF;
-  border-radius: 50%;
-  box-shadow: 0 0 6px #00F0FF;
-}
+
 .panel-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #E6F4FF;
-  letter-spacing: 1px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1F2937;
+}
+
+.panel-hint {
+  font-size: 12px;
+  color: #9CA3AF;
 }
 
 .chart-container {
-  flex: 1;
   width: 100%;
-  min-height: 240px;
 }
 
-/* 师傅排行榜样式 */
-.leaderboard-table {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.chart-trend {
+  height: 320px;
 }
-.lb-header {
-  display: flex;
-  font-size: 11px;
-  color: #88B0E0;
-  padding: 6px 10px;
-  background: rgba(0, 240, 255, 0.08);
-  border-radius: 4px;
-  font-weight: 600;
+
+.chart-square {
+  height: 300px;
 }
-.lb-body {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
-}
-.lb-row {
-  display: flex;
-  align-items: center;
-  font-size: 12px;
-  color: #D1E4FF;
-  padding: 5px 10px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.02);
-  transition: all 0.2s ease;
-}
-.lb-row:hover {
-  background: rgba(0, 240, 255, 0.1);
-}
-.top-three {
-  background: rgba(255, 215, 0, 0.06);
-}
-.col-rank { width: 50px; text-align: center; }
-.col-name { width: 100px; font-weight: 600; }
-.col-skill { width: 110px; color: #88B0E0; }
-.col-completed { width: 90px; text-align: right; }
-.col-hours { width: 80px; text-align: right; color: #88B0E0; }
-.col-star { width: 70px; text-align: right; color: #FFA940; font-weight: 600; }
 
 .rank-badge {
   display: inline-block;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
   border-radius: 50%;
   font-size: 11px;
-  font-weight: bold;
-  color: #fff;
-  background-color: #2C4C7E;
+  font-weight: 600;
+  text-align: center;
+  color: #FFFFFF;
+  background-color: #9CA3AF;
 }
-.rank-1 { background: #FF4D4F; box-shadow: 0 0 6px #FF4D4F; }
-.rank-2 { background: #FA8C16; box-shadow: 0 0 6px #FA8C16; }
-.rank-3 { background: #FADB14; color: #000; box-shadow: 0 0 6px #FADB14; }
 
-.highlight-text {
-  color: #00F0FF;
-  font-weight: 700;
+.rank-1 {
+  background-color: #F5222D;
+}
+
+.rank-2 {
+  background-color: #FA8C16;
+}
+
+.rank-3 {
+  background-color: #FAAD14;
 }
 </style>
