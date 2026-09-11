@@ -103,13 +103,14 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .isNotNull(RepairOrder::getClosedTime)
                 .isNotNull(RepairOrder::getCreatedAt));
 
-        BigDecimal avgHours = calculateAvgHours(completedList, new BigDecimal("3.50"));
+        BigDecimal avgHours = calculateAvgHours(completedList, BigDecimal.ZERO);
 
         // 综合满意度均分 (根据 repair_order_evaluation 表中真实用户的 rating_star 计算，排除未打分和自动核销无分数据)
         List<RepairOrderEvaluation> evalList = evaluationMapper.selectList(new LambdaQueryWrapper<RepairOrderEvaluation>()
                 .isNotNull(RepairOrderEvaluation::getRatingStar)
                 .gt(RepairOrderEvaluation::getRatingStar, 0));
-        BigDecimal avgScore = new BigDecimal("4.85");
+        // 无任何有效评价时保持 0（前端渲染为“—”），不得用虚增值充当真实口碑
+        BigDecimal avgScore = BigDecimal.ZERO;
         if (!evalList.isEmpty()) {
             double sumStar = evalList.stream().mapToInt(RepairOrderEvaluation::getRatingStar).sum();
             avgScore = BigDecimal.valueOf(sumStar / evalList.size()).setScale(2, RoundingMode.HALF_UP);
@@ -257,8 +258,9 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                     .isNotNull(RepairOrder::getCreatedAt));
 
             int completedCount = workerOrders.size();
-            BigDecimal avgH = calculateAvgHours(workerOrders, new BigDecimal("2.60"));
-            BigDecimal rating = p.getRatingAvg() != null ? p.getRatingAvg() : new BigDecimal("4.90");
+            BigDecimal avgH = calculateAvgHours(workerOrders, BigDecimal.ZERO);
+            // 技师档案无历史评分时保持 0，避免榜单出现凭空生成的星级
+            BigDecimal rating = p.getRatingAvg() != null ? p.getRatingAvg() : BigDecimal.ZERO;
 
             list.add(WorkerLeaderboardVO.builder()
                     .userId(p.getUserId())
