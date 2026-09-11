@@ -9,6 +9,17 @@ import DispatchCenterView from '../views/dispatch/DispatchCenterView.vue';
 import InventoryManageView from '../views/inventory/InventoryManageView.vue';
 import CockpitView from '../views/analytics/CockpitView.vue';
 import WorkOrderReportView from '../views/analytics/WorkOrderReportView.vue';
+import ForbiddenView from '../views/error/ForbiddenView.vue';
+
+/** 管理端只对这两类角色开放，与后端 @PreAuthorize 保持一致 */
+const ADMIN_ROLES = ['SUPER_ADMIN', 'LOGISTICS_ADMIN'];
+
+function isAdminUser(authStore: ReturnType<typeof useAuthStore>): boolean {
+  const userInfo = authStore.userInfo;
+  if (!userInfo) return false;
+  const roles = userInfo.roleCodes?.length ? userInfo.roleCodes : [userInfo.userType];
+  return roles.some((role) => ADMIN_ROLES.includes(role));
+}
 
 const routes: RouteRecordRaw[] = [
   {
@@ -16,6 +27,13 @@ const routes: RouteRecordRaw[] = [
     name: 'Login',
     component: LoginView,
     meta: { title: '用户登录', public: true }
+  },
+  {
+    // 已登录但角色不在管理端范围内时的落点（刻意放在外壳之外）
+    path: '/403',
+    name: 'Forbidden',
+    component: ForbiddenView,
+    meta: { title: '无权访问管理端' }
   },
   {
     // 管理端统一外壳：固定侧边栏 + 顶部条，业务页面作为子路由渲染进内容区
@@ -79,11 +97,20 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore();
+
+  // 未登录：先跳登录页，并在登录后回到原目标
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ path: '/login', query: { redirect: to.fullPath } });
-  } else {
-    next();
+    return;
   }
+
+  // 已登录但角色非管理端（师生 / 维修师傅）：拦到 403，避免出现“页面能打开、接口全 403”的空转
+  if (to.meta.requiresAuth && !isAdminUser(authStore)) {
+    next({ path: '/403' });
+    return;
+  }
+
+  next();
 });
 
 export default router;
