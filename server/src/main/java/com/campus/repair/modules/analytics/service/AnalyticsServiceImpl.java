@@ -3,12 +3,14 @@ package com.campus.repair.modules.analytics.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.campus.repair.modules.analytics.dto.CategoryRatioRow;
+import com.campus.repair.modules.analytics.dto.DailyTrendRow;
+import com.campus.repair.modules.analytics.dto.DashboardAggregateRow;
+import com.campus.repair.modules.analytics.dto.SpatialHeatRow;
 import com.campus.repair.modules.analytics.dto.WorkOrderFilterQueryRequest;
+import com.campus.repair.modules.analytics.dto.WorkerLeaderboardRow;
+import com.campus.repair.modules.analytics.mapper.AnalyticsReportMapper;
 import com.campus.repair.modules.analytics.vo.*;
-import com.campus.repair.modules.user.entity.SysUser;
-import com.campus.repair.modules.user.entity.WorkerProfile;
-import com.campus.repair.modules.user.mapper.SysUserMapper;
-import com.campus.repair.modules.user.mapper.WorkerProfileMapper;
 import com.campus.repair.modules.workorder.entity.RepairOrder;
 import com.campus.repair.modules.workorder.entity.RepairOrderEvaluation;
 import com.campus.repair.modules.workorder.enums.OrderStatusEnum;
@@ -24,7 +26,6 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -38,22 +39,26 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     private final RepairOrderMapper orderMapper;
     private final RepairOrderEvaluationMapper evaluationMapper;
-    private final WorkerProfileMapper workerProfileMapper;
-    private final SysUserMapper userMapper;
+    /**
+     * 分析模块自有的汇总读模型。全部分析口径的聚合都在该 Mapper 内以 SQL 完成，
+     * 不再穿透 user / workorder 模块的 Mapper，也不再把全表拉进 JVM 做内存聚合。
+     */
+    private final AnalyticsReportMapper reportMapper;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private static BigDecimal calculateAvgHours(List<RepairOrder> orders, BigDecimal defaultVal) {
-        if (orders == null || orders.isEmpty()) {
-            return defaultVal;
+    /**
+     * 把「分钟合计 / 单数」换算成小时，保留 2 位小数（与原内存口径完全一致：
+     * 每单闭环耗时下限 1 分钟，由 SQL 侧的 CASE WHEN 保证）。
+     * KPI 平均时效与技师榜单平均耗时共用此方法，确保两条口径不会各自漂移。
+     */
+    private static BigDecimal avgHoursFromMinutes(Long timedOrders, Long totalMinutes) {
+        if (timedOrders == null || timedOrders <= 0 || totalMinutes == null) {
+            return BigDecimal.ZERO;
         }
-        long totalMinutes = 0;
-        for (RepairOrder o : orders) {
-            totalMinutes += Math.max(1, Duration.between(o.getCreatedAt(), o.getClosedTime()).toMinutes());
-        }
-        double hours = (double) totalMinutes / (orders.size() * 60.0);
-        return BigDecimal.valueOf(hours).setScale(2, RoundingMode.HALF_UP);
+        return BigDecimal.valueOf(totalMinutes)
+                .divide(BigDecimal.valueOf(timedOrders).multiply(BigDecimal.valueOf(60)), 2, RoundingMode.HALF_UP);
     }
 
     private static String getStatusChineseDesc(String status) {
@@ -66,28 +71,15 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     public DashboardKpiVO getDashboardKpi() {
-        // 1. 历史总工单量 (未逻辑删除)
-        long totalOrders = orderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0));
-
-        // 2. 今日新增工单量
         LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
-        long todayOrders = orderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0)
-                .ge(RepairOrder::getCreatedAt, startOfToday));
 
-        // 3. 在修在办工单量 (ASSIGNED, IN_PROGRESS, SUSPENDED)
-        long activeOrders = orderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0)
-                .in(RepairOrder::getStatus, List.of(
-                        OrderStatusEnum.ASSIGNED.name(),
-                        OrderStatusEnum.IN_PROGRESS.name(),
-                        OrderStatusEnum.SUSPENDED.name())));
+        // 一次条件聚合取回全部计数与求和（原实现为 4 次 count + 2 次全量拉取）
+        DashboardAggregateRow agg = reportMapper.selectDashboardAggregate(startOfToday);
 
-        // 4. 完工闭环量与完工闭环率
-        long completedOrders = orderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0)
-                .eq(RepairOrder::getStatus, OrderStatusEnum.COMPLETED.name()));
+        long totalOrders = safeLong(agg.getTotalOrders());
+        long todayOrders = safeLong(agg.getTodayOrders());
+        long activeOrders = safeLong(agg.getActiveOrders());
+        long completedOrders = safeLong(agg.getCompletedOrders());
 
         BigDecimal completionRate = BigDecimal.ZERO;
         if (totalOrders > 0) {
@@ -96,24 +88,15 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                     .divide(BigDecimal.valueOf(totalOrders), 2, RoundingMode.HALF_UP);
         }
 
-        // 5. 平均响应/解决耗时（小时）与综合满意度评分
-        List<RepairOrder> completedList = orderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0)
-                .eq(RepairOrder::getStatus, OrderStatusEnum.COMPLETED.name())
-                .isNotNull(RepairOrder::getClosedTime)
-                .isNotNull(RepairOrder::getCreatedAt));
+        BigDecimal avgHours = avgHoursFromMinutes(agg.getTimedOrders(), agg.getTotalMinutes());
 
-        BigDecimal avgHours = calculateAvgHours(completedList, BigDecimal.ZERO);
-
-        // 综合满意度均分 (根据 repair_order_evaluation 表中真实用户的 rating_star 计算，排除未打分和自动核销无分数据)
-        List<RepairOrderEvaluation> evalList = evaluationMapper.selectList(new LambdaQueryWrapper<RepairOrderEvaluation>()
-                .isNotNull(RepairOrderEvaluation::getRatingStar)
-                .gt(RepairOrderEvaluation::getRatingStar, 0));
+        // 综合满意度均分：只统计真实用户打分，排除未评分与自动核销无分数据；
         // 无任何有效评价时保持 0（前端渲染为“—”），不得用虚增值充当真实口碑
+        long evalCount = safeLong(agg.getEvalCount());
         BigDecimal avgScore = BigDecimal.ZERO;
-        if (!evalList.isEmpty()) {
-            double sumStar = evalList.stream().mapToInt(RepairOrderEvaluation::getRatingStar).sum();
-            avgScore = BigDecimal.valueOf(sumStar / evalList.size()).setScale(2, RoundingMode.HALF_UP);
+        if (evalCount > 0) {
+            avgScore = BigDecimal.valueOf(safeLong(agg.getEvalStarSum()))
+                    .divide(BigDecimal.valueOf(evalCount), 2, RoundingMode.HALF_UP);
         }
 
         return DashboardKpiVO.builder()
@@ -148,23 +131,23 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
         LocalDateTime rangeStart = startDate.atStartOfDay();
 
-        // 统计提单量
-        List<RepairOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0)
-                .ge(RepairOrder::getCreatedAt, rangeStart));
-
-        for (RepairOrder o : orders) {
-            if (o.getCreatedAt() != null) {
-                String d = o.getCreatedAt().format(DATE_FORMATTER);
-                if (submitMap.containsKey(d)) {
-                    submitMap.put(d, submitMap.get(d) + 1);
-                }
+        // 数据库侧按日 GROUP BY；日期先映射为 LocalDate 再格式化，避免依赖 DATE_FORMAT
+        for (DailyTrendRow row : reportMapper.selectDailySubmitCounts(rangeStart)) {
+            if (row.getStatDate() == null || row.getSubmitCount() == null) {
+                continue;
             }
-            if (o.getClosedTime() != null) {
-                String d = o.getClosedTime().format(DATE_FORMATTER);
-                if (completedMap.containsKey(d)) {
-                    completedMap.put(d, completedMap.get(d) + 1);
-                }
+            String d = row.getStatDate().format(DATE_FORMATTER);
+            if (submitMap.containsKey(d)) {
+                submitMap.put(d, row.getSubmitCount());
+            }
+        }
+        for (DailyTrendRow row : reportMapper.selectDailyCompletedCounts(rangeStart)) {
+            if (row.getStatDate() == null || row.getCompletedCount() == null) {
+                continue;
+            }
+            String d = row.getStatDate().format(DATE_FORMATTER);
+            if (completedMap.containsKey(d)) {
+                completedMap.put(d, row.getCompletedCount());
             }
         }
 
@@ -178,31 +161,39 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .build();
     }
 
+    /** 空间路径缺失时的兜底标签，与重构前口径一致 */
+    private static final String SPACE_FALLBACK = "其他空间";
+
+    /**
+     * 由空间全路径取「校区/分区」标签（前两段），与重构前的 split("/") 口径逐字一致。
+     */
+    private static String spaceLabel(String path) {
+        if (!StringUtils.hasText(path)) {
+            return SPACE_FALLBACK;
+        }
+        String[] parts = path.split("/");
+        if (parts.length >= 2) {
+            return parts[0].trim() + "/" + parts[1].trim();
+        }
+        return parts[0].trim();
+    }
+
     @Override
     public List<SpatialHeatVO> getSpatialDistribution(int limit) {
         if (limit <= 0) limit = 10;
-        List<RepairOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0));
 
-        Map<String, Long> map = new HashMap<>();
-        for (RepairOrder o : orders) {
-            String path = o.getSpaceFullPath();
-            String label = "其他空间";
-            if (StringUtils.hasText(path)) {
-                String[] parts = path.split("/");
-                if (parts.length >= 2) {
-                    // 用真实路径前缀（与 space_full_path 同分隔符），这样图表标签本身即可作为
-                    // 报表检索关键字做 LIKE 命中，点击下钻不会查出空结果
-                    label = parts[0].trim() + "/" + parts[1].trim();
-                } else {
-                    label = parts[0].trim();
-                }
-            }
-            map.put(label, map.getOrDefault(label, 0L) + 1);
+        // 数据库按原始路径 GROUP BY 计数（取代原先拉全表进内存逐行统计）；
+        // 标签截断只需在「去重后的路径集合」上做，规模远小于工单量。
+        // limit 必须在归并出标签之后再施加（多条原始路径可能归入同一标签）
+        Map<String, Long> map = new LinkedHashMap<>();
+        for (SpatialHeatRow row : reportMapper.selectTopSpacePaths()) {
+            String label = spaceLabel(row.getSpacePath());
+            map.merge(label, safeLong(row.getOrderCount()), Long::sum);
         }
 
         return map.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
                 .limit(limit)
                 .map(e -> SpatialHeatVO.builder()
                         .spaceName(e.getKey())
@@ -211,24 +202,30 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .toList();
     }
 
+    /** 故障类别路径缺失时的兜底大类，与重构前口径一致 */
+    private static final String CATEGORY_FALLBACK = "综合报修";
+
+    /**
+     * 由故障类别全路径取根大类（首段），与重构前的 split("/") 口径逐字一致。
+     */
+    private static String categoryLabel(String path) {
+        if (!StringUtils.hasText(path)) {
+            return CATEGORY_FALLBACK;
+        }
+        return path.split("/")[0].trim();
+    }
+
     @Override
     public List<CategoryRatioVO> getCategoryDistribution() {
-        List<RepairOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeleted, 0));
-
-        Map<String, Long> map = new HashMap<>();
-        for (RepairOrder o : orders) {
-            String cat = o.getCategoryFullName();
-            String rootCat = "综合报修";
-            if (StringUtils.hasText(cat)) {
-                String[] parts = cat.split("/");
-                rootCat = parts[0].trim();
-            }
-            map.put(rootCat, map.getOrDefault(rootCat, 0L) + 1);
+        // 数据库按原始类别路径 GROUP BY 计数，首段归并只需在去重后的类别集合上完成
+        Map<String, Long> map = new LinkedHashMap<>();
+        for (CategoryRatioRow row : reportMapper.selectCategoryPathCounts()) {
+            map.merge(categoryLabel(row.getCategoryPath()), safeLong(row.getOrderCount()), Long::sum);
         }
 
         return map.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
                 .map(e -> CategoryRatioVO.builder()
                         .categoryName(e.getKey())
                         .count(e.getValue())
@@ -240,42 +237,23 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     public List<WorkerLeaderboardVO> getWorkerLeaderboard(int limit) {
         if (limit <= 0) limit = 10;
 
-        List<WorkerProfile> profiles = workerProfileMapper.selectList(new LambdaQueryWrapper<WorkerProfile>());
-
         // 统计自然月周期内（本月1号起）的战绩
         LocalDateTime startOfMonth = LocalDate.now().withDayOfMonth(1).atStartOfDay();
 
-        List<WorkerLeaderboardVO> list = new ArrayList<>();
-        for (WorkerProfile p : profiles) {
-            SysUser user = userMapper.selectById(p.getUserId());
-            String realName = user != null ? user.getRealName() : "师傅 " + p.getUserId();
-
-            // 计算该师傅本月结单数与平均耗时
-            List<RepairOrder> workerOrders = orderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getDeleted, 0)
-                    .eq(RepairOrder::getWorkerId, p.getUserId())
-                    .eq(RepairOrder::getStatus, OrderStatusEnum.COMPLETED.name())
-                    .ge(RepairOrder::getClosedTime, startOfMonth)
-                    .isNotNull(RepairOrder::getClosedTime)
-                    .isNotNull(RepairOrder::getCreatedAt));
-
-            int completedCount = workerOrders.size();
-            BigDecimal avgH = calculateAvgHours(workerOrders, BigDecimal.ZERO);
-            // 技师档案无历史评分时保持 0，避免榜单出现凭空生成的星级
-            BigDecimal rating = p.getRatingAvg() != null ? p.getRatingAvg() : BigDecimal.ZERO;
-
-            list.add(WorkerLeaderboardVO.builder()
-                    .userId(p.getUserId())
-                    .realName(realName)
-                    .skillCode(p.getSkillCode())
-                    .completedCount(completedCount)
-                    .avgHours(avgH)
-                    .ratingScore(rating)
-                    .build());
-        }
-
-        // 按结单量降序排，再按评分降序排
-        return list.stream()
+        // 师傅档案、用户姓名与本月结单聚合在数据库侧一次 JOIN 完成（原实现为逐师傅 N+1 查询）
+        return reportMapper.selectWorkerLeaderboardRows(startOfMonth).stream()
+                .map(row -> WorkerLeaderboardVO.builder()
+                        .userId(row.getUserId())
+                        .realName(row.getRealName() != null ? row.getRealName() : "师傅 " + row.getUserId())
+                        .skillCode(row.getSkillCode())
+                        .completedCount(row.getCompletedCount() != null ? row.getCompletedCount() : 0)
+                        .avgHours(avgHoursFromMinutes(
+                                row.getCompletedCount() == null ? 0L : row.getCompletedCount().longValue(),
+                                row.getTotalMinutes()))
+                        // 技师档案无历史评分时保持 0，避免榜单出现凭空生成的星级
+                        .ratingScore(row.getRatingAvg() != null ? row.getRatingAvg() : BigDecimal.ZERO)
+                        .build())
+                // 按结单量降序排，再按评分降序排（与原实现同序，保证 limit 截断结果稳定）
                 .sorted(Comparator.comparingInt(WorkerLeaderboardVO::getCompletedCount).reversed()
                         .thenComparing(WorkerLeaderboardVO::getRatingScore, Comparator.reverseOrder()))
                 .limit(limit)
@@ -374,6 +352,10 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
         log.info("[数据归档引擎] 成功归档 {} 张结单超过 {} 天的历史冷数据工单", updated, days);
         return updated;
+    }
+
+    private static long safeLong(Long value) {
+        return value != null ? value : 0L;
     }
 
     private LambdaQueryWrapper<RepairOrder> buildFilterQuery(WorkOrderFilterQueryRequest request) {
