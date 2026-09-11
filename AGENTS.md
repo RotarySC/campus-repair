@@ -49,6 +49,12 @@ node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin
 - **演示账号（密码统一 `password`）**：`admin` 超管、`logistics01` 后勤调度、`worker01`~`worker06` 六名不同工种师傅、`student01`/`student02` 学生、`teacher01` 教工。`student01` 的 `is_first_login=1` 会强制改密，演示请用 `student02`/`teacher01`。
 - **管理端角色守卫（2026-09-11）**：`apps/admin-web` 的 `/403` 路由（`views/error/ForbiddenView.vue`）承载“已登录但非管理端角色”的落点；守卫逻辑在 `router/index.ts` 的 `isAdminUser()`，仅放行 `SUPER_ADMIN` / `LOGISTICS_ADMIN`（取 `roleCodes`，为空则退回 `userType`），与后端 `@PreAuthorize` 一致。师生/师傅登录管理端会看到明确的 403 说明而不是“页面能开、接口全 403”的空转。
 
+### 2.2 验证手法 (Verified Verification Recipes)
+
+- **接口级**：起服务后直接 `Invoke-RestMethod` / `curl` 打 8080。统一返回体是 `R<T>`（`code/message/data`），业务失败也可能是 HTTP 200 + `code != 200`；导出类接口返回二进制流。
+- **浏览器真机（CDP）**：`node "C:\Users\Rotary\.agents\skills\web-access\scripts\check-deps.mjs" --browser edge` 起代理（本机 Edge 已开 9222）。`POST /new` 开页、`POST /eval?target=ID` 跑 JS 断言 DOM/几何、`POST /click?target=ID` **只接受 CSS 选择器**（传 JS 表达式会静默 SyntaxError）。`/screenshot` 带 `file` 会因代理进程无写权限报 EPERM；**不带 `file` 时直接回传 PNG 字节流**，用 `curl.exe -o out.png` 自行落盘再读图即可。
+- **值得断言的几何/渲染事实**：`getComputedStyle` 的 `position:fixed`、`getBoundingClientRect()` 实测宽高（如侧边栏 240/64）、`scrollingElement.scrollHeight - clientHeight`（1px 溢出即可见滚动条）、`canvas.getContext('2d').getImageData` 采样非空像素（证明 ECharts 真的画出来了，而不是只有轴）。这些用纯类型检查与 MockMvc 都发现不了。
+
 ## 3. 业务状态流转与核心约定 (State Machine & Conventions)
 
 - **工单核心状态 (`OrderStatusEnum`)**：
