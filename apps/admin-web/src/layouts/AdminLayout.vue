@@ -140,13 +140,20 @@ const STUDENT_NAV_ITEMS: NavItem[] = [
   { path: '/', label: '我的工单', icon: 'Tickets' }
 ];
 
+/** 师傅导航：作业台与个人中心（单树重构后师傅首次拥有全宽度可用导航） */
+const WORKER_NAV_ITEMS: NavItem[] = [
+  { path: '/worker/workbench', label: '我的工作台', icon: 'Suitcase' },
+  { path: '/profile', label: '个人中心', icon: 'User' }
+];
+
 const isStudentTeacher = computed(() =>
   ['USER_STUDENT', 'USER_TEACHER'].includes(authStore.userInfo?.userType || '')
 );
 
-const navItems = computed<NavItem[]>(() =>
-  isStudentTeacher.value ? STUDENT_NAV_ITEMS : ADMIN_NAV_ITEMS
-);
+const navItems = computed<NavItem[]>(() => {
+  if (authStore.userInfo?.userType === 'REPAIR_WORKER') return WORKER_NAV_ITEMS;
+  return isStudentTeacher.value ? STUDENT_NAV_ITEMS : ADMIN_NAV_ITEMS;
+});
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: '超级管理员',
@@ -225,6 +232,8 @@ const userInitial = computed(() => {
 });
 
 function isActive(path: string): boolean {
+  // 师傅作业流（workbench/finish）统一视为「我的工作台」激活态
+  if (path === '/worker/workbench') return route.path.startsWith('/worker');
   return path === '/' ? route.path === '/' : route.path.startsWith(path);
 }
 

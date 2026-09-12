@@ -1,39 +1,6 @@
 <template>
   <div class="worker-workbench">
-    <!-- 顶部常驻导航与刷新入口（师傅身份看板由外壳顶栏承载） -->
-    <header class="workbench-header">
-      <button type="button" class="back-btn" aria-label="返回首页" @click="router.push('/')">
-        <el-icon :size="18"><ArrowLeft /></el-icon>
-      </button>
-      <span class="workbench-title">维修师傅工作台</span>
-      <div class="header-actions">
-        <el-badge :value="unreadNotifCount > 0 ? unreadNotifCount : ''" :max="99" :hidden="unreadNotifCount === 0">
-          <button type="button" class="bar-icon-btn" aria-label="站内消息" @click="notifDrawerVisible = true">
-            <el-icon :size="18"><Bell /></el-icon>
-          </button>
-        </el-badge>
-        <button type="button" class="bar-icon-btn" aria-label="刷新工单" @click="fetchOrders">
-          <el-icon :size="18"><Refresh /></el-icon>
-        </button>
-      </div>
-    </header>
-
     <div class="workbench-body">
-      <!-- 师傅身份条 -->
-      <div class="worker-profile-bar">
-        <div class="worker-info-left">
-          <div class="avatar">{{ authStore.userInfo?.realName?.substring(0, 1) }}</div>
-          <div>
-            <div class="name-row">
-              <span class="worker-name">{{ authStore.userInfo?.realName }}</span>
-              <el-tag type="success" size="small">在岗执勤</el-tag>
-            </div>
-            <div class="phone-row">{{ authStore.userInfo?.phone }}</div>
-          </div>
-        </div>
-        <el-button size="small" plain type="primary" @click="router.push('/profile')">个人中心</el-button>
-      </div>
-
       <!-- 三栏任务切换 -->
       <el-tabs v-model="activeTab" class="workbench-tabs" @tab-change="handleTabChange">
         <el-tab-pane name="ASSIGNED">
@@ -267,11 +234,6 @@
         <el-button type="danger" :loading="operatingId !== null" @click="submitTransfer">确认申请转派</el-button>
       </template>
     </el-dialog>
-
-    <!-- 站内消息通知抽屉（与全局外壳同一组件） -->
-    <el-drawer v-model="notifDrawerVisible" title="站内消息通知中心" size="min(420px, 100%)">
-      <NotificationCenterDrawer @unread-updated="fetchUnreadCount" />
-    </el-drawer>
   </div>
 </template>
 
@@ -280,17 +242,13 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-  ArrowLeft,
-  Bell,
   Clock,
   Location,
   Phone,
-  Refresh,
   Search,
   WarningFilled
 } from '@element-plus/icons-vue';
-import { useAuthStore, httpClient } from '../../stores/auth';
-import NotificationCenterDrawer from '../../components/NotificationCenterDrawer.vue';
+import { httpClient } from '../../stores/auth';
 import {
   OrderStatusLabels,
   WorkerSkillLabels,
@@ -300,7 +258,6 @@ import {
 } from '@campus/shared';
 
 const router = useRouter();
-const authStore = useAuthStore();
 
 const activeTab = ref<'ASSIGNED' | 'IN_PROGRESS' | 'HISTORY'>('ASSIGNED');
 const keyword = ref('');
@@ -342,22 +299,10 @@ const skillOptions = [
   { label: '综合维修 (GENERAL)', value: 'GENERAL' }
 ];
 
-// 站内通知状态
-const notifDrawerVisible = ref(false);
-const unreadNotifCount = ref(0);
-
-async function fetchUnreadCount() {
-  try {
-    const res = await httpClient.get<number>('/notifications/unread-count');
-    if (res.code === 200 && typeof res.data === 'number') {
-      unreadNotifCount.value = res.data;
-    }
-  } catch (e) {}
-}
+// 站内通知统一由外壳顶栏承载，本页不再自带通知入口
 
 onMounted(() => {
   fetchOrders();
-  fetchUnreadCount();
 });
 
 function handleTabChange() {
@@ -545,108 +490,13 @@ function formatTime(isoStr?: string): string {
 
 <style scoped>
 .worker-workbench {
-  min-height: 100vh;
-  background-color: #F5F7FA;
+  min-height: 100%;
   padding-bottom: 24px;
 }
 
-.workbench-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding-inline: 8px;
-  background-color: #FFFFFF;
-  border-bottom: 1px solid #ECEEF2;
-}
-
-.workbench-title {
-  flex: 1;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1F2937;
-}
-
-.back-btn,
-.bar-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 8px;
-  background-color: transparent;
-  color: #4B5563;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.back-btn:hover,
-.bar-icon-btn:hover {
-  background-color: #F5F7FA;
-  color: #1677FF;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* 内容列限宽居中：手机档自然满宽，桌面档不无限拉伸 */
 .workbench-body {
   max-width: 900px;
   margin-inline: auto;
-}
-
-.worker-profile-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background-color: #FFFFFF;
-  border-bottom: 1px solid #ECEEF2;
-}
-
-.worker-info-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 21px;
-  background: linear-gradient(135deg, #1677FF 0%, #0958D9 100%);
-  color: #FFFFFF;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.name-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.worker-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1F2937;
-}
-
-.phone-row {
-  font-size: 13px;
-  color: #6B7280;
-  margin-top: 2px;
 }
 
 .workbench-tabs {

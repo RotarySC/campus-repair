@@ -27,9 +27,11 @@
         </el-button>
       </el-form>
 
-      <!-- 设备模式逃生舱（Q2）：折叠屏/平板等模糊设备可手动切换到移动版 -->
-      <div class="device-switch">
-        <el-link type="info" :underline="false" @click="switchToMobile">使用移动版（手机布局）</el-link>
+      <!-- 师生自助注册入口（单树后注册页对全宽度开放） -->
+      <div class="register-row">
+        <el-link type="primary" :underline="false" @click="router.push('/register')">
+          没有账号？前往师生自助注册
+        </el-link>
       </div>
     </div>
   </div>
@@ -41,7 +43,6 @@ import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, FormInstance } from 'element-plus';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import { LoginResult, CaptchaResult } from '@campus/shared';
-import { setDeviceMode } from '../../utils/device';
 
 const router = useRouter();
 const route = useRoute();
@@ -112,10 +113,6 @@ onMounted(() => {
     ElMessage.warning('会话已超时，请重新登录');
   }
 });
-
-function switchToMobile() {
-  setDeviceMode('mobile');
-}
 </script>
 
 <style scoped>
@@ -164,8 +161,20 @@ function switchToMobile() {
   width: 100%;
   margin-top: 10px;
 }
-.device-switch {
+.register-row {
   margin-top: 18px;
   text-align: center;
+}
+@media (max-width: 767px) {
+  .login-card {
+    width: min(440px, 92vw);
+    padding: 28px 20px;
+  }
+  .login-container {
+    padding: 16px;
+  }
+  .title {
+    font-size: 20px;
+  }
 }
 </style>

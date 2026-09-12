@@ -1,13 +1,5 @@
 <template>
   <div class="finish-container">
-    <!-- 顶部导航栏 -->
-    <header class="finish-header">
-      <button type="button" class="back-btn" aria-label="返回工作台" @click="router.back()">
-        <el-icon :size="18"><ArrowLeft /></el-icon>
-      </button>
-      <span class="finish-title">现场完工填报</span>
-    </header>
-
     <el-alert
       class="finish-notice"
       type="info"
@@ -17,6 +9,13 @@
     />
 
     <el-form ref="finishFormRef" :model="finishForm" :rules="finishRules" label-position="top" class="finish-form" @submit.prevent>
+      <!-- 返回工作台 -->
+      <div class="back-row">
+        <el-button link type="primary" :icon="ArrowLeft" @click="router.push('/worker/workbench')">
+          返回工作台
+        </el-button>
+      </div>
+
       <!-- 1. 工单信息摘要卡片 -->
       <section class="finish-section">
         <h3 class="section-title">工单信息</h3>
@@ -401,51 +400,16 @@ async function onSubmitFinish() {
 
 <style scoped>
 .finish-container {
-  min-height: 100vh;
-  background-color: #f5f7fa;
+  min-height: 100%;
   padding-bottom: 40px;
-}
-
-.finish-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding-inline: 8px;
-  background-color: #FFFFFF;
-  border-bottom: 1px solid #ECEEF2;
-}
-
-.finish-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1F2937;
-}
-
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 8px;
-  background-color: transparent;
-  color: #4B5563;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.back-btn:hover {
-  background-color: #F5F7FA;
-  color: #1677FF;
 }
 
 .finish-notice {
   border-radius: 0;
+}
+
+.back-row {
+  margin-bottom: 10px;
 }
 
 /* 表单主体限宽居中：手机档自然满宽，桌面档不无限拉伸 */
