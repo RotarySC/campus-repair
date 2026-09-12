@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 @Slf4j
@@ -50,6 +51,17 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public R<Void> handleBadCredentials(BadCredentialsException e) {
         return R.error(ErrorCode.PASSWORD_ERROR.getCode(), e.getMessage());
+    }
+
+    /**
+     * 未匹配到任何处理器/静态资源时（Spring Boot 3.2 的 ResourceHttpRequestHandler 会抛出
+     * NoResourceFoundException），应返回 404 而不是落入通用兜底变成 500。
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public R<Void> handleNoResourceFound(NoResourceFoundException e) {
+        log.warn("请求资源不存在: {}", e.getResourcePath());
+        return R.error(ErrorCode.NOT_FOUND.getCode(), ErrorCode.NOT_FOUND.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
