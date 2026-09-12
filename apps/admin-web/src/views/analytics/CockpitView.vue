@@ -62,32 +62,29 @@
         </div>
       </template>
 
-      <el-table :data="leaderboard" size="small" stripe>
-        <el-table-column label="排名" width="72" align="center">
-          <template #default="{ $index }">
-            <span class="rank-badge" :class="`rank-${$index + 1}`">{{ $index + 1 }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="realName" label="技师姓名" min-width="110" />
-        <el-table-column label="负责工种" min-width="130">
-          <template #default="{ row }">
-            {{ WorkerSkillLabels[row.skillCode] || row.skillCode }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="completedCount" label="完工单数" width="110" align="right" />
-        <el-table-column label="均修时效" width="110" align="right">
-          <template #default="{ row }">
-            {{ Number(row.avgHours) > 0 ? `${row.avgHours} h` : '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="好评星级" width="110" align="right">
-          <template #default="{ row }">
-            {{ Number(row.ratingScore) > 0 ? `★ ${Number(row.ratingScore).toFixed(1)}` : '—' }}
-          </template>
-        </el-table-column>
-      </el-table>
+      <!-- 宽档=表格 / 窄档(<768px)=卡片列表（榜单附序号徽标） -->
+      <ResponsiveTable
+        :items="leaderboard"
+        :columns="leaderboardColumns"
+        ranked
+        empty-text="本月暂无技师完工战绩"
+      >
+        <template #col-rank="{ $index }">
+          <span class="rank-badge" :class="`rank-${$index + 1}`">{{ $index + 1 }}</span>
+        </template>
 
-      <el-empty v-if="leaderboard.length === 0" description="本月暂无技师完工战绩" :image-size="80" />
+        <template #col-skillCode="{ row }">
+          {{ WorkerSkillLabels[row.skillCode] || row.skillCode }}
+        </template>
+
+        <template #col-avgHours="{ row }">
+          {{ Number(row.avgHours) > 0 ? `${row.avgHours} h` : '—' }}
+        </template>
+
+        <template #col-ratingScore="{ row }">
+          {{ Number(row.ratingScore) > 0 ? `★ ${Number(row.ratingScore).toFixed(1)}` : '—' }}
+        </template>
+      </ResponsiveTable>
     </el-card>
   </div>
 </template>
@@ -97,6 +94,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import * as echarts from 'echarts';
 import { httpClient } from '../../stores/auth';
+import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   DashboardKpiVO,
   TrendChartVO,
@@ -105,6 +104,16 @@ import {
   WorkerLeaderboardVO,
   WorkerSkillLabels
 } from '@campus/shared';
+
+/** 荣誉榜列定义双档共用：宽档渲染 el-table，窄档渲染卡片（排名徽标由 ranked 提供） */
+const leaderboardColumns: TableColumn<WorkerLeaderboardVO>[] = [
+  { key: 'rank', label: '排名', width: 72, align: 'center' },
+  { key: 'realName', label: '技师姓名', minWidth: 110, card: 'title' },
+  { key: 'skillCode', label: '负责工种', minWidth: 130 },
+  { key: 'completedCount', label: '完工单数', width: 110, align: 'right' },
+  { key: 'avgHours', label: '均修时效', width: 110, align: 'right' },
+  { key: 'ratingScore', label: '好评星级', width: 110, align: 'right' }
+];
 
 const router = useRouter();
 

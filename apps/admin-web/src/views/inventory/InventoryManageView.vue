@@ -68,10 +68,12 @@
 
             <el-checkbox
               v-model="onlyLowStock"
+              class="low-stock-filter"
               style="margin-left: 16px;"
               @change="handleFilterSearch"
             >
-              仅看缺料预警 (≤ 阈值)
+              <span class="low-stock-filter__full">仅看缺料预警 (≤ 阈值)</span>
+              <span class="low-stock-filter__short">仅看缺料预警</span>
             </el-checkbox>
           </div>
 
@@ -98,103 +100,84 @@
           </div>
         </div>
 
-        <el-table
-          v-loading="loadingTable"
-          :data="parts"
-          border
-          stripe
-          style="width: 100%; margin-top: 14px;"
+        <!-- 宽档=表格 / 窄档(<768px)=卡片列表：同一份列定义，见 components/ResponsiveTable.vue -->
+        <ResponsiveTable
+          class="inventory-table"
+          :items="parts"
+          :columns="columns"
+          :loading="loadingTable"
+          empty-text="暂无物料档案"
         >
-          <el-table-column prop="partCode" label="物料编码" width="130">
-            <template #default="{ row }">
-              <span style="font-family: monospace; font-weight: 600;">{{ row.partCode }}</span>
-            </template>
-          </el-table-column>
+          <template #col-partCode="{ row }">
+            <span style="font-family: monospace; font-weight: 600;">{{ row.partCode }}</span>
+          </template>
 
-          <el-table-column prop="partName" label="备件物料名称" min-width="160">
-            <template #default="{ row }">
-              <span style="font-weight: 500;">{{ row.partName }}</span>
-              <el-tag v-if="row.isLowStock" type="danger" size="small" effect="dark" style="margin-left: 6px;">
-                低库存
-              </el-tag>
-            </template>
-          </el-table-column>
+          <template #col-partName="{ row }">
+            <span style="font-weight: 500;">{{ row.partName }}</span>
+            <el-tag v-if="row.isLowStock" type="danger" size="small" effect="dark" style="margin-left: 6px;">
+              低库存
+            </el-tag>
+          </template>
 
-          <el-table-column prop="categoryType" label="耗材类别" width="120">
-            <template #default="{ row }">
-              <el-tag size="small" effect="plain">{{ row.categoryType }}</el-tag>
-            </template>
-          </el-table-column>
+          <template #col-categoryType="{ row }">
+            <el-tag size="small" effect="plain">{{ row.categoryType }}</el-tag>
+          </template>
 
-          <el-table-column prop="specification" label="规格型号" min-width="140" show-overflow-tooltip />
+          <template #col-guidePrice="{ row }">
+            ¥{{ Number(row.guidePrice).toFixed(2) }}
+          </template>
 
-          <el-table-column prop="unit" label="单位" width="70" align="center" />
+          <template #col-stockQuantity="{ row }">
+            <span :class="{ 'low-stock-text': row.isLowStock, 'normal-stock-text': !row.isLowStock }">
+              {{ row.stockQuantity }}
+            </span>
+          </template>
 
-          <el-table-column prop="guidePrice" label="指导单价" width="110" align="right">
-            <template #default="{ row }">
-              ¥{{ Number(row.guidePrice).toFixed(2) }}
-            </template>
-          </el-table-column>
+          <template #col-safetyStockThreshold="{ row }">
+            <span style="color: #8C8C8C;">{{ row.safetyStockThreshold }}</span>
+          </template>
 
-          <el-table-column prop="stockQuantity" label="在库物理库存" width="130" align="center">
-            <template #default="{ row }">
-              <span :class="{ 'low-stock-text': row.isLowStock, 'normal-stock-text': !row.isLowStock }">
-                {{ row.stockQuantity }}
-              </span>
-            </template>
-          </el-table-column>
+          <template #col-status="{ row }">
+            <el-tag size="small" :type="row.status === 1 ? 'success' : 'info'">
+              {{ row.status === 1 ? '正常在架' : '停用下架' }}
+            </el-tag>
+          </template>
 
-          <el-table-column prop="safetyStockThreshold" label="安全警戒线" width="110" align="center">
-            <template #default="{ row }">
-              <span style="color: #8C8C8C;">{{ row.safetyStockThreshold }}</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="status" label="状态" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.status === 1 ? 'success' : 'info'">
-                {{ row.status === 1 ? '正常在架' : '停用下架' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="快捷管理操作" width="230" fixed="right" align="center">
-            <template #default="{ row }">
-              <el-button
-                type="success"
-                link
-                size="small"
-                @click="openInboundDialog(row)"
-              >
-                采购入库
-              </el-button>
-              <el-button
-                type="primary"
-                link
-                size="small"
-                @click="openEditDialog(row)"
-              >
-                编辑
-              </el-button>
-              <el-button
-                type="info"
-                link
-                size="small"
-                @click="openHistoryDialog(row)"
-              >
-                流水
-              </el-button>
-              <el-button
-                type="danger"
-                link
-                size="small"
-                @click="handleDelete(row)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+          <template #col-actions="{ row }">
+            <el-button
+              type="success"
+              link
+              size="small"
+              @click="openInboundDialog(row)"
+            >
+              采购入库
+            </el-button>
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click="openEditDialog(row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              type="info"
+              link
+              size="small"
+              @click="openHistoryDialog(row)"
+            >
+              流水
+            </el-button>
+            <el-button
+              type="danger"
+              link
+              size="small"
+              @click="handleDelete(row)"
+            >
+              删除
+            </el-button>
+          </template>
+        </ResponsiveTable>
 
         <div class="pagination-wrap" v-if="total > 0">
           <el-pagination
@@ -388,6 +371,8 @@ import {
   Download
 } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
+import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   SparePartVO,
   SparePartCreateUpdateRequest,
@@ -396,6 +381,30 @@ import {
   InventorySummaryVO,
   SparePartCategoryOptions
 } from '@campus/shared';
+
+/** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
+const columns: TableColumn<SparePartVO>[] = [
+  { key: 'partCode', label: '物料编码', width: 130, card: 'title' },
+  { key: 'partName', label: '备件物料名称', minWidth: 160 },
+  { key: 'categoryType', label: '耗材类别', width: 120 },
+  {
+    key: 'status',
+    label: '状态',
+    width: 90,
+    align: 'center',
+    card: 'tag',
+    cardTag: (row) => ({
+      text: row.status === 1 ? '正常在架' : '停用下架',
+      type: row.status === 1 ? 'success' : 'info'
+    })
+  },
+  { key: 'specification', label: '规格型号', minWidth: 140, showOverflowTooltip: true },
+  { key: 'unit', label: '单位', width: 70, align: 'center' },
+  { key: 'guidePrice', label: '指导单价', width: 110, align: 'right', valueType: 'money' },
+  { key: 'stockQuantity', label: '在库物理库存', width: 130, align: 'center' },
+  { key: 'safetyStockThreshold', label: '安全警戒线', width: 110, align: 'center' },
+  { key: 'actions', label: '快捷管理操作', width: 230, fixed: 'right', align: 'center', card: 'action' }
+];
 
 const summary = ref<InventorySummaryVO>({
   totalPartCount: 0,
@@ -673,12 +682,29 @@ async function handleExportAdvice() {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   box-shadow: 0 2px 6px rgba(245, 34, 45, 0.08);
+}
+/* 窄档告警文案很长，必须让左侧可收缩、右侧按钮换行，否则按钮会被文字压住点不到 */
+@media (max-width: 767px) {
+  .low-stock-alert-banner {
+    padding: 12px 14px;
+  }
+  .alert-left {
+    flex: 1 1 100%;
+  }
+  .alert-right {
+    flex: 1 1 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
 }
 .alert-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 .pulse-icon {
   animation: pulse 1.6s infinite;
@@ -736,6 +762,10 @@ async function handleExportAdvice() {
 .table-card {
   border-radius: 8px;
 }
+.inventory-table {
+  display: block;
+  margin-top: 14px;
+}
 .filter-toolbar {
   display: flex;
   justify-content: space-between;
@@ -763,6 +793,27 @@ async function handleExportAdvice() {
     width: 100% !important;
     max-width: 100%;
   }
+  /* 类别单选按需点选即可，窄档不换行堆叠成五层高（改为可横滑的一整条） */
+  .toolbar-left .el-radio-group {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toolbar-left .el-radio-group::-webkit-scrollbar {
+    display: none;
+  }
+  .low-stock-filter {
+    margin-left: 0 !important;
+  }
+  .low-stock-filter__short {
+    display: inline;
+  }
+  .low-stock-filter__full {
+    display: none;
+  }
+}
+.low-stock-filter__short {
+  display: none;
 }
 
 .low-stock-text {

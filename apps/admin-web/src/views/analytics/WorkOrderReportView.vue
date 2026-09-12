@@ -162,64 +162,33 @@
           </div>
         </div>
 
-        <el-table
-          v-loading="loadingTable"
-          :data="orders"
-          border
-          stripe
-          style="width: 100%; margin-top: 12px;"
+        <!-- 宽档=表格 / 窄档(<768px)=卡片列表：同一份列定义，见 components/ResponsiveTable.vue -->
+        <ResponsiveTable
+          class="report-table"
+          :items="orders"
+          :columns="columns"
+          :loading="loadingTable"
+          empty-text="暂无符合条件的工单"
         >
-          <el-table-column prop="orderNo" label="工单单号" width="170">
-            <template #default="{ row }">
-              <span style="font-family: monospace; font-weight: 600;">{{ row.orderNo }}</span>
-              <el-tag v-if="row.urgencyLevel === 2" type="danger" size="small" effect="dark" style="margin-left: 4px;">
-                加急
-              </el-tag>
-            </template>
-          </el-table-column>
+          <template #col-orderNo="{ row }">
+            <span style="font-family: monospace; font-weight: 600;">{{ row.orderNo }}</span>
+            <el-tag v-if="row.urgencyLevel === 2" type="danger" size="small" effect="dark" style="margin-left: 4px;">
+              加急
+            </el-tag>
+          </template>
 
-          <el-table-column prop="status" label="状态" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag size="small" :type="getStatusTagType(row.status)">
-                {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
-              </el-tag>
-            </template>
-          </el-table-column>
+          <template #col-status="{ row }">
+            <el-tag size="small" :type="getStatusTagType(row.status)">
+              {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
+            </el-tag>
+          </template>
 
-          <el-table-column prop="spaceFullPath" label="报修空间位置" min-width="180" show-overflow-tooltip />
-
-          <el-table-column prop="categoryFullName" label="故障类型" width="140" show-overflow-tooltip />
-
-          <el-table-column prop="description" label="报修故障描述" min-width="180" show-overflow-tooltip />
-
-          <el-table-column prop="applicantName" label="报修人" width="100">
-            <template #default="{ row }">
-              <span>{{ row.applicantName }}</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="workerName" label="指派技师" width="100">
-            <template #default="{ row }">
-              <span>{{ row.workerName || '-' }}</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="materialCost" label="耗材费" width="90" align="right">
-            <template #default="{ row }">
-              ¥{{ Number(row.materialCost || 0).toFixed(2) }}
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="createdAt" label="提单时间" width="165" />
-
-          <el-table-column label="审计追溯" width="90" fixed="right" align="center">
-            <template #default="{ row }">
-              <el-button type="primary" link size="small" @click="openTimeline(row)">
-                时间轴
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+          <template #col-timeline="{ row }">
+            <el-button type="primary" link size="small" @click="openTimeline(row)">
+              时间轴
+            </el-button>
+          </template>
+        </ResponsiveTable>
 
         <div class="pagination-wrap" v-if="total > 0">
           <el-pagination
@@ -260,6 +229,8 @@ import {
 } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
+import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import type { CardTagType, TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   OrderStatusLabels,
   WorkerSkillLabels,
@@ -276,6 +247,30 @@ const orders = ref<DispatchOrderItemVO[]>([]);
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
+
+/** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
+const columns: TableColumn<DispatchOrderItemVO>[] = [
+  { key: 'orderNo', label: '工单单号', width: 170, card: 'title' },
+  {
+    key: 'status',
+    label: '状态',
+    width: 100,
+    align: 'center',
+    card: 'tag',
+    cardTag: (row) => ({
+      text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
+      type: getStatusTagType(row.status)
+    })
+  },
+  { key: 'spaceFullPath', label: '报修空间位置', minWidth: 180, showOverflowTooltip: true },
+  { key: 'categoryFullName', label: '故障类型', width: 140, showOverflowTooltip: true },
+  { key: 'description', label: '报修故障描述', minWidth: 180, showOverflowTooltip: true },
+  { key: 'applicantName', label: '报修人', width: 100 },
+  { key: 'workerName', label: '指派技师', width: 100, cardHideEmpty: true },
+  { key: 'materialCost', label: '耗材费', width: 90, align: 'right', valueType: 'money' },
+  { key: 'createdAt', label: '提单时间', width: 165, valueType: 'datetime' },
+  { key: 'timeline', label: '审计追溯', width: 90, fixed: 'right', align: 'center', card: 'action' }
+];
 
 // 级联与选择选项
 const spatialOptions = ref<any[]>([]);
@@ -460,12 +455,12 @@ async function handleArchiveClick() {
   } catch (e) {}
 }
 
-function getStatusTagType(status: string): '' | 'success' | 'warning' | 'info' | 'danger' {
+function getStatusTagType(status: string): CardTagType {
   switch (status) {
     case 'COMPLETED': return 'success';
     case 'REWORK_PENDING': return 'danger';
-    case 'IN_PROGRESS': return '';
     case 'SUSPENDED': return 'warning';
+    case 'IN_PROGRESS': return 'primary';
     default: return 'info';
   }
 }
@@ -492,6 +487,10 @@ function getStatusTagType(status: string): '' | 'success' | 'warning' | 'info' |
 
 .table-card {
   border-radius: 8px;
+}
+.report-table {
+  display: block;
+  margin-top: 12px;
 }
 .table-actions {
   display: flex;

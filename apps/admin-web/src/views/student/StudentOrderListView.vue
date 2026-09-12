@@ -14,38 +14,21 @@
     </div>
 
     <el-card shadow="never">
-      <el-table
-        v-loading="loading"
-        :data="orders"
+      <!-- 宽档=表格 / 窄档(<768px)=卡片列表：同一份列定义，见 components/ResponsiveTable.vue -->
+      <ResponsiveTable
+        :items="orders"
+        :columns="columns"
+        :loading="loading"
+        clickable
         empty-text="暂无报修工单，点击右上角「提交报修」发起第一条报修"
         @row-click="openDetail"
       >
-        <el-table-column prop="orderNo" label="工单号" width="180" />
-        <el-table-column prop="spaceFullPath" label="报修位置" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="categoryFullName" label="故障分类" min-width="160" show-overflow-tooltip />
-        <el-table-column label="紧急度" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.urgencyLevel === 2" type="danger" effect="plain">加急</el-tag>
-            <span v-else class="muted">普通</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="120" align="center">
-          <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)" effect="light">
-              {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="维修师傅" width="110" align="center">
-          <template #default="{ row }">{{ row.workerName || '待派单' }}</template>
-        </el-table-column>
-        <el-table-column prop="createdAt" label="提单时间" width="170" />
-        <el-table-column label="" width="60" align="center">
-          <template #default>
-            <el-icon class="row-arrow"><ArrowRight /></el-icon>
-          </template>
-        </el-table-column>
-      </el-table>
+        <template #col-status="{ row }">
+          <el-tag :type="statusTagType(row.status)" effect="light">
+            {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
+          </el-tag>
+        </template>
+      </ResponsiveTable>
 
       <div class="pager">
         <el-pagination
@@ -66,9 +49,11 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { EditPen, ArrowRight } from '@element-plus/icons-vue';
+import { EditPen } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
 import { DispatchOrderItemVO, OrderStatusLabels } from '@campus/shared';
+import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import type { TableColumn } from '../../components/ResponsiveTable.vue';
 
 const router = useRouter();
 
@@ -78,6 +63,41 @@ const page = ref(1);
 const size = ref(10);
 const total = ref(0);
 const orders = ref<DispatchOrderItemVO[]>([]);
+
+/** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
+const columns: TableColumn<DispatchOrderItemVO>[] = [
+  { key: 'orderNo', label: '工单号', width: 180, card: 'title' },
+  { key: 'spaceFullPath', label: '报修位置', minWidth: 200, showOverflowTooltip: true },
+  { key: 'categoryFullName', label: '故障分类', minWidth: 160, showOverflowTooltip: true },
+  {
+    key: 'urgencyLevel',
+    label: '紧急度',
+    width: 90,
+    align: 'center',
+    card: 'tag',
+    cardTag: (row) =>
+      row.urgencyLevel === 2 ? { text: '加急', type: 'danger' } : { text: '普通', type: 'info' }
+  },
+  {
+    key: 'status',
+    label: '状态',
+    width: 120,
+    align: 'center',
+    card: 'tag',
+    cardTag: (row) => ({
+      text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
+      type: statusTagType(row.status)
+    })
+  },
+  {
+    key: 'workerName',
+    label: '维修师傅',
+    width: 110,
+    align: 'center',
+    cardHideEmpty: true
+  },
+  { key: 'createdAt', label: '提单时间', width: 170, valueType: 'datetime' }
+];
 
 function statusTagType(status: string): 'success' | 'primary' | 'danger' | 'warning' | 'info' {
   switch (status) {
@@ -142,10 +162,8 @@ onMounted(fetchData);
   color: #9ca3af;
   font-size: 12px;
 }
-.row-arrow {
-  color: #c0c4cc;
-}
-:deep(tbody tr) {
+/* 子组件内部的表格行：整行可点（scoped 对子组件根内元素需 :deep） */
+:deep(.el-table__row) {
   cursor: pointer;
 }
 </style>

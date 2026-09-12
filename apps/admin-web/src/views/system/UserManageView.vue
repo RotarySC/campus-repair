@@ -25,42 +25,38 @@
       </div>
     </div>
 
-    <!-- 用户列表表格 -->
-    <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%; margin-top: 16px;">
-      <el-table-column prop="id" label="ID" width="70" align="center" />
-      <el-table-column prop="username" label="学号/工号" width="130" />
-      <el-table-column prop="realName" label="真实姓名" width="110" />
-      <el-table-column prop="phone" label="联系电话" width="130" />
-      <el-table-column prop="userType" label="角色身份" width="140">
-        <template #default="{ row }">
-          <el-tag :type="getUserTypeTag(row.userType)">{{ row.userType }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="department" label="所属部门/学院" />
-      <el-table-column prop="status" label="账号状态" width="100" align="center">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.status === 1"
-            inline-prompt
-            active-text="启"
-            inactive-text="停"
-            @change="(val: boolean) => toggleStatus(row, val)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column prop="isFirstLogin" label="首次需改密" width="110" align="center">
-        <template #default="{ row }">
-          <el-tag :type="row.isFirstLogin === 1 ? 'warning' : 'info'" size="small">
-            {{ row.isFirstLogin === 1 ? '需改密' : '正常' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="140" align="center">
-        <template #default="{ row }">
-          <el-button link type="primary" size="small" @click="handleResetPassword(row)">重置密码</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <!-- 用户列表：宽档=表格 / 窄档(<768px)=卡片列表（同一份列定义） -->
+    <ResponsiveTable
+      class="user-table"
+      :items="tableData"
+      :columns="columns"
+      :loading="loading"
+      empty-text="暂无用户"
+    >
+      <template #col-userType="{ row }">
+        <el-tag :type="getUserTypeTag(row.userType)">{{ row.userType }}</el-tag>
+      </template>
+
+      <template #col-status="{ row }">
+        <el-switch
+          :model-value="row.status === 1"
+          inline-prompt
+          active-text="启"
+          inactive-text="停"
+          @change="(val: boolean) => toggleStatus(row, val)"
+        />
+      </template>
+
+      <template #col-isFirstLogin="{ row }">
+        <el-tag :type="row.isFirstLogin === 1 ? 'warning' : 'info'" size="small">
+          {{ row.isFirstLogin === 1 ? '需改密' : '正常' }}
+        </el-tag>
+      </template>
+
+      <template #col-actions="{ row }">
+        <el-button link type="primary" size="small" @click="handleResetPassword(row)">重置密码</el-button>
+      </template>
+    </ResponsiveTable>
 
     <!-- 分页器 -->
     <div class="pagination-row">
@@ -101,11 +97,40 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { httpClient } from '../../stores/auth';
+import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import type { CardTagType, TableColumn } from '../../components/ResponsiveTable.vue';
 
 const loading = ref(false);
 const importing = ref(false);
 const tableData = ref<any[]>([]);
 const total = ref(0);
+
+/** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
+const columns: TableColumn<any>[] = [
+  { key: 'id', label: 'ID', width: 70, align: 'center' },
+  { key: 'username', label: '学号/工号', width: 130, card: 'title' },
+  { key: 'realName', label: '真实姓名', width: 110 },
+  { key: 'phone', label: '联系电话', width: 130 },
+  {
+    key: 'userType',
+    label: '角色身份',
+    width: 140,
+    card: 'tag',
+    cardTag: (row) => ({ text: row.userType, type: getUserTypeTag(row.userType) })
+  },
+  { key: 'department', label: '所属部门/学院' },
+  {
+    key: 'isFirstLogin',
+    label: '首次需改密',
+    width: 110,
+    align: 'center',
+    card: 'tag',
+    cardTag: (row) =>
+      row.isFirstLogin === 1 ? { text: '需改密', type: 'warning' } : { text: '已改密', type: 'info' }
+  },
+  { key: 'status', label: '账号状态', width: 100, align: 'center' },
+  { key: 'actions', label: '操作', width: 140, align: 'center', card: 'action' }
+];
 
 const query = reactive({
   page: 1,
@@ -117,7 +142,7 @@ const query = reactive({
 const reportVisible = ref(false);
 const importReport = ref<any>({});
 
-function getUserTypeTag(type: string) {
+function getUserTypeTag(type: string): CardTagType {
   switch (type) {
     case 'SUPER_ADMIN': return 'danger';
     case 'LOGISTICS_ADMIN': return 'warning';
@@ -247,6 +272,10 @@ onMounted(() => {
 .pagination-row {
   display: flex;
   justify-content: flex-end;
+  margin-top: 16px;
+}
+.user-table {
+  display: block;
   margin-top: 16px;
 }
 </style>

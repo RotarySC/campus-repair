@@ -68,6 +68,8 @@ body {
   .el-form-item__label {
     width: 100% !important;
     text-align: left !important;
+    /* EP 的 label 是 flex 容器且默认 justify-content: flex-end（右对齐），窄档置顶后必须改回左对齐 */
+    justify-content: flex-start !important;
     padding-right: 0;
     margin-bottom: 4px;
     height: auto;

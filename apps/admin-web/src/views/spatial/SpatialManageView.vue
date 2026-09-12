@@ -59,7 +59,15 @@
           <el-button type="primary" icon="Plus" @click="openCreateCategoryDialog(0, 1)">添加一级故障大类</el-button>
         </div>
 
-        <el-table :data="categoryList" row-key="id" default-expand-all border style="width: 100%; margin-top: 16px;">
+        <!-- 宽档=树形表格；窄档(<768px)=树形卡片列表（不再依赖 880px 宽的横向滚动） -->
+        <el-table
+          v-if="!isNarrowPhone"
+          :data="categoryList"
+          row-key="id"
+          default-expand-all
+          border
+          style="width: 100%; margin-top: 16px;"
+        >
           <el-table-column prop="name" label="分类名称" width="260" />
           <el-table-column prop="level" label="层级" width="100" align="center">
             <template #default="{ row }">
@@ -84,6 +92,41 @@
             </template>
           </el-table-column>
         </el-table>
+
+        <el-tree
+          v-else
+          :data="categoryList"
+          node-key="id"
+          default-expand-all
+          :expand-on-click-node="false"
+          style="margin-top: 16px;"
+        >
+          <template #default="{ data }">
+            <div class="category-card">
+              <div class="category-card__head">
+                <strong class="category-card__name">{{ data.name }}</strong>
+                <el-tag :type="data.level === 1 ? 'primary' : 'success'" size="small">
+                  {{ data.level === 1 ? '大类' : '二级细类' }}
+                </el-tag>
+              </div>
+              <div class="category-card__row">
+                <span class="category-card__label">指派维修工种</span>
+                <el-tag v-if="data.workerSkillCode" type="warning" size="small">{{ data.workerSkillCode }}</el-tag>
+                <span v-else class="text-muted">--</span>
+              </div>
+              <div class="category-card__row">
+                <span class="category-card__label">承诺SLA解决时限</span>
+                <span>{{ data.slaHours ? `${data.slaHours} 小时` : '—' }}</span>
+              </div>
+              <div class="category-card__foot">
+                <el-button v-if="data.level === 1" link type="primary" size="small" @click="openCreateCategoryDialog(data.id, 2)">
+                  添加细类
+                </el-button>
+                <el-button link type="danger" size="small" @click="handleDeleteCategory(data)">删除</el-button>
+              </div>
+            </div>
+          </template>
+        </el-tree>
       </el-tab-pane>
 
       <!-- 业务参数配置 -->
@@ -167,9 +210,11 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { httpClient } from '../../stores/auth';
+import { useViewport } from '../../composables/useViewport';
 
 const activeTab = ref('spatial');
 const onlyEnabled = ref(false);
+const { isNarrowPhone } = useViewport();
 
 const spatialTree = ref<any[]>([]);
 const categoryList = ref<any[]>([]);
@@ -431,5 +476,61 @@ onMounted(() => {
 }
 .text-muted {
   color: #9CA3AF;
+}
+
+/* 窄档：故障分类字典的树形卡片（替代 880px 宽的树形表格） */
+/* 注意：el-tree 默认给节点固定行高（26/32/40px）且用绝对定位排布子节点，
+   内容换成多行卡片后必须放开这三处，否则卡片会互相重叠、父节点高度不增长。 */
+:deep(.el-tree-node__content) {
+  height: auto;
+  align-items: stretch;
+}
+:deep(.el-tree-node) {
+  position: static;
+}
+:deep(.el-tree-node__children) {
+  position: static;
+}
+.category-card {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fff;
+  margin: 6px 0;
+}
+.category-card__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #ebeef5;
+}
+.category-card__name {
+  font-size: 14px;
+  color: #1f2937;
+  word-break: break-all;
+}
+.category-card__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+.category-card__label {
+  flex: 0 0 108px;
+  color: #909399;
+}
+.category-card__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #ebeef5;
 }
 </style>
