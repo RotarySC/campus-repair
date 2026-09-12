@@ -1,101 +1,78 @@
-# 交接文档 (HANDOFF) — 统一门户落成（师生 PC 端 + 双端设备自适应融合）
+# 交接文档 (HANDOFF) — 单树响应式重构完成（feat/single-tree-responsive 待合并）
 
-> **日期**：2026-09-12（二次更新：P1 安全基线落地）　**主分支**：`master` = 安全基线提交（见 §1）
-> **设计文档**：`docs/20260912-1351-campus-repair-system-unified-portal-design.md`（两轮 grilling 收敛的 Q1~Q9 决策 + D1~D8 默认值，本文件不重复）
-> **工程约定仍在 `AGENTS.md`**（§2.1 新增「统一门户开发约束」条目必读）；本文件只写「状态 + 待办 + 证据 + 环境」。
+> **日期**：2026-09-12（三轮更新）　**工作分支**：`feat/single-tree-responsive`（**未合并 master**，master = `82af9f4` 安全基线）
+> **设计文档**：`docs/20260912-1351-campus-repair-system-unified-portal-design.md` **§13 R1 增补**（正式取代 Q1/Q2/Q5/Q7 与 D1/D2/D5）；本文件只写「状态 + 待办 + 证据 + 环境」。
 
 ---
 
 ## 0. 30 秒速读
 
-1. **统一门户已合并**：`feat/unified-portal` 5 个提交已 fast-forward 进 `master`（`d002bc6..a9a1790`）。
-2. **本轮新增：P1 安全基线已落地**——`jwt.secret` 改 `${JWT_SECRET:…}` 环境变量注入（不注入启动 WARN）+ CORS 通配+凭据收敛为 `app.cors.allowed-origins` 精确白名单（生产用 `APP_CORS_ALLOWED_ORIGINS` 覆盖，README §3.3 有示例）；`mvn test` 基线 64 → **67/67**，curl 真机实测白名单内外行为正确（§4）。
-3. **服务状态**：后端（8080，新代码，干净演示数据）与前端（3000）均为**后台作业**——随会话结束会被回收（后端的 Maven 包装进程可能被任务系统误报 failed，但派生 JVM 仍占 8080，探活以 HTTP 为准）。死了按 §5 配方重启。
-4. 环境注意：本机全局 pnpm 已升 **v11**，`pnpm run dev:admin` 会尝试清空重装 node_modules（详见 AGENTS §2.1），**用 `cd apps/admin-web && node node_modules/vite/bin/vite.js` 直启**。
-
----
+1. **本轮交付：前端单树响应式重构**——双树（EP 桌面/Vant 移动）+ 设备判定冻结架构 → **单路由树 + 单库 Element Plus + 连续自适应**（768/1024 断点）。师傅工作台/完工填报/注册页以 EP 重写，Vant 依赖整体移除，守卫退化为纯角色检查，两个 notice 页删除。分支上共 6 个提交（§2），**未合并**。
+2. **验证**：vue-tsc/tsc 全绿；`mvn test` **67/67**；CDP 真机：admin 七页无溢出、守卫矩阵、旧路径重定向、师傅工作台/完工填报渲染、外壳三档形态（宽档/平板自动折叠/手机抽屉全链路）。**遗留：≤630 窄档逐页截图级走查**（验证时段用户占用浏览器，弹窗两次被关，规则已落地待静默补验，见 §3）。
+3. **服务状态**：后端 8080（67 测试后处于刚跑完状态，H2 演示数据；探活 `curl localhost:8080`→401 即活）；前端 3000（`node node_modules/vite/bin/vite.js` 直启，本轮已重启过）。均为后台作业，随会话回收。
+4. **坑位更新（重要）**：AGENTS §2.1「单树响应式开发约束」已重写——`utils/device.ts` 已删除、device_mode 逃生舱语义作废；隐藏标签 CDP 验证的三坑（中文转义/导航延迟/良性 Uncaught）见该条 ④⑤。
 
 ## 1. 仓库与分支状态
 
 | 项 | 值 |
 | :--- | :--- |
-| 当前分支 | `master` = 安全基线提交（统一门户合并 `a9a1790` 之后新增 1 个 feat 提交，工作树干净） |
-| 残留分支 | `feat/unified-portal` 指向 `a9a1790`，可 `git branch -d` 清理 |
-| 未跟踪 | `.scratch/unified-detail.png`、`unified-myorders.png`（验收截图，可留可删） |
+| 工作分支 | `feat/single-tree-responsive` = 文档提交（6 个提交，§2） |
+| master | `82af9f4`（P1 安全基线：JWT 环境变量 + CORS 白名单，已含 CorsWhitelistConfigTest，mvn 64→67） |
+| 合并建议 | 前端重构与后端安全基线无耦合，ff 合并即可；合并前建议补 §3 窄档走查 |
+| 未跟踪 | `.scratch/resize/`（响应式分析截图 14+ 张）、`.scratch/cdp-login.mjs`（CDP 注入登录工具，可复用）、`unified-*.png` 旧验收图 |
 
-## 2. 本轮已交付（不要重做）
+## 2. 本轮提交（不要重做）
 
-- **后端**：`submit` 加 `@PreAuthorize(hasAnyRole(USER_STUDENT, USER_TEACHER))`（补「管理员可提单」越权洞）；新增 `GET /work-orders/my`（师生本人工单分页，`status` 支持逗号分隔多状态，供「在办」聚合页签）。
-- **前端统一门户**（`apps/admin-web`，3000；`apps/mobile-web` 已删除、`dev:mobile` 已删、3001 退役）：
-  - `utils/device.ts` 设备判定（<768 或 <1024+粗指针 → mobile）+ sessionStorage 会话固定 + 登录页双向逃生舱；
-  - `router/desktop.ts` + `router/mobile.ts` 双表，`router/index.ts` 启动选表 + 「设备×角色」守卫矩阵；
-  - 师生桌面四页：`StudentOrderListView`（`/`，RoleHomeGate 按角色分流）、`StudentSubmitRepairView`、`StudentOrderDetailView`（Visual Diff + 时间轴复用 + 评价面板）、`PersonalCenterView`（全角色 `/profile`）；
-  - `AdminLayout.navItems` 按角色过滤（管理员 7 项 / 师生 2 项），`meta.title` 支持函数型；
-  - 通知抽屉关联工单跳转按角色路由；管理员×手机 → `/mobile-admin-notice`、师傅×桌面 → `/worker-pc-notice`；
-  - `vant` 依赖以「package.json 声明 ^4.8.9 + 手工 junction 到 .pnpm/vant@4.10.2」接入（pnpm v11 拦截 pnpm add 所致，lockfile importer 已同步手改）。
-- **测试顺修**：`UserIntegrationTest`（非事务）会把 `student01` 密码改成 `NewPassword@2026` 且跨测试类持久——需要 student01 登录的测试类现在登录前显式重置（事务回滚不外泄）；这是**既有的顺序脆弱点**，本轮才暴露。
-- **P1 安全基线（2026-09-12 二轮，本轮交付）**：
-  - `application.yml`：`jwt.secret` → `${JWT_SECRET:内置默认值}`（保留默认值保证本地零配置启动；`JwtUtils` 检测到默认值时启动 WARN，常量 `BUILTIN_DEFAULT_SECRET` 与 yml 默认值需同步维护）；新增 `app.cors.allowed-origins`（默认 `http://localhost:3000`，环境变量 `APP_CORS_ALLOWED_ORIGINS` 逗号分隔覆盖）。
-  - `SecurityConfig`：`allowedOriginPatterns("*") + allowCredentials(true)` → `setAllowedOrigins(精确白名单)`，白名单外预检/实际请求均 403；`CorsWhitelistConfigTest` 3 用例锁死语义。
+| 提交 | 内容 |
+| :--- | :--- |
+| `84185e9` | `useViewport` 断点组合式（模块级单例）+ AdminLayout 三档自适应：≥1024 手动折叠偏好 / 768~1023 进档自动折叠（不覆盖偏好） / <768 汉堡+覆盖抽屉+遮罩+点导航自动收起；修复「点当前路由导航项抽屉不收起」 |
+| `30571b0` | **师傅工作台/完工填报 EP 重写**（Vant→EP 组件层平移，业务逻辑/接口 1:1；el-upload http-request 保留 Canvas 水印→`/common/upload` 链路）+ 注册页 EP 化 |
+| `e0036e3` | **路由合一**：单表吸收双树；守卫删设备分支（Q5 废止），师生/师傅路由补 roles；旧路径重定向；删 device.ts/desktop.ts/mobile.ts/Vant 版六页/notice 两页/移动时间轴；App.vue 弹层合一；main.ts 摘 Vant；登录页去逃生舱补注册入口；外壳增师傅导航（-2680 行） |
+| `8beed56` | **桌面九页流式加固**：调度台 ≤1023 堆叠+worker-grid auto-fill、报表筛选栅格补响应档、库存 KPI/弹窗限宽、师生提单 420/560/280px 改流式+窄屏 label top、个人中心/详情堆叠、用户/空间/cockpit 微调 |
+| `f4f9630` | vant 依赖移除：package.json + lockfile 六块手工同步（规避 pnpm v11）+ junction/.pnpm 目录清理 + dev server 重启 |
+| 文档提交 | 设计文档 §13 R1 + AGENTS §1/§2.1 改述 + README 双端描述改单树响应式 + 本文件 |
 
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
 | :--- | :--- | :--- |
-| ~~P0~~ | ~~合并 `feat/unified-portal` → `master`~~ **✅ 已完成（`d002bc6..a9a1790` ff）** | 本文件 §1 |
-| ~~P1~~ | ~~安全基线：JWT 明文密钥、CORS 通配 + allowCredentials~~ **✅ 已完成（2026-09-12 二轮：`JWT_SECRET` 环境变量注入 + CORS 精确白名单，67/67 绿 + curl 实测，见 §4）** | 本文件 §4 |
-| **P1** | `WorkOrderService` 1083 行拆分（此前又加了 `getMyOrders`） | 既有 |
-| **P2** | EP+Vant 全量注册 → 按需引入（D5 遗留优化项） | 设计文档 D5 |
-| **P2** | 师生桌面「我的工单」尚无检索框（只有状态页签）；详情页评价面板在 ≤2★ 分支未真机实测（测试套件已覆盖差评返工链路） | 本轮范围裁剪 |
-| 待验证 | 图片上传的桌面 UI 全流程（CDP 无法驱动文件选择器；上传 API 链路为 2026-09-11 既有验证 + 本轮压缩逻辑复用 shared 未改） | AGENTS §2.2 |
+| **P0** | **≤630 窄档逐页视觉走查**：dispatch 堆叠、师生提单（原 420/560px 硬伤页）、工作台卡片、cockpit；用户占用浏览器时可用 AGENTS §2.1④ 的缩放档/弹窗法静默验 | §0.2 遗留 |
+| P1 | 合并 `feat/single-tree-responsive` → master（ff） | §1 |
+| P2 | 师生「我的工单」检索框（只有状态页签）；详情页 ≤2★ 差评返工分支真机实测 | 旧 HANDOFF 沿革 |
+| P2 | EP 按需引入（旧 D5 优化项，单库后收益更大） | 设计文档 D5 |
+| P2 | 移动端 `worker/finish` 真机拍照上传全流程（CDP 无法驱动文件选择器；水印+上传 API 链路为 2026-09-11 既有验证） | AGENTS §2.2 |
+| 观察 | `meta.roles` 收紧后 admin 落师生页现为 403 页（原可进页面但接口 403）——产品语义变化点，如需放行回退删除对应 roles 即可 | R1-3 |
 
-## 4. 本会话验证证据（可复现）
+## 4. 本轮验证证据（可复现）
 
-**二轮（P1 安全基线）：**
+- `vue-tsc --noEmit`（admin-web）与 `tsc --noEmit`（shared）：exit 0；`mvn test`：**67/67** BUILD SUCCESS（后端零改动）。
+- CDP 真机（localhost:3000，最大窗口 1272 CSS）：
+  - admin 七页逐页渲染、标题正确、`scrollWidth-clientWidth=0`；admin→`/student/submit`、`/worker/workbench`（经 `/worker-pc-notice` 重定向）均落 `/403`；
+  - 旧路径重定向：`/orders/1005`→`/student/orders/1005`（师生详情渲染）；worker01 `/`→`/worker/workbench`（外壳 2 项导航：我的工作台/个人中心）；worker01→`/inventory` 落 `/403`；
+  - 师傅工作台 EP 版：三 Tab 带角标（待承接 1/维修中 1/历史 4）、卡片/SLA 行/拨号按钮、挂起弹窗（el-select+校验）；完工填报 `/worker/finish/1006`：单号回显+上传卡+物料核销区；
+  - 外壳三档（P1 阶段验证）：1272 宽档 / 1017 平板自动折叠 64px（回宽恢复偏好）/ 727 手机档汉堡+抽屉开合全链路。
+- 验证手法坑位沉淀：AGENTS §2.1④⑤（缩放档等效窄窗、弹窗小窗法、中文 \u 转义、`/navigate` 替代 location.href、"Uncaught"=导航销毁上下文的良性报错）。
 
-- `mvn test`：**67/67**（原 64 + `CorsWhitelistConfigTest` 3 用例），BUILD SUCCESS。
-- 真机 curl（重启后的新代码实例，8080）：白名单来源 `http://localhost:3000` 预检 200 且 `Access-Control-Allow-Origin` **精确回显**（非 `*`）+ `Allow-Credentials: true`；`evil.example.com` 预检与实际请求均 **403 且无 ACAO 头**（含后缀仿冒域由单测覆盖）；admin 登录 200 签发双 Token（JWT 签发/校验链路无回归）。
-- 启动日志确认 `JwtUtils` 默认密钥 WARN 生效：`jwt.secret 仍为内置默认密钥：生产环境必须通过环境变量 JWT_SECRET 注入独立密钥…`。
+## 5. 环境与运行现状（会话收尾时）
 
-**一轮（统一门户，前次会话）：**
-
-- `mvn test`：**64/64**（`Tests run: 64, Failures: 0, Errors: 0`），在 `7b094af` 后复跑。
-- `tsc --noEmit` shared + `vue-tsc --noEmit` admin-web：exit 0。
-- **真机矩阵（CDP，详见 AGENTS §2.1「实测基线 2026-09-12」）14 格全绿**，关键格：
-  - 移动树：移动登录页+逃生舱 / student02 主页「发起极速报修提单」/ admin→`/mobile-admin-notice` / worker01→`/worker/workbench`；
-  - 桌面树：student02 `/`=我的工单（侧栏 2 项+标题函数生效+`/my` 4 行）→ **UI 提单全流程**（级联选 电气照明/灯具损坏 + 描述 → 出单号弹窗 → 列表 5 行置顶）→ 1009 详情（待验收横幅+Diff 图+时间轴 4 节点+评价面板 5 标签）→ **5★+准时到达/技术过硬 验收** → toast+状态「已结单」→ `evaluation-detail` 落库核对 star=5/tags 双/auto=0；
-  - 越权：student02→`/dispatch` 403、admin→`/student/submit` 403、admin 提单接口 403（集成测试）；
-  - admin `/`=控制台概览 7 项导航、`/cockpit` 3 canvas+榜单 6 行（管理页零回归）；worker01→`/worker-pc-notice`；`/profile` 级联回显默认空间；桌面登录页「使用移动版」逃生舱互切成功。
-
-## 5. 环境与运行现状（会话收尾时实测；**服务是本会话的后台作业，随会话结束回收**）
-
-| 服务 | 地址 | 收尾时状态 |
+| 服务 | 地址 | 状态 |
 | :--- | :--- | :--- |
-| 后端 | `http://localhost:8080` | **运行中**，本轮已重启为**含安全基线的新代码**：H2 干净演示数据（admin 登录 200 + CORS 白名单 curl 实测见 §4）。注意 Maven 包装进程可能被任务系统标记 failed，实际派生 JVM 仍服务 8080，探活以 HTTP 为准 |
-| 前端 | `http://localhost:3000` | **运行中**（上会话 `node node_modules/vite/bin/vite.js` 直启的后台作业，本轮开局实测 200；未动过） |
-| CDP 代理 | `http://localhost:3456` | 上轮记录运行中（Edge 9222），本轮未复测 |
-| Edge 窗口 | — | 上轮被 `win+up` 最大化过（为获得桌面视口），如需还原请手动调整 |
+| 后端 | `http://localhost:8080` | 运行中（java PID 13420；冒烟 admin/student02/worker01 登录均 200） |
+| 前端 | `http://localhost:3000` | 运行中（本轮 `node node_modules/vite/bin/vite.js` 重启，vant 移除后已验证正常） |
+| CDP 代理 | `http://localhost:3456` | 运行中（Edge 9222）；浏览器里有 2 个门户标签（`42DFEDD8`=admin 会话、`BED51BE0`=任意）+ 用户的个人标签，**别关用户的标签** |
+| 用户浏览器 | — | 用户本轮在同时使用浏览器（直播等），标签 ID 会漂移：每次 eval 前先 `GET /targets` 重新解析 |
 
-**接手重启配方**（上轮实测有效）：
-
-1. 先探活：`Invoke-WebRequest http://localhost:3000/` 与 8080（Vite 只绑 IPv6 别用 127.0.0.1）。
-2. 重启后端：`taskkill //F //IM java.exe` → 确认 8080 CLOSED → `server/` 下 `mvn spring-boot:run`（JAVA_HOME 指 `.tools/jdk/jdk-17.0.2`），H2 重启即回干净演示数据。
-3. 重启前端：`cd apps/admin-web && node node_modules/vite/bin/vite.js`（**勿用 `pnpm run`**，见 §0.4）；两者均需 `danger-full-access` 沙箱（esbuild `spawn EPERM`）。
-4. 提醒：后端 15 分钟一次的 72h 超时自动核销会让长跑实例的 KPI 漂移（AGENTS §4）。
+**接手重启配方**：同 AGENTS §2.1（后端 taskkill java → mvn spring-boot:run；前端 `cd apps/admin-web && node node_modules/vite/bin/vite.js`，均需 danger-full-access）。pnpm v11 禁忌照旧：**装/删依赖手改 package.json + lockfile + node_modules**，勿跑 `pnpm install`。
 
 ## 6. 环境卫生
 
-- `.scratch/`：本轮新增 `unified-detail.png`、`unified-myorders.png`（验收截图，无敏感信息）。**上会话遗留的 `capture-analytics.ps1`/`cockpit.png` 已在本轮会话外被删除**（用户环境清理）；`.scratch/campus-repair-system/`（spec+12 Issue）曾发现被删，已用 `git restore` 找回，**请勿再删**。
+- `.scratch/resize/`：响应式分析截图（StyleKit/MiMo 六档 + 本项目各档），无敏感信息；`.scratch/cdp-login.mjs`：CDP 注入登录小工具（依赖代理 3456）。
 - 本文件与提交信息不含口令/令牌；演示账号见 README §4。
 
 ## 7. 建议技能
 
-> 下一步最可能是「`WorkOrderService` 拆分（P1）」→「按需引入（P2）」→「师生桌面检索框 + 差评返工分支真机实测（P2）」。
+> 下一步最可能是「合并前窄档走查」→「合并 master」→「按需引入」。
 
-- `implement` —— 按 §3 清单逐条落地。
-- `grill-me` —— `WorkOrderService` 拆分的模块边界拿不准时，先用它把方案问清再动手。
-- `graphify` —— `WorkOrderService` 1083 行拆分前先建模块关系图。
-- `code-review` —— 本轮五提交虽已合并，若要补一次双轴审查（`d002bc6..a9a1790`），按主题边界 diff 清晰。
-- `web-access` —— 继续真机验证时用（代理启动、`/eval` 只收单表达式、中文用 Unicode 转义、sessionStorage 覆盖 `device_mode` 测另一棵树），具体坑都沉淀在 AGENTS §2.1/§2.2。
-- `tdd` —— 动 httpClient 契约或守卫逻辑时用（负向对照探针套路见旧版交接，经 git 取回）。
-- `handoff` —— 下次收尾更新本文件（可覆盖，旧版经 git 取回）。
+- `web-access`（CDP 代理）——窄档走查与任何真机验证；坑位全在 AGENTS §2.1④⑤。
+- `code-review` —— 本轮 6 提交双轴审查（尤其 e0036e3 大删除提交与 8beed56 的样式改动）。
+- `handoff` —— 下次收尾覆盖本文件。
