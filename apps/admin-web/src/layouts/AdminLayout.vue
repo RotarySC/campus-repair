@@ -1,16 +1,33 @@
 <template>
   <div
     class="admin-shell"
-    :class="{ 'sidebar-collapsed': collapsed && !isNarrowPhone, 'sidebar-drawer-open': drawerOpen }"
+    :class="{ 'sidebar-collapsed': isCollapsed, 'sidebar-drawer-open': drawerOpen }"
   >
     <!-- 窄屏抽屉遮罩 -->
     <div v-if="isNarrowPhone" class="drawer-backdrop" :class="{ visible: drawerOpen }" @click="drawerOpen = false" />
 
     <!-- 固定左侧边栏（<768px 转覆盖抽屉） -->
-    <aside class="sidebar" aria-label="主导航">
+    <aside id="admin-sidebar" class="sidebar" aria-label="主导航">
       <div class="brand">
-        <el-icon :size="24" color="#1677FF" class="brand-icon"><Management /></el-icon>
-        <span v-show="!collapsed" class="brand-text">校园设施报修运维平台</span>
+        <el-icon v-show="!isCollapsed" :size="24" color="#1677FF" class="brand-icon"><Management /></el-icon>
+        <span v-show="!isCollapsed" class="brand-text">校园设施报修运维平台</span>
+
+        <!-- 标题栏的收起/展开入口：抽屉档＝关闭抽屉，其余档位＝240 ↔ 64 -->
+        <button
+          type="button"
+          class="brand-toggle"
+          :aria-label="headerToggleLabel"
+          :aria-expanded="isNarrowPhone ? drawerOpen : !isCollapsed"
+          aria-controls="admin-sidebar"
+          :title="headerToggleLabel"
+          @click="onHeaderToggle"
+        >
+          <el-icon :size="18">
+            <Close v-if="isNarrowPhone" />
+            <Expand v-else-if="isCollapsed" />
+            <Fold v-else />
+          </el-icon>
+        </button>
       </div>
 
       <nav class="nav" aria-label="功能导航">
@@ -21,26 +38,13 @@
           class="nav-item"
           :class="{ 'is-active': isActive(item.path) }"
           :aria-current="isActive(item.path) ? 'page' : undefined"
-          :title="collapsed ? item.label : undefined"
+          :title="isCollapsed ? item.label : undefined"
           @click="drawerOpen = false"
         >
           <el-icon :size="18" class="nav-icon"><component :is="item.icon" /></el-icon>
-          <span v-show="!collapsed" class="nav-label">{{ item.label }}</span>
+          <span v-show="!isCollapsed" class="nav-label">{{ item.label }}</span>
         </router-link>
       </nav>
-
-      <div v-if="!isNarrowPhone" class="sidebar-footer">
-        <button
-          type="button"
-          class="collapse-btn"
-          :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
-          :aria-expanded="!collapsed"
-          @click="toggleCollapse"
-        >
-          <el-icon :size="18"><Expand v-if="collapsed" /><Fold v-else /></el-icon>
-          <span v-show="!collapsed">收起侧边栏</span>
-        </button>
-      </div>
     </aside>
 
     <!-- 右侧内容区：顶部条固定，仅页面内容滚动 -->
@@ -186,6 +190,28 @@ const { isNarrowPhone, isTablet, isWide, viewportWidth } = useViewport();
 /** 窄屏下通知抽屉占满全宽，桌面档维持 420px */
 const notificationDrawerSize = computed(() => (isNarrowPhone.value ? '100%' : '420px'));
 
+/**
+ * 有效折叠态（唯一的"当前是否折叠"判据）：只有非抽屉档才可能折叠。
+ * 必须用它而不是原始 `collapsed` 来驱动文字/提示的显隐——否则「桌面档先折叠（localStorage=1）
+ * → 窗口缩到 <768 → 汉堡展开抽屉」时，抽屉宽度被 CSS 强制为 240px 满宽，文字却仍按
+ * `collapsed=true` 被 v-show 隐藏，渲染成"只有图标的空白侧栏"。
+ */
+const isCollapsed = computed(() => collapsed.value && !isNarrowPhone.value);
+
+const headerToggleLabel = computed(() => {
+  if (isNarrowPhone.value) return '关闭导航菜单';
+  return isCollapsed.value ? '展开侧边栏' : '收起侧边栏';
+});
+
+/** 标题栏切换按钮：抽屉档收起抽屉，其余档位切换 240 ↔ 64 */
+function onHeaderToggle() {
+  if (isNarrowPhone.value) {
+    drawerOpen.value = false;
+    return;
+  }
+  toggleCollapse();
+}
+
 type WidthBand = 'phone' | 'tablet' | 'wide';
 function bandOf(width: number): WidthBand {
   if (width < BREAKPOINTS.PHONE) return 'phone';
@@ -308,20 +334,56 @@ onMounted(() => {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   /* 含 1px 下边框，与顶栏同高，两条分隔线落在同一水平线上 */
   box-sizing: border-box;
   height: var(--topbar-h);
-  padding-inline: 24px;
+  /* 左侧 24px 与 .nav(12) + .nav-item(12) 的图标对齐边一致；右侧收紧给标题栏按钮让位 */
+  padding-inline: 24px 8px;
   border-block-end: 1px solid #f0f2f5;
   flex-shrink: 0;
 }
 
+.brand-icon {
+  flex-shrink: 0;
+}
+
 .brand-text {
-  font-size: 15px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
   font-weight: 600;
   color: #1f2937;
-  white-space: nowrap;
+}
+
+/* 标题栏的收起/展开按钮（抽屉档为关闭抽屉） */
+.brand-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.brand-toggle:hover {
+  background-color: #f5f7fa;
+  color: #1677ff;
+}
+
+.brand-toggle:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 1px;
 }
 
 .nav {
@@ -376,33 +438,6 @@ onMounted(() => {
 
 .nav-label {
   font-size: 14px;
-}
-
-.sidebar-footer {
-  flex-shrink: 0;
-  padding: 10px;
-  border-block-start: 1px solid #f0f2f5;
-}
-
-.collapse-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 40px;
-  border: none;
-  border-radius: 8px;
-  background-color: transparent;
-  color: #6b7280;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.collapse-btn:hover {
-  background-color: #f5f7fa;
-  color: #1677ff;
 }
 
 /* ---------- 内容区 ---------- */
