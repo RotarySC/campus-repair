@@ -29,21 +29,24 @@
               </span>
 
               <span class="node-actions">
+                <!-- 「添加下级」对第 4 级（房间）不存在，但仍渲染占位（visibility:hidden）：
+                     否则叶子行的操作组少一格，开关会向左漂移，与其它行的位置对不齐 -->
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  class="action-add-btn"
+                  :class="{ 'is-placeholder': data.levelType >= 4 }"
+                  @click="openCreateNodeDialog(data.id, data.levelType + 1)"
+                >
+                  添加下级
+                </el-button>
                 <el-switch
                   :model-value="data.status === 1"
                   aria-label="空间启用状态"
                   size="small"
                   @change="(val: boolean) => toggleNodeStatus(data, val)"
                 />
-                <el-button
-                  v-if="data.levelType < 4"
-                  link
-                  type="primary"
-                  size="small"
-                  @click="openCreateNodeDialog(data.id, data.levelType + 1)"
-                >
-                  添加下级
-                </el-button>
                 <el-button link type="danger" size="small" @click="handleDeleteNode(data)">删除</el-button>
               </span>
             </div>
@@ -81,9 +84,17 @@
             </template>
           </el-table-column>
           <el-table-column prop="slaHours" label="承诺SLA解决时限(小时)" width="180" align="center" />
-          <el-table-column label="操作" align="center">
+          <el-table-column label="操作" align="right">
             <template #default="{ row }">
-              <el-button v-if="row.level === 1" link type="primary" size="small" @click="openCreateCategoryDialog(row.id, 2)">
+              <!-- 二级细类没有「添加细类」，同样用占位撑住列宽，保证「删除」在所有行对齐 -->
+              <el-button
+                link
+                type="primary"
+                size="small"
+                class="action-add-btn"
+                :class="{ 'is-placeholder': row.level !== 1 }"
+                @click="openCreateCategoryDialog(row.id, 2)"
+              >
                 添加细类
               </el-button>
               <el-button link type="danger" size="small" @click="handleDeleteCategory(row)">删除</el-button>
@@ -117,7 +128,14 @@
                 <span>{{ data.slaHours ? `${data.slaHours} 小时` : '—' }}</span>
               </div>
               <div class="category-card__foot">
-                <el-button v-if="data.level === 1" link type="primary" size="small" @click="openCreateCategoryDialog(data.id, 2)">
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  class="action-add-btn"
+                  :class="{ 'is-placeholder': data.level !== 1 }"
+                  @click="openCreateCategoryDialog(data.id, 2)"
+                >
                   添加细类
                 </el-button>
                 <el-button link type="danger" size="small" @click="handleDeleteCategory(data)">删除</el-button>
@@ -461,7 +479,12 @@ onMounted(() => {
   flex-shrink: 0;
   margin-left: auto;
 }
-/* 窄档：全路径是辅助信息，先让位；操作组允许换行，保证「启/添加下级/删除」始终可点 */
+/* 条件按钮的占位格：占住原始宽度但不可见（visibility 不参与命中与 tab 序），
+   让同一行的「开关」「删除」在所有行落在同一列 */
+.action-add-btn.is-placeholder {
+  visibility: hidden;
+}
+/* 窄档：全路径是辅助信息，先让位；操作组允许换行，保证「添加下级/开关/删除」始终可点 */
 @media (max-width: 767px) {
   .node-title .full-path {
     display: none;
