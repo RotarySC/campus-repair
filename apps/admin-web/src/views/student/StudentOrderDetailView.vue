@@ -11,7 +11,7 @@
       <!-- 2. 基本信息 -->
       <el-card shadow="never" class="block">
         <template #header><span class="block-title">报修基本信息</span></template>
-        <el-descriptions :column="2" border>
+        <el-descriptions :column="isNarrowPhone ? 1 : 2" border>
           <el-descriptions-item label="工单流水号">{{ order.orderNo }}</el-descriptions-item>
           <el-descriptions-item label="提单时间">{{ order.createdAt }}</el-descriptions-item>
           <el-descriptions-item label="报修空间" :span="2">{{ order.spaceFullPath }}</el-descriptions-item>
@@ -81,7 +81,7 @@
         class="block"
       >
         <template #header><span class="block-title">服务质检评价记录</span></template>
-        <el-descriptions :column="2" border>
+        <el-descriptions :column="isNarrowPhone ? 1 : 2" border>
           <el-descriptions-item label="综合评价星级">
             <el-rate :model-value="evaluation.ratingStar || 0" disabled />
           </el-descriptions-item>
@@ -171,7 +171,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Right } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
+import { useViewport } from '../../composables/useViewport';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
+
+const { isNarrowPhone } = useViewport();
 import {
   DispatchOrderItemVO,
   WorkOrderEvaluationVO,
@@ -299,9 +302,11 @@ async function onSubmitEvaluation() {
   display: flex;
   gap: 12px;
   align-items: stretch;
+  flex-wrap: wrap;
 }
 .diff-pane {
-  flex: 1;
+  flex: 1 1 280px;
+  min-width: 0;
   background: #f9fafb;
   border-radius: 8px;
   padding: 12px;

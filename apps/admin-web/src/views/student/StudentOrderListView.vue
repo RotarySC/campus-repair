@@ -129,6 +129,8 @@ onMounted(fetchData);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 14px;
 }
 .pager {

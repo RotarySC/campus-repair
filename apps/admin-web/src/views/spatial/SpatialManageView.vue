@@ -377,6 +377,8 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
 }
 .tree-node-row {
@@ -384,18 +386,24 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-size: 14px;
   padding-right: 8px;
+  min-width: 0;
 }
 .full-path {
   font-size: 12px;
   color: #9CA3AF;
   margin-left: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .node-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 .text-muted {
   color: #9CA3AF;

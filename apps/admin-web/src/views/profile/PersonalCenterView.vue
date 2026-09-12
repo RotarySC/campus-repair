@@ -1,10 +1,10 @@
 <template>
   <div class="personal-center">
     <el-row :gutter="14">
-      <el-col :span="12">
+      <el-col :xs="24" :md="12">
         <el-card shadow="never">
           <template #header><span class="block-title">基本联系资料</span></template>
-          <el-form :model="profileForm" label-width="110px">
+          <el-form :model="profileForm" :label-width="isNarrowPhone ? undefined : '110px'" :label-position="isNarrowPhone ? 'top' : 'right'">
             <el-form-item label="账号">{{ authStore.userInfo?.username }}</el-form-item>
             <el-form-item label="身份">
               <el-tag>{{ roleLabel }}</el-tag>
@@ -36,10 +36,10 @@
         </el-card>
       </el-col>
 
-      <el-col :span="12">
+      <el-col :xs="24" :md="12">
         <el-card shadow="never">
           <template #header><span class="block-title">安全密码修改</span></template>
-          <el-form :model="passwordForm" label-width="110px">
+          <el-form :model="passwordForm" :label-width="isNarrowPhone ? undefined : '110px'" :label-position="isNarrowPhone ? 'top' : 'right'">
             <el-form-item label="原密码">
               <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="请输入当前密码" />
             </el-form-item>
@@ -67,6 +67,9 @@ import { reactive, ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useAuthStore, httpClient } from '../../stores/auth';
+import { useViewport } from '../../composables/useViewport';
+
+const { isNarrowPhone } = useViewport();
 
 const router = useRouter();
 const authStore = useAuthStore();

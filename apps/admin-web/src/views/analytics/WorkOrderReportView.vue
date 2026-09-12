@@ -5,7 +5,7 @@
       <el-card shadow="never" class="search-card">
         <el-form :model="queryForm" label-width="84px" size="small">
           <el-row :gutter="14">
-            <el-col :span="6">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="综合关键字">
                 <el-input
                   v-model="queryForm.keyword"
@@ -16,7 +16,7 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="6">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="空间位置">
                 <el-cascader
                   v-model="selectedSpaceCascade"
@@ -30,7 +30,7 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="6">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="故障分类">
                 <el-cascader
                   v-model="selectedCategoryCascade"
@@ -44,7 +44,7 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="6">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="工单状态">
                 <el-select
                   v-model="queryForm.statuses"
@@ -67,7 +67,7 @@
           </el-row>
 
           <el-row :gutter="14">
-            <el-col :span="6">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="责任技师">
                 <el-select
                   v-model="queryForm.workerId"
@@ -88,7 +88,7 @@
           </el-row>
 
           <el-row :gutter="14">
-            <el-col :span="6">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="紧急度过滤">
                 <el-select v-model="queryForm.isUrgent" placeholder="全部" clearable style="width: 100%;">
                   <el-option label="全部紧急度" :value="undefined" />
@@ -98,7 +98,7 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="6">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="数据库类型">
                 <el-select v-model="queryForm.isArchived" placeholder="选择数据库" style="width: 100%;">
                   <el-option label="活跃业务库 (默认)" :value="0" />
@@ -107,7 +107,7 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="8">
+            <el-col :xs="24" :sm="12" :md="12" :lg="8">
               <el-form-item label="提单时间段">
                 <el-date-picker
                   v-model="dateRange"
@@ -122,7 +122,7 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="4" style="display: flex; justify-content: flex-end; gap: 8px;">
+            <el-col :xs="24" :sm="12" :md="8" :lg="4" style="display: flex; justify-content: flex-end; gap: 8px;">
               <el-button type="primary" :icon="Search" @click="handleSearch">检索</el-button>
               <el-button :icon="Refresh" @click="handleReset">重置</el-button>
             </el-col>

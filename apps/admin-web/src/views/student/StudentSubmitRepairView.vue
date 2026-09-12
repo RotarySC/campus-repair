@@ -24,7 +24,7 @@
         <span class="card-title">极速报修提单</span>
       </template>
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" class="submit-form">
+      <el-form ref="formRef" :model="form" :rules="rules" :label-width="isNarrowPhone ? undefined : '110px'" :label-position="isNarrowPhone ? 'top' : 'right'" class="submit-form">
         <el-divider content-position="left">报修故障位置</el-divider>
         <el-form-item label="空间节点" prop="spaceId">
           <el-cascader
@@ -32,7 +32,7 @@
             :options="spaceOptions"
             :props="cascaderProps"
             placeholder="请选择校区/楼栋/房间"
-            style="width: 420px"
+            style="width: 100%; max-width: 420px"
             @change="onSpaceChange"
           />
           <span v-if="spaceFullPathName" class="path-hint">{{ spaceFullPathName }}</span>
@@ -45,7 +45,7 @@
             :options="categoryOptions"
             :props="cascaderProps"
             placeholder="请选择分类与对应工种"
-            style="width: 420px"
+            style="width: 100%; max-width: 420px"
             @change="onCategoryChange"
           />
           <span v-if="categoryFullPathName" class="path-hint">{{ categoryFullPathName }}</span>
@@ -60,7 +60,7 @@
             maxlength="300"
             show-word-limit
             placeholder="请详细描述故障现象（如爆水管、断闸跳闸、插座松动等）"
-            style="width: 560px"
+            style="width: 100%; max-width: 560px"
             @input="saveDraft"
           />
         </el-form-item>
@@ -98,7 +98,7 @@
         </el-form-item>
 
         <el-form-item label="联系电话" prop="applicantPhone">
-          <el-input v-model="form.applicantPhone" placeholder="留空默认使用个人中心手机号" style="width: 280px" @input="saveDraft" />
+          <el-input v-model="form.applicantPhone" placeholder="留空默认使用个人中心手机号" style="width: 100%; max-width: 280px" @input="saveDraft" />
         </el-form-item>
 
         <el-form-item>
@@ -116,7 +116,10 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, UploadRequestOptions, UploadUserFile } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../../stores/auth';
+import { useViewport } from '../../composables/useViewport';
 import { compressImage } from '@campus/shared';
+
+const { isNarrowPhone } = useViewport();
 
 const router = useRouter();
 const authStore = useAuthStore();

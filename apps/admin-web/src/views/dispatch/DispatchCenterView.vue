@@ -228,7 +228,7 @@
               placeholder="师傅姓名/电话"
               clearable
               size="small"
-              style="width: 140px;"
+              class="worker-search-input"
               @change="fetchWorkers"
             />
           </div>
@@ -792,6 +792,7 @@ function formatTime(isoStr?: string): string {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .pane-search {
@@ -1083,6 +1084,8 @@ function formatTime(isoStr?: string): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .board-title-wrap {
@@ -1126,7 +1129,7 @@ function formatTime(isoStr?: string): string {
 
 .worker-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 12px;
 }
 
@@ -1288,5 +1291,40 @@ function formatTime(isoStr?: string): string {
   gap: 4px;
   font-size: 12px;
   color: #6B7280;
+}
+
+.worker-search-input {
+  width: 150px;
+  flex: 1 1 130px;
+  min-width: 0;
+}
+
+/* ---------- 窄屏堆叠（≤1023px）：双栏改上下布局，页面自然滚动 ---------- */
+@media (max-width: 1023px) {
+  .dispatch-console {
+    height: auto;
+    min-height: calc(100vh - var(--topbar-h, 56px));
+    overflow: visible;
+  }
+
+  .split-workbench {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .left-pane,
+  .right-pane {
+    flex: 1 1 auto;
+    overflow: visible;
+  }
+
+  /* 待办池保留内部滚动并限高，避免超长列表把页面无限拉高 */
+  .order-list-scroll {
+    max-height: 65vh;
+  }
+
+  .worker-grid-scroll {
+    overflow-y: visible;
+  }
 }
 </style>

@@ -25,25 +25,25 @@
 
       <!-- 2. 库存态势 KPI 指标卡片 -->
       <el-row :gutter="16" class="kpi-row">
-        <el-col :span="6">
+        <el-col :xs="12" :md="6">
           <el-card shadow="never" class="kpi-card">
             <div class="kpi-title">物料总档案数</div>
             <div class="kpi-num">{{ summary.totalPartCount }} <span class="kpi-unit">种</span></div>
           </el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :md="6">
           <el-card shadow="never" class="kpi-card alert-kpi">
             <div class="kpi-title">低库存警戒物料</div>
             <div class="kpi-num text-danger">{{ summary.lowStockCount }} <span class="kpi-unit">种</span></div>
           </el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :md="6">
           <el-card shadow="never" class="kpi-card">
             <div class="kpi-title">正常储备物料</div>
             <div class="kpi-num text-success">{{ summary.normalCount }} <span class="kpi-unit">种</span></div>
           </el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :md="6">
           <el-card shadow="never" class="kpi-card">
             <div class="kpi-title">已停用下架</div>
             <div class="kpi-num text-muted">{{ summary.disabledCount }} <span class="kpi-unit">种</span></div>
@@ -215,7 +215,7 @@
     <el-dialog
       v-model="editDialogVisible"
       :title="editForm.id ? '编辑耗材备件档案' : '新建耗材备件物料'"
-      width="520px"
+      width="min(520px, 94vw)"
       :close-on-click-modal="false"
     >
       <el-form label-width="110px" label-position="right">
@@ -286,7 +286,7 @@
     <el-dialog
       v-model="inboundDialogVisible"
       title="采购登记批量入库"
-      width="480px"
+      width="min(480px, 94vw)"
       :close-on-click-modal="false"
     >
       <div v-if="selectedPartForInbound" style="margin-bottom: 14px; background: #F9FAFB; padding: 10px 14px; border-radius: 6px;">
@@ -347,7 +347,7 @@
     <el-drawer
       v-model="historyDrawerVisible"
       :title="`采购入库明细流水 - ${selectedPartForHistory?.partName || ''}`"
-      size="560px"
+      size="min(560px, 94vw)"
       direction="rtl"
     >
       <div v-loading="loadingHistory">

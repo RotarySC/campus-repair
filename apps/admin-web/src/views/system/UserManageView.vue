@@ -76,7 +76,7 @@
     </div>
 
     <!-- 导入报告弹窗 -->
-    <el-dialog v-model="reportVisible" title="Excel 批量导入报告" width="600px">
+    <el-dialog v-model="reportVisible" title="Excel 批量导入报告" width="min(600px, 94vw)">
       <el-result
         :icon="importReport.failureCount === 0 ? 'success' : 'warning'"
         :title="`成功导入 ${importReport.successCount} 条，失败 ${importReport.failureCount} 条`"
@@ -227,6 +227,22 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
+}
+.search-inputs .el-input {
+  width: 220px;
+  max-width: 100%;
+}
+.search-inputs .el-select {
+  width: 160px;
+  max-width: 100%;
+}
+@media (max-width: 767px) {
+  .search-inputs .el-input,
+  .search-inputs .el-select {
+    width: 100%;
+    flex: 1 1 160px;
+  }
 }
 .pagination-row {
   display: flex;

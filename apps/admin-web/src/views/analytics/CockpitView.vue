@@ -2,7 +2,7 @@
   <div ref="dashboardRef" class="cockpit-dashboard">
     <!-- 顶层核心指标：6 张 KPI 统计卡 -->
     <el-row :gutter="16" class="kpi-row">
-      <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :lg="4">
+      <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :md="8" :lg="4">
         <el-card shadow="never" class="kpi-card">
           <div class="kpi-title">{{ card.label }}</div>
           <div class="kpi-value" :style="{ color: card.color }">
@@ -27,7 +27,7 @@
 
     <!-- 空间热力排行 + 故障大类占比 -->
     <el-row :gutter="16" class="panel-row">
-      <el-col :xs="24" :lg="12">
+      <el-col :xs="24" :md="12">
         <el-card shadow="never" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -40,7 +40,7 @@
         </el-card>
       </el-col>
 
-      <el-col :xs="24" :lg="12">
+      <el-col :xs="24" :md="12">
         <el-card shadow="never" class="panel-card">
           <template #header>
             <div class="panel-header">
