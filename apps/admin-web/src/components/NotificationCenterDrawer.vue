@@ -6,7 +6,10 @@
         <el-radio-button :label="0">未读</el-radio-button>
         <el-radio-button :label="1">已读</el-radio-button>
       </el-radio-group>
-      <el-button type="primary" link size="small" @click="handleMarkAllRead">一键全部已读</el-button>
+      <div class="toolbar-actions">
+        <el-button type="warning" link size="small" @click="openBroadcastDialog">发布全校广播</el-button>
+        <el-button type="primary" link size="small" @click="handleMarkAllRead">一键全部已读</el-button>
+      </div>
     </div>
 
     <div v-loading="loading" class="notification-list">
@@ -62,17 +65,53 @@
         @current-change="fetchData"
       />
     </div>
+
+    <el-dialog
+      v-model="broadcastVisible"
+      title="发布全校广播公告"
+      width="480px"
+      :close-on-click-modal="false"
+      append-to-body
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="广播将扇出推送至全部在册在校用户，请确认内容准确后发布"
+        style="margin-bottom: 16px"
+      />
+      <el-form ref="broadcastFormRef" :model="broadcastForm" :rules="broadcastRules" label-width="64px">
+        <el-form-item label="标题" prop="title">
+          <el-input v-model="broadcastForm.title" maxlength="50" show-word-limit placeholder="如：全校供水阀门维保停水通知" />
+        </el-form-item>
+        <el-form-item label="正文" prop="content">
+          <el-input
+            v-model="broadcastForm.content"
+            type="textarea"
+            :rows="5"
+            maxlength="500"
+            show-word-limit
+            placeholder="请输入公告详细正文，例如停水/停电/检修时间与影响范围"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="broadcastVisible = false">取消</el-button>
+        <el-button type="primary" :loading="broadcastSubmitting" @click="submitBroadcast">确认发布</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { ElMessage, FormInstance, FormRules } from 'element-plus';
 import { httpClient } from '../stores/auth';
 import {
   NotificationItemVO,
-  NotificationCategoryLabels
+  NotificationCategoryLabels,
+  BroadcastNotificationDTO
 } from '@campus/shared';
 
 const emit = defineEmits<{
@@ -159,6 +198,44 @@ function handleItemClick(item: NotificationItemVO) {
     router.push({ path: '/dispatch', query: { orderId: item.relatedOrderId } });
   }
 }
+
+const broadcastVisible = ref(false);
+const broadcastSubmitting = ref(false);
+const broadcastFormRef = ref<FormInstance>();
+const broadcastForm = ref<BroadcastNotificationDTO>({ title: '', content: '' });
+const broadcastRules: FormRules = {
+  title: [{ required: true, message: '请输入广播公告标题', trigger: 'blur' }],
+  content: [{ required: true, message: '请输入广播公告正文', trigger: 'blur' }]
+};
+
+function openBroadcastDialog() {
+  broadcastForm.value = { title: '', content: '' };
+  broadcastVisible.value = true;
+}
+
+async function submitBroadcast() {
+  const formEl = broadcastFormRef.value;
+  if (!formEl) return;
+  const valid = await formEl.validate().catch(() => false);
+  if (!valid) return;
+
+  broadcastSubmitting.value = true;
+  try {
+    const res = await httpClient.post<number>('/notifications/broadcast', broadcastForm.value);
+    if (res.code === 200 && res.data != null) {
+      ElMessage.success(`广播发布成功，已推送至 ${res.data} 位在校用户`);
+      broadcastVisible.value = false;
+      emit('unread-updated');
+      fetchData();
+    } else {
+      ElMessage.error(res.message || '广播发布失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '广播发布失败');
+  } finally {
+    broadcastSubmitting.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -174,6 +251,11 @@ function handleItemClick(item: NotificationItemVO) {
   padding-bottom: 12px;
   border-bottom: 1px solid #F3F4F6;
   margin-bottom: 12px;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .notification-list {
   flex: 1;

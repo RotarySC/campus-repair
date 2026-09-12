@@ -34,6 +34,11 @@ export interface NotificationQueryDTO {
   category?: string;
 }
 
+export interface BroadcastNotificationDTO {
+  title: string;
+  content: string;
+}
+
 export interface OrderTimelineLogVO {
   id: number;
   orderId: number;
