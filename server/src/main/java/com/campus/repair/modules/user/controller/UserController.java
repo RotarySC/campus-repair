@@ -3,11 +3,16 @@ package com.campus.repair.modules.user.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.campus.repair.common.result.R;
 import com.campus.repair.framework.security.LoginUserPrincipal;
+import com.campus.repair.modules.user.dto.AvatarUpdateRequest;
 import com.campus.repair.modules.user.dto.PasswordChangeRequest;
 import com.campus.repair.modules.user.dto.UserProfileUpdateRequest;
 import com.campus.repair.modules.user.entity.SysUser;
+import com.campus.repair.modules.user.service.ProfileStatisticsService;
 import com.campus.repair.modules.user.service.UserService;
+import com.campus.repair.modules.user.vo.MyWorkerProfileVO;
+import com.campus.repair.modules.user.vo.RepairSummaryVO;
 import com.campus.repair.modules.user.vo.UserImportResultVO;
+import com.campus.repair.modules.user.vo.UserProfileVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -24,11 +29,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserController {
 
     private final UserService userService;
+    private final ProfileStatisticsService profileStatisticsService;
 
     @Operation(summary = "获取当前已登录用户信息")
     @GetMapping("/me")
-    public R<LoginUserPrincipal> getCurrentUser(@AuthenticationPrincipal LoginUserPrincipal user) {
-        return R.success(user);
+    public R<UserProfileVO> getCurrentUser(@AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(userService.getProfile(user.getUserId()));
     }
 
     @Operation(summary = "修改登录密码")
@@ -39,12 +45,33 @@ public class UserController {
         return R.success("密码修改成功", null);
     }
 
-    @Operation(summary = "更新个人资料与默认住址")
+    @Operation(summary = "更新个人资料与默认住址（全量覆盖）")
     @PutMapping("/profile")
     public R<Void> updateProfile(@AuthenticationPrincipal LoginUserPrincipal user,
                                  @Valid @RequestBody UserProfileUpdateRequest request) {
         userService.updateProfile(user.getUserId(), request);
         return R.success("资料更新成功", null);
+    }
+
+    @Operation(summary = "更新个人头像")
+    @PutMapping("/me/avatar")
+    public R<UserProfileVO> updateAvatar(@AuthenticationPrincipal LoginUserPrincipal user,
+                                         @Valid @RequestBody AvatarUpdateRequest request) {
+        return R.success("头像更新成功", userService.updateAvatar(user.getUserId(), request.getAvatarUrl()));
+    }
+
+    @Operation(summary = "师生获取本人报修概览（个人中心统计区）")
+    @GetMapping("/me/repair-summary")
+    @PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
+    public R<RepairSummaryVO> getRepairSummary(@AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(profileStatisticsService.getRepairSummary(user.getUserId()));
+    }
+
+    @Operation(summary = "师傅获取本人作业概览（无档案时 data 为 null）")
+    @GetMapping("/me/worker-profile")
+    @PreAuthorize("hasRole('REPAIR_WORKER')")
+    public R<MyWorkerProfileVO> getMyWorkerProfile(@AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(profileStatisticsService.getMyWorkerProfile(user.getUserId()));
     }
 
     @Operation(summary = "管理员分页查询用户台账")

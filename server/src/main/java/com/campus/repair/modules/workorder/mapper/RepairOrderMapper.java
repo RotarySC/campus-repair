@@ -26,4 +26,14 @@ public interface RepairOrderMapper extends BaseMapper<RepairOrder> {
 
     @Select("SELECT * FROM repair_order WHERE status = 'PENDING_ACCEPTANCE' AND finish_time <= #{thresholdTime} AND deleted = 0")
     java.util.List<RepairOrder> selectPendingAcceptanceTimeoutOrders(@Param("thresholdTime") LocalDateTime thresholdTime);
+
+    /**
+     * 某个师生本人的报修单按**原始状态**分组计数（个人中心「我的报修概览」用）。
+     * 手写 SQL 必须自带 `deleted = 0`（`@TableLogic` 只作用于 MyBatis-Plus 生成的 SQL）。
+     * 分桶在 Java 侧做，SQL 不做字符串/状态归并。
+     */
+    @Select("SELECT status, COUNT(*) AS status_count FROM repair_order " +
+            "WHERE student_user_id = #{userId} AND deleted = 0 GROUP BY status")
+    java.util.List<com.campus.repair.modules.workorder.dto.OrderStatusCountRow> countByStatusForStudent(
+            @Param("userId") Long userId);
 }
