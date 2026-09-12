@@ -11,7 +11,7 @@
 1. **任务一（用户截图：下拉列表并排展开被遮挡 + 节点左侧有圆圈）**：新增 `components/DrilldownCascader.vue`（单列逐级下钻、面包屑可跳级、**不渲染任何 radio**），已替换**全仓 5 处** `el-cascader`（工单报表 空间/分类、学生提单 空间/分类、个人中心 默认报修空间）。顺手修掉两个真缺陷：① EP `el-popover` 的 `triggerKeys` 默认把 Enter/Space 当开关，会让「Enter 下钻后约 400ms 面板自己关闭」；② 学生提单页 `restoreDraft()` 只回填 `form.spaceId` 不回填 `spacePath`，导致「表单已有值但选择器显示为空」。
 2. **任务二（用户两张问题单：移动端抽屉里侧边栏文字消失 + 要求标题栏加收起/展开）**：根因是文字显隐用了**原始** `collapsed` 而非有效折叠态，已引入 `isCollapsed = collapsed && !isNarrowPhone` 统一四处判据；品牌行右侧新增 `.brand-toggle`（≥768＝240↔64，抽屉档＝关闭抽屉）。**底部「收起侧边栏」按钮已按用户后续要求删除**，标题栏按钮现为唯一入口（探针加 `legacyFooter === false` 断言防回归）。
 3. **验证**：`vue-tsc` exit 0；`.scratch/assert-drill.mjs` **126/126**（删除底部按钮后重跑仍全绿）；`.scratch/assert-shell-toggle.mjs` **42/42**（41 + 新增「底部无第二入口」断言）；两个探针都是直连 Edge 9222 的设备度量仿真（不打扰用户窗口）。
-4. **已提交（本会话尾段完成 P0）**：见 §1 提交表——两块改动拆成 `feat` / `fix` 两个 commit，另有 `docs` 与 `chore`（固化 `.scratch/campus-repair-system/` 的 13 个删除）各一。
+4. **已提交 + 已合并（P0、P1 均完成）**：见 §1 提交表——两块改动拆成 `feat` / `fix` 两个 commit，另有 `docs` 与 `chore`（固化 `.scratch/campus-repair-system/` 的 13 个删除）各一；随后 `--ff-only` 合并 `feat/narrow-card-list` → `master`（`58e53bb` → `717a36a`，7 个提交全部 ff，分支保留）。
 5. **顺带查清两条「探针级」坑**（不是产品缺陷，但极易误判）：后台标签里 `Emulation.setDeviceMetricsOverride` **不投递 resize 事件**（`innerWidth` 已变、JS 断点状态停旧档）；宽度/transform 的 CSS 过渡在后台标签**卡死**。对策与复现命令见 §4。
 6. **服务实测**（本文件写作时）：后端 8080、前端 3000、CDP 代理 3456、Edge 9222 **均在跑**；重启配方见 `AGENTS.md` §2.1。
 
@@ -19,9 +19,9 @@
 
 | 项 | 值 |
 | :--- | :--- |
-| 当前分支 | `feat/narrow-card-list` |
-| HEAD（本文件更新前） | `8530ee4` feat(admin-web): 运营指挥大屏并入控制台概览并下线大屏页 |
-| 领先 master | 3 个提交（`b101eb8` 卡片列表 → `f82b6dd` HANDOFF → `8530ee4` 大屏并入），master 为其祖先，**可直接 ff 合并**；本会话又追加 4 个提交（见下） |
+| 当前分支 | `master`（`feat/narrow-card-list` 已 **`--ff-only` 合并**，无合并提交；分支保留未删） |
+| HEAD（P0 时） | `8530ee4` feat(admin-web): 运营指挥大屏并入控制台概览并下线大屏页 |
+| 合并入 master | 原 3 个提交（`b101eb8` 卡片列表 → `f82b6dd` HANDOFF → `8530ee4` 大屏并入）+ 本会话 4 个提交（`4a87e09` 下钻 / `d9cefdb` 外壳 / `82c10b2` docs / `717a36a` chore），共 **7 个**，全部 ff |
 | 本会话提交（①②） | ① `feat(admin-web)` 下钻选择器：`components/DrilldownCascader.vue` + 3 视图 + `.scratch/assert-drill.mjs`；② `fix(admin-web)` 外壳折叠修复 + 标题栏入口（并删除底部重复入口）：`layouts/AdminLayout.vue` + `.scratch/assert-shell-toggle.mjs` |
 | 本会话提交（③④） | ③ `docs`：`AGENTS.md` + 本文件；④ `chore`：固化 `.scratch/campus-repair-system/` 的 **13 个删除** |
 | 其他未跟踪噪声 | `.scratch/` 下其余探针脚本/产物（含 `drill/`、`shell/` 截图）、`.zcode/`；探针入库策略仍待定（§3 可选行） |
@@ -45,7 +45,7 @@
 | :--- | :--- | :--- |
 | ~~P0~~ 已完成 | 提交本会话两块改动（拆 `feat` 下钻选择器 / `fix` 外壳折叠与标题栏入口）+ 单独的 `docs` 提交 | §1 提交表 |
 | ~~P0~~ 已完成 | 固化 `.scratch/campus-repair-system/` 的 13 个删除 | §1 提交表 ④ |
-| P1 | 合并 `feat/narrow-card-list` → master（ff）——上一份 HANDOFF 的 P1，仍未做 | §1 |
+| ~~P1~~ 已完成 | 合并 `feat/narrow-card-list` → master（`--ff-only`，master 由 `58e53bb` 推进到 `717a36a`；分支按本仓惯例保留未删） | §1 |
 | P2 | 上一份 HANDOFF 的既有 P2：师生「我的工单」检索框、详情页 ≤2★ 差评返工真机实测、EP 按需引入、`worker/finish` 真机拍照上传 | 上一版 HANDOFF §3 |
 | 观察 | 平板档手动折叠落库的语义（§2）——**是否算预期**仍待你确认 | 本会话实测 |
 | 可选 | 把探针目录纳入 `.gitignore` 或明确「`.scratch/` 不入库」策略（本会话已入库 2 个探针，其余仍散在未跟踪区） | §1 |
