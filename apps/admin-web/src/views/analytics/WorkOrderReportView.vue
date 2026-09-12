@@ -18,13 +18,11 @@
 
             <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="空间位置">
-                <el-cascader
+                <DrilldownCascader
                   v-model="selectedSpaceCascade"
                   :options="spatialOptions"
-                  :props="{ checkStrictly: true, value: 'id', label: 'name' }"
+                  label="空间位置"
                   placeholder="四级空间网格树"
-                  clearable
-                  style="width: 100%;"
                   @change="onSpaceChange"
                 />
               </el-form-item>
@@ -32,13 +30,12 @@
 
             <el-col :xs="24" :sm="12" :md="8" :lg="6">
               <el-form-item label="故障分类">
-                <el-cascader
+                <DrilldownCascader
                   v-model="selectedCategoryCascade"
                   :options="categoryOptions"
-                  :props="{ checkStrictly: true, value: 'id', label: 'name' }"
+                  label="故障分类"
                   placeholder="两级故障分类树"
-                  clearable
-                  style="width: 100%;"
+                  root-label="全部分类"
                   @change="onCategoryChange"
                 />
               </el-form-item>
@@ -230,6 +227,7 @@ import {
 import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import DrilldownCascader from '../../components/DrilldownCascader.vue';
 import type { CardTagType, TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   OrderStatusLabels,

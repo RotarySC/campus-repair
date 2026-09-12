@@ -19,13 +19,11 @@
               <el-input v-model="profileForm.department" placeholder="所在单位" />
             </el-form-item>
             <el-form-item label="默认报修空间">
-              <el-cascader
+              <DrilldownCascader
                 v-model="spacePath"
                 :options="spaceOptions"
-                :props="cascaderProps"
+                label="默认报修空间"
                 placeholder="选择默认宿舍/办公房间"
-                style="width: 100%"
-                clearable
                 @change="onSpaceChange"
               />
             </el-form-item>
@@ -68,6 +66,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
+import DrilldownCascader from '../../components/DrilldownCascader.vue';
 
 const { isNarrowPhone } = useViewport();
 
@@ -78,8 +77,6 @@ const profileLoading = ref(false);
 const passwordLoading = ref(false);
 const spaceOptions = ref<any[]>([]);
 const spacePath = ref<number[]>([]);
-
-const cascaderProps = { value: 'id', label: 'name', children: 'children', emitPath: true };
 
 const profileForm = reactive({
   realName: '',

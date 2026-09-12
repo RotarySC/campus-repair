@@ -27,10 +27,10 @@
       <el-form ref="formRef" :model="form" :rules="rules" :label-width="isNarrowPhone ? undefined : '110px'" :label-position="isNarrowPhone ? 'top' : 'right'" class="submit-form">
         <el-divider content-position="left">报修故障位置</el-divider>
         <el-form-item label="空间节点" prop="spaceId">
-          <el-cascader
+          <DrilldownCascader
             v-model="spacePath"
             :options="spaceOptions"
-            :props="cascaderProps"
+            label="空间节点"
             placeholder="请选择校区/楼栋/房间"
             style="width: 100%; max-width: 420px"
             @change="onSpaceChange"
@@ -40,11 +40,12 @@
 
         <el-divider content-position="left">故障类型与工种</el-divider>
         <el-form-item label="故障细类" prop="categoryId">
-          <el-cascader
+          <DrilldownCascader
             v-model="categoryPath"
             :options="categoryOptions"
-            :props="cascaderProps"
+            label="故障细类"
             placeholder="请选择分类与对应工种"
+            root-label="全部分类"
             style="width: 100%; max-width: 420px"
             @change="onCategoryChange"
           />
@@ -117,6 +118,7 @@ import { ElMessage, ElMessageBox, FormInstance, UploadRequestOptions, UploadUser
 import { Plus } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
+import DrilldownCascader from '../../components/DrilldownCascader.vue';
 import { compressImage } from '@campus/shared';
 
 const { isNarrowPhone } = useViewport();
@@ -138,8 +140,6 @@ const categoryFullPathName = ref('');
 const spaceOptions = ref<any[]>([]);
 const categoryOptions = ref<any[]>([]);
 const fileList = ref<UploadUserFile[]>([]);
-
-const cascaderProps = { value: 'id', label: 'name', children: 'children', emitPath: true };
 
 const form = reactive({
   spaceId: null as number | null,
@@ -181,6 +181,9 @@ function restoreDraft() {
       spaceFullPathName.value = data.selectedSpaceName || '';
       form.categoryId = data.categoryId;
       categoryFullPathName.value = data.selectedCategoryName || '';
+      // 草稿里只有 id：必须把 id 路径回填给选择器，否则"表单已有值但控件显示为空"
+      spacePath.value = data.spaceId ? findIdPath(spaceOptions.value, data.spaceId) || [] : [];
+      categoryPath.value = data.categoryId ? findIdPath(categoryOptions.value, data.categoryId) || [] : [];
       form.description = data.description || '';
       form.appointmentPeriod = data.appointmentPeriod || '上午08:30-11:30';
       form.applicantPhone = data.applicantPhone || '';
