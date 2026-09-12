@@ -2,11 +2,13 @@ package com.campus.repair.modules.user.service;
 
 import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.modules.auth.dto.RegisterRequest;
+import com.campus.repair.modules.spatial.service.SpatialNodeService;
 import com.campus.repair.modules.user.dto.PasswordChangeRequest;
 import com.campus.repair.modules.user.dto.UserImportRow;
 import com.campus.repair.modules.user.dto.UserProfileUpdateRequest;
@@ -17,6 +19,7 @@ import com.campus.repair.modules.user.mapper.SysRoleMapper;
 import com.campus.repair.modules.user.mapper.SysUserMapper;
 import com.campus.repair.modules.user.mapper.SysUserRoleMapper;
 import com.campus.repair.modules.user.vo.UserImportResultVO;
+import com.campus.repair.modules.user.vo.UserProfileVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,6 +40,7 @@ public class UserService {
     private final SysRoleMapper roleMapper;
     private final SysUserRoleMapper userRoleMapper;
     private final PasswordEncoder passwordEncoder;
+    private final SpatialNodeService spatialNodeService;
 
     @Transactional(rollbackFor = Exception.class)
     public void register(RegisterRequest request) {
@@ -93,14 +97,18 @@ public class UserService {
         userMapper.updateById(user);
     }
 
+    /**
+     * 更新个人资料：**全量覆盖**语义（department/defaultSpaceId 传空即清空）。
+     * 手机号变化时做唯一性校验；默认空间若给出则必须真实存在。
+     */
     public void updateProfile(Long userId, UserProfileUpdateRequest request) {
         SysUser user = userMapper.selectById(userId);
         if (user == null || user.getStatus() == 0) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
-        if (StringUtils.hasText(request.getPhone()) && !request.getPhone().equals(user.getPhone())) {
-            String newPhone = request.getPhone().trim();
+        String newPhone = request.getPhone().trim();
+        if (!newPhone.equals(user.getPhone())) {
             Long count = userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
                     .eq(SysUser::getPhone, newPhone)
                     .ne(SysUser::getId, userId));
@@ -110,20 +118,38 @@ public class UserService {
             user.setPhone(newPhone);
         }
 
-        if (StringUtils.hasText(request.getRealName())) {
-            user.setRealName(request.getRealName().trim());
-        }
-        if (StringUtils.hasText(request.getDepartment())) {
-            user.setDepartment(request.getDepartment().trim());
-        }
-        if (request.getDefaultSpaceId() != null) {
-            user.setDefaultSpaceId(request.getDefaultSpaceId());
-        }
-        if (StringUtils.hasText(request.getAvatarUrl())) {
-            user.setAvatarUrl(request.getAvatarUrl().trim());
+        if (request.getDefaultSpaceId() != null
+                && spatialNodeService.getNodeById(request.getDefaultSpaceId()) == null) {
+            // 注意：BusinessException(String) 的 code 是 500，参数类错误必须显式给 PARAM_INVALID
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "默认报修空间不存在");
         }
 
+        String department = StringUtils.hasText(request.getDepartment())
+                ? request.getDepartment().trim() : null;
+
+        // ⚠️ 不能用 updateById：MyBatis-Plus 默认 FieldStrategy.NOT_NULL 会**跳过 null 字段**，
+        // 于是「清空单位/默认空间」永远写不进库（本轮实测：传空串后回读仍是旧值）。
+        // 这里用 UpdateWrapper 显式 set，null 才会真的落成 SET xxx = NULL。
+        userMapper.update(null, new LambdaUpdateWrapper<SysUser>()
+                .eq(SysUser::getId, userId)
+                .set(SysUser::getRealName, request.getRealName().trim())
+                .set(SysUser::getPhone, newPhone)
+                .set(SysUser::getDepartment, department)
+                .set(SysUser::getDefaultSpaceId, request.getDefaultSpaceId()));
+    }
+
+    /**
+     * 更新头像地址（独立于资料更新：避免「只改头像」把姓名/手机覆盖为空）。
+     * 地址合法性由 {@link com.campus.repair.modules.user.dto.AvatarUpdateRequest} 的白名单正则保证。
+     */
+    public UserProfileVO updateAvatar(Long userId, String avatarUrl) {
+        SysUser user = userMapper.selectById(userId);
+        if (user == null || user.getStatus() == 0) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        user.setAvatarUrl(avatarUrl.trim());
         userMapper.updateById(user);
+        return buildProfile(user);
     }
 
     public UserImportResultVO importUsers(MultipartFile file) {
@@ -179,6 +205,42 @@ public class UserService {
 
     public SysUser getUserById(Long userId) {
         return userMapper.selectById(userId);
+    }
+
+    /**
+     * 组装当前用户的完整资料视图（登录响应与 GET /users/me 共用同一份契约）。
+     * 用户不存在或已停用时抛 USER_NOT_FOUND。
+     */
+    public UserProfileVO getProfile(Long userId) {
+        SysUser user = userMapper.selectById(userId);
+        if (user == null || (user.getStatus() != null && user.getStatus() == 0)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        return buildProfile(user);
+    }
+
+    /**
+     * 由已加载的用户实体组装资料视图，避免调用方重复 10 字段 builder。
+     * 角色码取自 sys_user_role，为空时回退到 userType（与登录流程既有行为一致）。
+     */
+    public UserProfileVO buildProfile(SysUser user) {
+        List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            roleCodes = List.of(user.getUserType());
+        }
+        return UserProfileVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .realName(user.getRealName())
+                .phone(user.getPhone())
+                .department(user.getDepartment())
+                .userType(user.getUserType())
+                .roleCodes(roleCodes)
+                .isFirstLogin(user.getIsFirstLogin())
+                .defaultSpaceId(user.getDefaultSpaceId())
+                .avatarUrl(user.getAvatarUrl())
+                .createdAt(user.getCreatedAt())
+                .build();
     }
 
     public List<SysUser> getAllActiveUsers() {

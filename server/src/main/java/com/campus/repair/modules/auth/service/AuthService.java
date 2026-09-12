@@ -10,6 +10,7 @@ import com.campus.repair.modules.auth.vo.CaptchaResponseVO;
 import com.campus.repair.modules.auth.vo.LoginResponseVO;
 import com.campus.repair.modules.user.entity.SysUser;
 import com.campus.repair.modules.user.mapper.SysUserMapper;
+import com.campus.repair.modules.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +34,7 @@ import java.util.UUID;
 public class AuthService {
 
     private final SysUserMapper userMapper;
+    private final UserService userService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final AuthStateStore authStateStore;
@@ -141,18 +143,7 @@ public class AuthService {
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .expiresIn(7200L)
-                .userInfo(LoginResponseVO.UserInfoVO.builder()
-                        .id(user.getId())
-                        .username(user.getUsername())
-                        .realName(user.getRealName())
-                        .phone(user.getPhone())
-                        .department(user.getDepartment())
-                        .userType(user.getUserType())
-                        .roleCodes(roleCodes)
-                        .isFirstLogin(user.getIsFirstLogin())
-                        .defaultSpaceId(user.getDefaultSpaceId())
-                        .avatarUrl(user.getAvatarUrl())
-                        .build())
+                .userInfo(userService.buildProfile(user))
                 .build();
     }
 
@@ -180,18 +171,7 @@ public class AuthService {
                 .accessToken(newAccessToken)
                 .refreshToken(newRefreshToken)
                 .expiresIn(7200L)
-                .userInfo(LoginResponseVO.UserInfoVO.builder()
-                        .id(user.getId())
-                        .username(user.getUsername())
-                        .realName(user.getRealName())
-                        .phone(user.getPhone())
-                        .department(user.getDepartment())
-                        .userType(user.getUserType())
-                        .roleCodes(roleCodes)
-                        .isFirstLogin(user.getIsFirstLogin())
-                        .defaultSpaceId(user.getDefaultSpaceId())
-                        .avatarUrl(user.getAvatarUrl())
-                        .build())
+                .userInfo(userService.buildProfile(user))
                 .build();
     }
 
