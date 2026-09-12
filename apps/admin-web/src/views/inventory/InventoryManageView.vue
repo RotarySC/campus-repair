@@ -748,6 +748,22 @@ async function handleExportAdvice() {
   align-items: center;
   gap: 10px;
 }
+/* 窄屏：右侧「搜索框 + 新增 + 导出」一行放不下，换行内排；搜索框改流式宽度 */
+.toolbar-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .toolbar-left, .toolbar-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .toolbar-right .el-input {
+    width: 100% !important;
+    max-width: 100%;
+  }
+}
 
 .low-stock-text {
   color: #F5222D;

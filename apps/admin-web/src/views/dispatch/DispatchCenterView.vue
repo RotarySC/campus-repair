@@ -974,12 +974,16 @@ function formatTime(isoStr?: string): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
 }
 
 .order-no-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .order-no {

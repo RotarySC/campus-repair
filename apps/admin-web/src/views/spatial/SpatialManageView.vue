@@ -391,6 +391,17 @@ onMounted(() => {
   padding-right: 8px;
   min-width: 0;
 }
+/* 标题组必须可收缩：否则标题 + 全路径（nowrap）会把操作组顶出卡片（<768px 实测溢出 233px） */
+.node-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .full-path {
   font-size: 12px;
   color: #9CA3AF;
@@ -398,12 +409,25 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 .node-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+  margin-left: auto;
+}
+/* 窄档：全路径是辅助信息，先让位；操作组允许换行，保证「启/添加下级/删除」始终可点 */
+@media (max-width: 767px) {
+  .node-title .full-path {
+    display: none;
+  }
+  .node-actions {
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 .text-muted {
   color: #9CA3AF;

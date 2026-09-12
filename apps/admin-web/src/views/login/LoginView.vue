@@ -120,8 +120,9 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 100vw;
-  height: 100vh;
+  /* 不用 100vw：vw 含滚动条宽度，会把页面撑出横向滚动（实测 390px 视口下溢出 32px） */
+  width: 100%;
+  min-height: 100vh;
   background: linear-gradient(135deg, #0B132B 0%, #1C2541 50%, #1677FF 100%);
 }
 .login-card {

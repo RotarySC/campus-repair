@@ -2,6 +2,8 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
+// 必须排在 EP 样式之后：窄档（<768px）全局适配层，收敛 EP 默认度量导致的横向溢出
+import './styles/responsive.css';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 
 import App from './App.vue';

@@ -1,0 +1,91 @@
+/**
+ * 全局窄档适配层（<768px）——只解决「Element Plus 默认度量在手机上过宽」这一类系统性问题：
+ * 页签/弹窗/表单标签/消息框/分页/按钮组的宽度与密度，以及表格横向滚动兜底。
+ *
+ * 为什么需要全局层：这些组件在单文件组件里没有类名可挂钩（.el-dialog 的宽度由属性写死、
+ * .el-tabs__item 的宽度由 EP 默认 padding 决定），逐页写死像素宽的旧写法又无法逐页修补。
+ * 业务特有的布局问题（工具栏按钮不换行、树节点操作区撑破卡片）仍在各自 SFC 里就近修复。
+ *
+ * 该文件必须在 main.ts 中于 'element-plus/dist/index.css' 之后导入。
+ */
+
+/* ---------- 基础重置：全仓此前没有任何全局样式入口 ---------- */
+/* 1) border-box：登录卡等元素 width 与 padding 相加会精确撑出 32px 横向溢出（实测 390px 视口） */
+/* 2) body margin:0：UA 默认 8px 让所有页面内容整体右移 16px（实测：全局最大宽度 374px = 390 - 16） */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+/* ---------- 超窄兜底（<420px）：极窄屏下 EP 默认表格最小列宽会让列头相互挤压 ---------- */
+@media (max-width: 479px) {
+  .el-table .cell {
+    padding: 0 6px;
+  }
+}
+
+@media (max-width: 767px) {
+  /* 页签：EP 默认 20px 内边距在 3 个中文页签下会超出容器并被裁掉（用户点不到第三个页签） */
+  .el-tabs__item {
+    padding: 0 11px;
+    font-size: 13px;
+  }
+  /* EP 默认 overflow:hidden 会让溢出的页签既滚动不了也点不到；改为可横向滚动（隐藏滚动条保持视觉干净） */
+  .el-tabs__nav-scroll {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .el-tabs__nav-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 弹窗/抽屉/消息框：属性写死的 460/480/540px 在 390px 视口下会横向溢出 */
+  .el-dialog {
+    width: min(92vw, var(--el-dialog-width, 92vw)) !important;
+    max-width: 92vw;
+    margin-top: 8vh !important;
+  }
+  .el-drawer.rtl,
+  .el-drawer.ltr {
+    width: min(92vw, var(--el-drawer-width, 92vw)) !important;
+    max-width: 92vw;
+  }
+  .el-message-box {
+    width: min(92vw, 420px) !important;
+    max-width: 92vw;
+  }
+
+  /* 表单：标签置顶，避免 label-width 与输入框在窄屏互相挤压（行内 style 的 label-position 仍优先） */
+  .el-form-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .el-form-item__label {
+    width: 100% !important;
+    text-align: left !important;
+    padding-right: 0;
+    margin-bottom: 4px;
+    height: auto;
+    line-height: 1.4;
+  }
+
+  /* 表格：横向滚动兜底（EP 自带内层滚动，此处防外层卡片被撑开） */
+  .el-table__inner-wrapper,
+  .el-scrollbar__wrap {
+    overflow-x: auto;
+  }
+
+  /* 分页在窄屏压缩，避免总条数/跳转器把整行撑破 */
+  .el-pagination {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .el-pagination__sizes .el-select {
+    width: 84px;
+  }
+}

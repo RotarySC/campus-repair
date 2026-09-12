@@ -497,6 +497,8 @@ function getStatusTagType(status: string): '' | 'success' | 'warning' | 'info' |
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 8px;
 }
 .result-count {
@@ -509,6 +511,8 @@ function getStatusTagType(status: string): '' | 'success' | 'warning' | 'info' |
 
 .actions-right {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
 }
 
