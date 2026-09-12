@@ -1,18 +1,16 @@
-import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
+import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-import AdminLayout from '../layouts/AdminLayout.vue';
-import LoginView from '../views/login/LoginView.vue';
-import DashboardView from '../views/dashboard/DashboardView.vue';
-import UserManageView from '../views/system/UserManageView.vue';
-import SpatialManageView from '../views/spatial/SpatialManageView.vue';
-import DispatchCenterView from '../views/dispatch/DispatchCenterView.vue';
-import InventoryManageView from '../views/inventory/InventoryManageView.vue';
-import CockpitView from '../views/analytics/CockpitView.vue';
-import WorkOrderReportView from '../views/analytics/WorkOrderReportView.vue';
-import ForbiddenView from '../views/error/ForbiddenView.vue';
+import { getDeviceMode } from '../utils/device';
+import { desktopRoutes, ADMIN_ROLES } from './desktop';
+import { mobileRoutes } from './mobile';
 
-/** 管理端只对这两类角色开放，与后端 @PreAuthorize 保持一致 */
-const ADMIN_ROLES = ['SUPER_ADMIN', 'LOGISTICS_ADMIN'];
+/**
+ * 统一门户路由：启动时按设备模式选定整张路由表（D1/D2）。
+ * 同一路径在手机与桌面渲染各自的树；切换设备模式（登录页逃生舱）触发
+ * reload 后重选表。表内路径互不重叠，跳转语义由各树自身的守卫分支负责。
+ */
+const deviceMode = getDeviceMode();
+const routes = deviceMode === 'mobile' ? mobileRoutes : desktopRoutes;
 
 function isAdminUser(authStore: ReturnType<typeof useAuthStore>): boolean {
   const userInfo = authStore.userInfo;
@@ -20,75 +18,6 @@ function isAdminUser(authStore: ReturnType<typeof useAuthStore>): boolean {
   const roles = userInfo.roleCodes?.length ? userInfo.roleCodes : [userInfo.userType];
   return roles.some((role) => ADMIN_ROLES.includes(role));
 }
-
-const routes: RouteRecordRaw[] = [
-  {
-    path: '/login',
-    name: 'Login',
-    component: LoginView,
-    meta: { title: '用户登录', public: true }
-  },
-  {
-    // 已登录但角色不在管理端范围内时的落点（刻意放在外壳之外）
-    path: '/403',
-    name: 'Forbidden',
-    component: ForbiddenView,
-    meta: { title: '无权访问管理端' }
-  },
-  {
-    // 管理端统一外壳：固定侧边栏 + 顶部条，业务页面作为子路由渲染进内容区
-    path: '/',
-    component: AdminLayout,
-    children: [
-      {
-        path: '',
-        name: 'Dashboard',
-        component: DashboardView,
-        meta: { title: '控制台概览', requiresAuth: true }
-      },
-      {
-        path: 'dispatch',
-        name: 'DispatchCenter',
-        component: DispatchCenterView,
-        meta: { title: '后勤调度中心干预控制台', requiresAuth: true }
-      },
-      {
-        path: 'reports/orders',
-        name: 'WorkOrderReport',
-        component: WorkOrderReportView,
-        meta: { title: '工单全生命周期多维检索与分析报表', requiresAuth: true }
-      },
-      {
-        path: 'inventory',
-        name: 'InventoryManage',
-        component: InventoryManageView,
-        meta: { title: '耗材备件进销存台账与采购建议', requiresAuth: true }
-      },
-      {
-        path: 'spatial',
-        name: 'SpatialManage',
-        component: SpatialManageView,
-        meta: { title: '校园空间网格与故障分类字典', requiresAuth: true }
-      },
-      {
-        path: 'system/users',
-        name: 'UserManage',
-        component: UserManageView,
-        meta: { title: '用户台账管理', requiresAuth: true }
-      },
-      {
-        path: 'cockpit',
-        name: 'Cockpit',
-        component: CockpitView,
-        meta: { title: '运营指挥大屏', requiresAuth: true }
-      }
-    ]
-  },
-  {
-    path: '/:pathMatch(.*)*',
-    redirect: '/'
-  }
-];
 
 const router = createRouter({
   history: createWebHistory(),
@@ -103,13 +32,35 @@ router.beforeEach((to, from, next) => {
     next({ path: '/login', query: { redirect: to.fullPath } });
     return;
   }
-
-  // 已登录但角色非管理端（师生 / 维修师傅）：拦到 403，避免出现“页面能打开、接口全 403”的空转
-  if (to.meta.requiresAuth && !isAdminUser(authStore)) {
-    next({ path: '/403' });
+  if (!to.meta.requiresAuth) {
+    next();
     return;
   }
 
+  const userType = authStore.userInfo?.userType;
+
+  if (deviceMode === 'mobile') {
+    // 移动树：师傅角色智能分流（保留原 mobile-web 行为）
+    if (userType === 'REPAIR_WORKER') {
+      if (to.path === '/' || to.path === '/home' || to.path === '/student/submit') {
+        next('/worker/workbench');
+        return;
+      }
+    }
+    // 移动树：管理员落到友好提示页（Q5 兜底格，替换原先「管理员看到学生首页」的洞）
+    if ((userType === 'SUPER_ADMIN' || userType === 'LOGISTICS_ADMIN') && to.path !== '/mobile-admin-notice') {
+      next('/mobile-admin-notice');
+      return;
+    }
+    next();
+    return;
+  }
+
+  // 桌面树：仅管理员放行管理页（师生与师傅的放行规则在师生页落地时扩展）
+  if (!isAdminUser(authStore)) {
+    next({ path: '/403' });
+    return;
+  }
   next();
 });
 

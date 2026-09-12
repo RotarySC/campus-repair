@@ -74,7 +74,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { showToast, showImagePreview } from 'vant';
-import { httpClient } from '../stores/auth';
+import { httpClient } from '../../stores/auth';
 import {
   OrderTimelineLogVO,
   ActionTypeLabels,

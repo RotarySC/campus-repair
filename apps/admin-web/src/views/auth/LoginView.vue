@@ -45,6 +45,11 @@
         </van-button>
       </div>
     </van-form>
+
+    <!-- 设备模式逃生舱（Q2）：平板/大屏手机需要完整管理功能时可切到桌面版 -->
+    <div class="device-switch">
+      <span class="switch-link" @click="switchToDesktop">使用桌面版（完整管理端）</span>
+    </div>
   </div>
 </template>
 
@@ -54,6 +59,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { showToast, showNotify } from 'vant';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import { LoginResult, CaptchaResult } from '@campus/shared';
+import { setDeviceMode } from '../../utils/device';
 
 const router = useRouter();
 const route = useRoute();
@@ -112,6 +118,10 @@ onMounted(() => {
     showNotify({ type: 'warning', message: '会话已超时，请重新登录' });
   }
 });
+
+function switchToDesktop() {
+  setDeviceMode('desktop');
+}
 </script>
 
 <style scoped>
@@ -143,5 +153,15 @@ onMounted(() => {
   height: 32px;
   vertical-align: middle;
   border-radius: 4px;
+}
+.device-switch {
+  margin-top: 24px;
+  text-align: center;
+}
+.switch-link {
+  font-size: 13px;
+  color: #969799;
+  text-decoration: underline;
+  cursor: pointer;
 }
 </style>

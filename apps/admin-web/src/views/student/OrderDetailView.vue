@@ -175,7 +175,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showSuccessToast, showFailToast, showImagePreview } from 'vant';
 import { httpClient } from '../../stores/auth';
-import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
+import WorkOrderTimeline from '../../components/mobile/WorkOrderTimeline.vue';
 import {
   DispatchOrderItemVO,
   WorkOrderEvaluationVO,
