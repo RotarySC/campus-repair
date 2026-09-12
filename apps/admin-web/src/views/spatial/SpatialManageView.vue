@@ -31,9 +31,7 @@
               <span class="node-actions">
                 <el-switch
                   :model-value="data.status === 1"
-                  inline-prompt
-                  active-text="启"
-                  inactive-text="停"
+                  aria-label="空间启用状态"
                   size="small"
                   @change="(val: boolean) => toggleNodeStatus(data, val)"
                 />

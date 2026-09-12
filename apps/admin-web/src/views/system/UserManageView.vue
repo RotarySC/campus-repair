@@ -40,9 +40,7 @@
       <template #col-status="{ row }">
         <el-switch
           :model-value="row.status === 1"
-          inline-prompt
-          active-text="启"
-          inactive-text="停"
+          aria-label="账号状态"
           @change="(val: boolean) => toggleStatus(row, val)"
         />
       </template>
