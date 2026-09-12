@@ -1,95 +1,91 @@
-# 交接文档 (HANDOFF) — 单树响应式重构已合并 master + 窄档走查闭环 + 卡片列表改造
+# 交接文档 (HANDOFF) — 树形下钻选择器统一 + 外壳侧边栏折叠修复与标题栏开关
 
-> **日期**：2026-09-12（本会话三次更新）　**工作分支**：`feat/narrow-card-list`（基于 master `58e53bb`，**待合并**；master 已含单树响应式重构全部提交）
-> **设计与验证文档**：`docs/20260912-1351-...-unified-portal-design.md` §13 R1（架构决策）、`docs/20260912-2130-...-narrow-viewport-walkthrough.md`（窄档走查报告）、`docs/20260912-2230-...-narrow-card-list.md`（卡片列表改造）。本文件只写「状态 + 待办 + 证据 + 环境」。
+> **日期**：2026-09-12（本会话两次任务）　**分支**：`feat/narrow-card-list`（HEAD `8530ee4`，领先 master 3 个提交，可 ff；**本会话两块改动均未提交**）
+> **机制与陷阱已沉淀在 `AGENTS.md`**：本文件只写「状态 + 待办 + 证据 + 环境」，实现细节不重复。相关条目：§2.1「树形选择统一用 `DrilldownCascader`」「外壳侧边栏的『有效折叠态』与标题栏切换按钮」、§2.2「后台标签的 CDP 断言…」、§4「管理端外壳布局约定」。
+> **本次未传参数**，未针对后续主题做定向裁剪。
 
 ---
 
 ## 0. 30 秒速读
 
-1. **本会话四件事全部闭环**：① ≤630px 窄档逐页走查（修掉 6 类真实缺陷，其中 3 类在 390px 下会裁掉可点元素）；② `feat/single-tree-responsive` **已 ff 合并进 master**；③ 按用户要求做**窄档卡片列表改造**——窄档（<768px）不再靠表格横滚，6 张表改为卡片列表，宽档 `el-table` 完全不变；④ 按用户要求**把运营指挥大屏并入控制台概览并删除大屏页**（`/cockpit` → 重定向 `/`，侧边栏 7 项减为 6 项）。
-2. **卡片改造的关键设计**：新增 `components/ResponsiveTable.vue`，**列定义只写一次**（`card: 'title'|'tag'|'action'` + `cardTag` + `valueType`，自定义单元格走同名具名插槽 `#col-<key>`），宽档渲染 `el-table`、窄档渲染卡片，**没有两套模板**。分支 `feat/narrow-card-list` **待合并 master**（可直接 ff）。
-3. **验证**：`mvn test` **70/70**；`tsc`/`vue-tsc` exit 0；`.scratch/assert-dual.mjs` 双档形态断言 **10/10**；`.scratch/assert-cards-interact.mjs` 卡片交互断言 **3/3**；`.scratch/assert-cockpit-merged.mjs` 大屏合并断言 **13/13**；三档（390/600/1272）× 15 页走查 **0 横向溢出、0 控制台错误**。
-4. **顺手清掉一个长期隐形缺陷**：`data-demo.sql` 引用的 18 张演示照片在干净克隆后必然 404（`uploads/` 是运行时产物），学生详情页 Visual Diff 一直裂图。已加 `DemoImageSeeder` 启动自愈 + 单测锁死。
-5. **用户报的「其余页面 403」已定位为「浏览器未刷新」**：复现脚本逐项点侧边栏 6 项全部正常（`/dispatch`、`/reports/orders`、`/inventory`、`/spatial`、`/system/users` 均 200 无失败请求）；用户自查后确认刷新即消失——属 dev server 热更新期间前端旧 bundle 与新路由/接口不一致，非代码缺陷。**唯一真 403 是管理员手输或旧书签打开师生页/师傅页**（`/student/*`、`/worker/*`、`/orders/:id`），这是 `meta.roles` 的刻意安全边界（管理端侧边栏本来没有这些入口），未改动。复核命令：`node .scratch/repro-403.mjs admin` 与 `node .scratch/check-paths.mjs admin`。
-6. **服务状态**：后端 8080（`mvn spring-boot:run`，启动即补种演示图）、前端 3000 均在跑；均为后台作业，随会话回收，重启配方见 §5。
-7. **最重要的手法沉淀**：窄档验证不必再用缩放档/弹小窗——`Emulation.setDeviceMetricsOverride` 直连浏览器级 CDP（AGENTS §2.1，含「EP 表格内部结构会假溢出」的判据坑与卡片列表条）。
+1. **任务一（用户截图：下拉列表并排展开被遮挡 + 节点左侧有圆圈）**：新增 `components/DrilldownCascader.vue`（单列逐级下钻、面包屑可跳级、**不渲染任何 radio**），已替换**全仓 5 处** `el-cascader`（工单报表 空间/分类、学生提单 空间/分类、个人中心 默认报修空间）。顺手修掉两个真缺陷：① EP `el-popover` 的 `triggerKeys` 默认把 Enter/Space 当开关，会让「Enter 下钻后约 400ms 面板自己关闭」；② 学生提单页 `restoreDraft()` 只回填 `form.spaceId` 不回填 `spacePath`，导致「表单已有值但选择器显示为空」。
+2. **任务二（用户两张问题单：移动端抽屉里侧边栏文字消失 + 要求标题栏加收起/展开）**：根因是文字显隐用了**原始** `collapsed` 而非有效折叠态，已引入 `isCollapsed = collapsed && !isNarrowPhone` 统一四处判据；品牌行右侧新增 `.brand-toggle`（≥768＝240↔64，抽屉档＝关闭抽屉）。**底部「收起侧边栏」按钮已按用户后续要求删除**，标题栏按钮现为唯一入口（探针加 `legacyFooter === false` 断言防回归）。
+3. **验证**：`vue-tsc` exit 0；`.scratch/assert-drill.mjs` **126/126**（删除底部按钮后重跑仍全绿）；`.scratch/assert-shell-toggle.mjs` **42/42**（41 + 新增「底部无第二入口」断言）；两个探针都是直连 Edge 9222 的设备度量仿真（不打扰用户窗口）。
+4. **已提交（本会话尾段完成 P0）**：见 §1 提交表——两块改动拆成 `feat` / `fix` 两个 commit，另有 `docs` 与 `chore`（固化 `.scratch/campus-repair-system/` 的 13 个删除）各一。
+5. **顺带查清两条「探针级」坑**（不是产品缺陷，但极易误判）：后台标签里 `Emulation.setDeviceMetricsOverride` **不投递 resize 事件**（`innerWidth` 已变、JS 断点状态停旧档）；宽度/transform 的 CSS 过渡在后台标签**卡死**。对策与复现命令见 §4。
+6. **服务实测**（本文件写作时）：后端 8080、前端 3000、CDP 代理 3456、Edge 9222 **均在跑**；重启配方见 `AGENTS.md` §2.1。
 
 ## 1. 仓库与分支状态
 
 | 项 | 值 |
 | :--- | :--- |
-| 当前分支 | `feat/narrow-card-list`（**待合并**，可直接对 master 做 ff） |
-| 分支 HEAD | 本轮 2 个提交：卡片列表改造 `b101eb8` + 大屏并入控制台（见 §2） |
-| master HEAD | `58e53bb` docs(handoff): 会话收尾——单树重构已合并 master、窄档走查闭环与新手法沉淀 |
-| 本会话合并记录 | `git merge --ff-only feat/single-tree-responsive`（已进 master，两线无耦合） |
-| 未跟踪 | `.scratch/`（走查探针与截图，见 §6）、`.zcode/plans/` |
+| 当前分支 | `feat/narrow-card-list` |
+| HEAD（本文件更新前） | `8530ee4` feat(admin-web): 运营指挥大屏并入控制台概览并下线大屏页 |
+| 领先 master | 3 个提交（`b101eb8` 卡片列表 → `f82b6dd` HANDOFF → `8530ee4` 大屏并入），master 为其祖先，**可直接 ff 合并**；本会话又追加 4 个提交（见下） |
+| 本会话提交（①②） | ① `feat(admin-web)` 下钻选择器：`components/DrilldownCascader.vue` + 3 视图 + `.scratch/assert-drill.mjs`；② `fix(admin-web)` 外壳折叠修复 + 标题栏入口（并删除底部重复入口）：`layouts/AdminLayout.vue` + `.scratch/assert-shell-toggle.mjs` |
+| 本会话提交（③④） | ③ `docs`：`AGENTS.md` + 本文件；④ `chore`：固化 `.scratch/campus-repair-system/` 的 **13 个删除** |
+| 其他未跟踪噪声 | `.scratch/` 下其余探针脚本/产物（含 `drill/`、`shell/` 截图）、`.zcode/`；探针入库策略仍待定（§3 可选行） |
+| 审查基线 | 若要复审这两块改动，基线为 `8530ee4`；本会话 4 个提交之后即为其结果 |
 
-## 2. 本会话提交
+## 2. 本会话改动清单（细节见 AGENTS.md，此处只列落点）
 
-| 提交 | 内容 |
-| :--- | :--- |
-| （本轮）运营看板并入控制台概览 | 删除 `views/analytics/CockpitView.vue`，6 KPI + 3 图 + 技师榜全部并入 `views/dashboard/DashboardView.vue`（管理员 `/`）；侧边栏 7 项 → 6 项；路由 `/cockpit` 保留 `redirect: '/'`；README/AGENTS 同步改述 |
-| `b101eb8` | **窄档卡片列表改造**：新增 `components/ResponsiveTable.vue`（一份列定义双形态渲染），改造 6 张表（我的工单/工单检索报表/物料台账/用户台账/技师荣誉榜/故障分类字典树）；顺带修窄档表单标签右对齐、低库存预警条压住导出按钮、类别单选条 5 层堆叠 |
-| `58e53bb` | HANDOFF 收尾更新（P0/P1 双清与手法沉淀） |
-| `4e3767b` | **窄档走查修复**：新增 `apps/admin-web/src/styles/responsive.css`（全局 `box-sizing`/`body margin` 重置 + <768px EP 度量收敛层，`main.ts` 于 EP 样式后导入）；spatial 页签可横滚 + 树节点标题可收缩、reports/inventory/dispatch 工具行 `flex-wrap`、登录页去 `100vw`；后端新增 `common/support/DemoImageSeeder`（local profile 启动补种 18 张演示占位图）+ `DemoImageSeederTest`（3 用例） |
-| `6d203a5` | AGENTS.md 补充 uploads/demo 启动自愈事实 |
-| （前序 6 个） | 见上一版 HANDOFF §2：`84185e9` 断点组合式与外壳三档 / `30571b0` 师傅页 EP 重写 / `e0036e3` 路由合一 / `8beed56` 桌面页流式加固 / `f4f9630` vant 移除 / 文档提交 |
+**任务一 · 下钻选择器**
+- 新增 `apps/admin-web/src/components/DrilldownCascader.vue`（`v-model` 仍是 id 路径数组，与 `emitPath` 等价，调用方的 `findIdPath`/重置/取末位 id 逻辑零改动）。
+- 替换 5 处：`views/analytics/WorkOrderReportView.vue`（空间位置、故障分类）、`views/student/StudentSubmitRepairView.vue`（空间节点、故障细类）、`views/profile/PersonalCenterView.vue`（默认报修空间）。三处视图各删掉了不再使用的 `cascaderProps` 常量。
+- **只允许选叶子**是刻意设计：后端 `AnalyticsServiceImpl` 对 `spaceId`/`categoryId` 用 `eq` 精确匹配，演示库 20 张单全挂第 4 级房间/第 2 级细类，旧 `checkStrictly` 下「点东校区」必然查出 0 条。**若将来要支持「按校区/楼栋过滤」，那是后端改前缀匹配的独立变更，本会话刻意未做。**
+
+**任务二 · 外壳侧边栏**
+- `layouts/AdminLayout.vue`：新增 `isCollapsed` / `headerToggleLabel` / `onHeaderToggle()`；品牌行加入 `.brand-toggle`；`<aside id="admin-sidebar">`；品牌标题 13px + 省略号、`.brand` 内边距 `24px 8px`（左侧仍与 `.nav` 图标对齐边一致）。
+- **产品语义变化点（待确认）**：平板档（768~1023）手动展开/收起会写入 `localStorage.admin_sidebar_collapsed`，因此「平板档手动收起 → 回宽档」是 64px——这是**既有设计**（`AdminLayout.vue` 原注释即说明用户手动选择会落库），探针按 `localStorage` 实际值断言。若你认为平板档的手动操作不该影响桌面档偏好，需要显式改规则。
+- **底部「收起侧边栏」入口已删除（用户后续要求）**：`.sidebar-footer` 整块（含 `.collapse-btn` 模板 + 3 段 CSS）已移除，`toggleCollapse()` 由标题栏 `.brand-toggle` 独占调用。**已收敛为一个入口**，§2 原先的「两个入口并存」观察项作废。
 
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
 | :--- | :--- | :--- |
-| P1 | 合并 `feat/narrow-card-list` → master（ff） | §1 |
-| P2 | 师生「我的工单」检索框（目前只有状态页签）；详情页 ≤2★ 差评返工分支真机实测 | 旧 HANDOFF 沿革 |
-| P2 | EP 按需引入（单库后收益更大；当前全量注册） | 设计文档 D5 |
-| P2 | 移动端 `worker/finish` 真机拍照上传全流程（CDP 无法驱动文件选择器；水印+上传 API 链路为 2026-09-11 既有验证） | AGENTS §2.2 |
-| P3 | 卡片列表的窄档分页体验：目前沿用宽档 `page-size`（10/20/50），窄档可考虑默认更小以减少滚动 | 卡片改造文档 §5 |
-| 观察 | `meta.roles` 收紧后**手输地址/旧书签**打开师生页、师傅页的管理员会落 403 说明页（管理端侧边栏本就没有这些入口）——产品语义变化点；如需放行请明确「页面可看但接口仍 403」还是「后端一并放行只读」 | §0.5 |
+| ~~P0~~ 已完成 | 提交本会话两块改动（拆 `feat` 下钻选择器 / `fix` 外壳折叠与标题栏入口）+ 单独的 `docs` 提交 | §1 提交表 |
+| ~~P0~~ 已完成 | 固化 `.scratch/campus-repair-system/` 的 13 个删除 | §1 提交表 ④ |
+| P1 | 合并 `feat/narrow-card-list` → master（ff）——上一份 HANDOFF 的 P1，仍未做 | §1 |
+| P2 | 上一份 HANDOFF 的既有 P2：师生「我的工单」检索框、详情页 ≤2★ 差评返工真机实测、EP 按需引入、`worker/finish` 真机拍照上传 | 上一版 HANDOFF §3 |
+| 观察 | 平板档手动折叠落库的语义（§2）——**是否算预期**仍待你确认 | 本会话实测 |
+| 可选 | 把探针目录纳入 `.gitignore` 或明确「`.scratch/` 不入库」策略（本会话已入库 2 个探针，其余仍散在未跟踪区） | §1 |
 
-## 4. 本轮验证证据（可复现）
+## 4. 验证证据（可复现命令）
 
-- `mvn test -f server/pom.xml` → **Tests run: 70, Failures: 0, Errors: 0** / BUILD SUCCESS。
-- `tsc --noEmit -p packages/shared` exit 0；`vue-tsc --noEmit -p apps/admin-web` exit 0。
-- **双档形态断言** `node .scratch/assert-dual.mjs` → 5 个页面 × {1272, 390} **10/10 PASS**（宽档有表格行且 0 卡片、窄档有卡片且 0 表格；工单报表 1272→19 表格行 / 390→19 卡片）。
-- **卡片交互断言** `node .scratch/assert-cards-interact.mjs` → **3/3 PASS**（点卡片 `/`→`/student/orders/1005`；卡片内「时间轴」「流水」分别打开对应抽屉）。
-- **大屏合并断言** `node .scratch/assert-cockpit-merged.mjs` → **13/13 PASS**：首页 6 KPI 卡 + 账号自检 + 3 图表容器 + **3 个 canvas 均已绘制非空像素**（927×320:514 / 435×300:199 / 435×300:253）+ 荣誉榜 6 行（窄档 6 卡片）+ 侧边栏 6 项无「大屏」+ 标题「控制台概览」+ `/cockpit` 重定向到 `/` + 宽窄档均 0 横向溢出。
-- **403 复核** `node .scratch/repro-403.mjs admin`（逐项点击侧边栏）与 `node .scratch/check-paths.mjs admin`（逐条直输 URL）→ 侧边栏 6 项全部正常、0 失败请求；仅 `/student/*`、`/worker/*`、`/orders/:id` 落 403（刻意的角色边界）。
-- **窄档走查（设备度量仿真，零侵入）** `node .scratch/narrow-walkthrough.mjs <role> <width>` →
-  - 390px：admin 8 页 / student 4 页 / worker 3 页，全部 `scrollWidth-clientWidth = 0`、0 控制台 error；spatial 仅剩 2 个元素越出**可滚动**页签容器；
-  - 600px：全 0（该档同样渲染卡片）；1272px 桌面回归：全 0，登录卡仍 440px 居中；
-  - 页签可达性：390px 下滚动后最后一个页签 `[226..354]` 完全入视口，点击切换成功（`verify-tabs.mjs`）；
-  - 演示图自愈：删 `uploads/demo/finish-09.jpg` → 重启后端 6s 后重新可取（200 image/jpeg）。
-- 原始证据：`.scratch/narrow/{admin,student,worker,public}-{390,600,1272}/report.json` + 截图；403 复现记录 `.scratch/repro403/nav-{admin,student,worker}.json`。
+```powershell
+# 类型检查（SFC 真检查，tsc 不解析 .vue）
+node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json   # exit 0
+# 下钻选择器（390/1272 × 报表/提单/资料 三页）
+node .scratch/assert-drill.mjs            # → 126/126 PASS
+# 外壳侧边栏（1272/900/390 三档 + 「先折叠→缩窄→开抽屉」复现路径）
+node .scratch/assert-shell-toggle.mjs     # → 42/42 PASS
+```
 
-## 5. 环境与运行现状（会话收尾时）
+- 两个探针都需要 **Edge 已开 9222**（本机 `/json/*` HTTP 端点全 404，因此都直连 `ws://127.0.0.1:9222/devtools/browser`），且都需要后端 8080 可登录、前端 3000 已起。
+- 产物：`.scratch/drill/{report,submit,profile}-{390,1272}-open.png` + `report.json`；`.scratch/shell/{wide-collapsed,phone-drawer-open,tablet-expanded}.png` + `report.json`。两张关键图：`shell/phone-drawer-open.png`（抽屉里 logo + 完整标题 + `×` + 六项文字齐全）、`drill/profile-390-open.png`（面包屑 `‹ 全部 / 东校区 / 学生生活区 / 1号宿舍楼` + 已选项带勾选高亮）。
+- **两轮基线均未回归（删除底部折叠入口后重跑）**：`assert-drill.mjs` 126/126、`assert-shell-toggle.mjs` 42/42。
+- 本会话**未跑** `mvn test`（两块改动都是纯前端；后端未触碰）。
 
-| 服务 | 地址 | 状态 |
+## 5. 环境与运行现状
+
+| 服务 | 地址 | 状态（本文件写作时实测） |
 | :--- | :--- | :--- |
-| 后端 | `http://localhost:8080` | 运行中（admin/student02/worker01 登录均 200，`/uploads/demo/*.jpg` 200） |
-| 前端 | `http://localhost:3000` | 运行中（上一会话 `node node_modules/vite/bin/vite.js` 直启，本轮编辑后仍健康） |
-| CDP 代理 | `http://localhost:3456` | 运行中（Edge 9222）；浏览器里有用户个人标签（**别关**）+ 门户标签 |
-| 用户浏览器 | — | 用户在同时使用（直播等），**标签 ID 会漂移，每次操作前重新解析** |
+| 后端 | `http://localhost:8080` | 在跑（`Test-NetConnection 127.0.0.1:8080` = True） |
+| 前端 | `http://localhost:3000` | 在跑（`Invoke-WebRequest http://localhost:3000/` → 200；**别用 `127.0.0.1` 判活，Vite 只绑 IPv6**） |
+| CDP 代理 | `http://localhost:3456` | 在跑 |
+| Edge 调试口 | `127.0.0.1:9222` | 在跑（探针直连此口；浏览器里有用户个人标签，**别关**） |
 
-**接手重启配方**：
-- 后端：`Get-Process java | Stop-Process -Force` → 确认 8080 CLOSED → `cd server && mvn spring-boot:run`（本地 `local` profile，H2 内存库，启动即补种演示图）。
-- 前端：`cd apps/admin-web && node node_modules/vite/bin/vite.js`（**勿用 `pnpm run dev:admin`**：本机 pnpm v11 会清 node_modules；装/删依赖须手改 package.json + lockfile + node_modules）。
-- 窄档验证：`node .scratch/narrow-walkthrough.mjs admin 390`（无需放宽沙箱、不改用户窗口）。
+重启配方（含 pnpm v11 会清 `node_modules`、`spring-boot:run` 的 JVM 不被 job 带走等坑）见 `AGENTS.md` §2.1，不在此重复。**动手做真机验证前先现测一次端口**——本会话实测就遇到过「`innerWidth` 已变但前端状态没跟上」这类易误判现象。
 
 ## 6. 环境卫生
 
-- 本会话已清理临时产物：`.scratch/backend*.log`、一次性量测 JSON（`m-*/m2-*/p-*`）、探针失败品（`probe-cdp.mjs`、`tdom-390.json`）、上一会话的 `resize/` 与旧验收图（`unified-*.png`）、拼图中间产物（`_composite/`、`crops/`）、`.scratch/campus-repair-system/`（已入 `docs/` 的规格草稿）。
-- 保留的可复用工具（依赖 Edge 9222，全部为无侵入设备度量仿真）：
-  - 走查/断言：`narrow-walkthrough.mjs`（逐页走查 + 截图）、`narrow-public.mjs`（登录/注册）、`assert-dual.mjs`（双档形态）、`assert-cards-interact.mjs`（卡片交互）、`assert-cockpit-merged.mjs`（大屏已并入控制台）、`verify-tabs.mjs`（页签可达）、`repro-403.mjs`（逐项点导航复现 403）、`check-paths.mjs`（逐条直输 URL 复现 403）。
-  - 量测/诊断：`measure.mjs`、`probe-el.mjs`、`table-dom.mjs`、`diag-page.mjs`（控制台/网络失败）、`shot-after.mjs`（注入切页签后再截图）。
-  - 遗留：`cdp-login.mjs`（经代理 3456 注入登录态）。
-- `.scratch/narrow*/`：走查截图与 `report.json`（含每页溢出量/越界元素/控制台错误），无敏感信息。
-- 本文件与提交信息不含口令/令牌；演示账号见 README §4。
+- 本会话新增的探针：`assert-drill.mjs`（下钻选择器）、`assert-shell-toggle.mjs`（外壳侧边栏）；一次性诊断脚本（`diag-enter/close/click/trusted/keys/submit/resize.mjs`）**已全部删除**，只留下可复用的断言探针。
+- 复用旧探针时的两个探针级前提（`AGENTS.md` §2.2 有完整成因）：① 切档后必须轮询 DOM 断点信号并补帧（`Emulation` 不投递 resize）；② 量宽度/transform 终态前注入 `transition:none !important`；③ 校验类断言读 `el-form-item.is-error/is-success` 状态类，不要用报错节点是否还在 DOM。
+- 本文件与探针产物不含口令/令牌；演示账号见 `README.md` §4（口令略）。
 
 ## 7. 建议技能
 
-> 下一步最可能：合并 `feat/narrow-card-list` → master；其余为 P2 三项体验补充（我的工单检索 / 差评返工真机 / EP 按需引入）。
-
-- `web-access`（CDP 代理）——任何真机验证；窄档走查优先用 §4 的探针 + 设备度量仿真。
-- `code-review` —— 若要复审本会话两个提交（`4e3767b` 样式面 + `b101eb8` 组件化改造）。
+- `web-access` —— 本仓任何真机验证的底座；两个探针都直连 `ws://127.0.0.1:9222/devtools/browser` + `Emulation.setDeviceMetricsOverride`，优先复用而不是新写脚本。
+- `code-review` —— 若要复审本会话两块未提交改动（基线 `8530ee4`：下钻选择器组件化 + 外壳折叠修复）。
+- `brainstorming` —— 本会话两次都按 bounded 路径走（探索现状 → 关键澄清 → 对话内简短设计 → 明确批准 → 实现）；后续 UI 改动照此，避免直接开写。
 - `handoff` —— 下次收尾覆盖本文件。
