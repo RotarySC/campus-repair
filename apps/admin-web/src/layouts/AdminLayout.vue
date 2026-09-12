@@ -123,15 +123,14 @@ interface NavItem {
   icon: string;
 }
 
-/** 管理员导航：顺序按使用频次与重要性排列，日常入口在上，只读看板与大屏在下 */
+/** 管理员导航：顺序按使用频次与重要性排列，日常入口在上，只读看板在下 */
 const ADMIN_NAV_ITEMS: NavItem[] = [
   { path: '/', label: '控制台概览', icon: 'Odometer' },
   { path: '/dispatch', label: '后勤调度中心', icon: 'Headset' },
   { path: '/reports/orders', label: '工单检索报表', icon: 'Document' },
   { path: '/inventory', label: '耗材进销存台账', icon: 'Box' },
   { path: '/spatial', label: '空间与分类字典', icon: 'Grid' },
-  { path: '/system/users', label: '用户台账管理', icon: 'User' },
-  { path: '/cockpit', label: '运营指挥大屏', icon: 'DataLine' }
+  { path: '/system/users', label: '用户台账管理', icon: 'User' }
 ];
 
 /** 师生导航（Q8）：提单与跟单两个高频入口 */

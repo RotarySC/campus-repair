@@ -7,19 +7,20 @@
 
 ## 0. 30 秒速读
 
-1. **本会话三件事全部闭环**：① ≤630px 窄档逐页走查（修掉 6 类真实缺陷，其中 3 类在 390px 下会裁掉可点元素）；② `feat/single-tree-responsive` **已 ff 合并进 master**；③ 按用户要求做**窄档卡片列表改造**——窄档（<768px）不再靠表格横滚，6 张表改为卡片列表，宽档 `el-table` 完全不变。
-2. **卡片改造的关键设计**：新增 `components/ResponsiveTable.vue`，**列定义只写一次**（`card: 'title'|'tag'|'action'` + `cardTag` + `valueType`，自定义单元格走同名具名插槽 `#col-<key>`），宽档渲染 `el-table`、窄档渲染卡片，**没有两套模板**。分支 `feat/narrow-card-list`（`b101eb8`）**待合并 master**（可直接 ff）。
-3. **验证**：`mvn test` **70/70**；`tsc`/`vue-tsc` exit 0；`.scratch/assert-dual.mjs` 双档形态断言 **10/10**；`.scratch/assert-cards-interact.mjs` 卡片交互断言 **3/3**；三档（390/600/1272）× 15 页走查 **0 横向溢出、0 控制台错误**。
+1. **本会话四件事全部闭环**：① ≤630px 窄档逐页走查（修掉 6 类真实缺陷，其中 3 类在 390px 下会裁掉可点元素）；② `feat/single-tree-responsive` **已 ff 合并进 master**；③ 按用户要求做**窄档卡片列表改造**——窄档（<768px）不再靠表格横滚，6 张表改为卡片列表，宽档 `el-table` 完全不变；④ 按用户要求**把运营指挥大屏并入控制台概览并删除大屏页**（`/cockpit` → 重定向 `/`，侧边栏 7 项减为 6 项）。
+2. **卡片改造的关键设计**：新增 `components/ResponsiveTable.vue`，**列定义只写一次**（`card: 'title'|'tag'|'action'` + `cardTag` + `valueType`，自定义单元格走同名具名插槽 `#col-<key>`），宽档渲染 `el-table`、窄档渲染卡片，**没有两套模板**。分支 `feat/narrow-card-list` **待合并 master**（可直接 ff）。
+3. **验证**：`mvn test` **70/70**；`tsc`/`vue-tsc` exit 0；`.scratch/assert-dual.mjs` 双档形态断言 **10/10**；`.scratch/assert-cards-interact.mjs` 卡片交互断言 **3/3**；`.scratch/assert-cockpit-merged.mjs` 大屏合并断言 **13/13**；三档（390/600/1272）× 15 页走查 **0 横向溢出、0 控制台错误**。
 4. **顺手清掉一个长期隐形缺陷**：`data-demo.sql` 引用的 18 张演示照片在干净克隆后必然 404（`uploads/` 是运行时产物），学生详情页 Visual Diff 一直裂图。已加 `DemoImageSeeder` 启动自愈 + 单测锁死。
-5. **服务状态**：后端 8080（`mvn spring-boot:run`，启动即补种演示图）、前端 3000 均在跑；均为后台作业，随会话回收，重启配方见 §5。
-6. **最重要的手法沉淀**：窄档验证不必再用缩放档/弹小窗——`Emulation.setDeviceMetricsOverride` 直连浏览器级 CDP（AGENTS §2.1，含「EP 表格内部结构会假溢出」的判据坑与卡片列表条）。
+5. **用户报的「其余页面 403」已定位为「浏览器未刷新」**：复现脚本逐项点侧边栏 6 项全部正常（`/dispatch`、`/reports/orders`、`/inventory`、`/spatial`、`/system/users` 均 200 无失败请求）；用户自查后确认刷新即消失——属 dev server 热更新期间前端旧 bundle 与新路由/接口不一致，非代码缺陷。**唯一真 403 是管理员手输或旧书签打开师生页/师傅页**（`/student/*`、`/worker/*`、`/orders/:id`），这是 `meta.roles` 的刻意安全边界（管理端侧边栏本来没有这些入口），未改动。复核命令：`node .scratch/repro-403.mjs admin` 与 `node .scratch/check-paths.mjs admin`。
+6. **服务状态**：后端 8080（`mvn spring-boot:run`，启动即补种演示图）、前端 3000 均在跑；均为后台作业，随会话回收，重启配方见 §5。
+7. **最重要的手法沉淀**：窄档验证不必再用缩放档/弹小窗——`Emulation.setDeviceMetricsOverride` 直连浏览器级 CDP（AGENTS §2.1，含「EP 表格内部结构会假溢出」的判据坑与卡片列表条）。
 
 ## 1. 仓库与分支状态
 
 | 项 | 值 |
 | :--- | :--- |
 | 当前分支 | `feat/narrow-card-list`（**待合并**，可直接对 master 做 ff） |
-| 分支 HEAD | `b101eb8` feat(admin-web): 窄档卡片列表改造——ResponsiveTable 一份列定义双形态渲染 |
+| 分支 HEAD | 本轮 2 个提交：卡片列表改造 `b101eb8` + 大屏并入控制台（见 §2） |
 | master HEAD | `58e53bb` docs(handoff): 会话收尾——单树重构已合并 master、窄档走查闭环与新手法沉淀 |
 | 本会话合并记录 | `git merge --ff-only feat/single-tree-responsive`（已进 master，两线无耦合） |
 | 未跟踪 | `.scratch/`（走查探针与截图，见 §6）、`.zcode/plans/` |
@@ -28,6 +29,7 @@
 
 | 提交 | 内容 |
 | :--- | :--- |
+| （本轮）运营看板并入控制台概览 | 删除 `views/analytics/CockpitView.vue`，6 KPI + 3 图 + 技师榜全部并入 `views/dashboard/DashboardView.vue`（管理员 `/`）；侧边栏 7 项 → 6 项；路由 `/cockpit` 保留 `redirect: '/'`；README/AGENTS 同步改述 |
 | `b101eb8` | **窄档卡片列表改造**：新增 `components/ResponsiveTable.vue`（一份列定义双形态渲染），改造 6 张表（我的工单/工单检索报表/物料台账/用户台账/技师荣誉榜/故障分类字典树）；顺带修窄档表单标签右对齐、低库存预警条压住导出按钮、类别单选条 5 层堆叠 |
 | `58e53bb` | HANDOFF 收尾更新（P0/P1 双清与手法沉淀） |
 | `4e3767b` | **窄档走查修复**：新增 `apps/admin-web/src/styles/responsive.css`（全局 `box-sizing`/`body margin` 重置 + <768px EP 度量收敛层，`main.ts` 于 EP 样式后导入）；spatial 页签可横滚 + 树节点标题可收缩、reports/inventory/dispatch 工具行 `flex-wrap`、登录页去 `100vw`；后端新增 `common/support/DemoImageSeeder`（local profile 启动补种 18 张演示占位图）+ `DemoImageSeederTest`（3 用例） |
@@ -43,7 +45,7 @@
 | P2 | EP 按需引入（单库后收益更大；当前全量注册） | 设计文档 D5 |
 | P2 | 移动端 `worker/finish` 真机拍照上传全流程（CDP 无法驱动文件选择器；水印+上传 API 链路为 2026-09-11 既有验证） | AGENTS §2.2 |
 | P3 | 卡片列表的窄档分页体验：目前沿用宽档 `page-size`（10/20/50），窄档可考虑默认更小以减少滚动 | 卡片改造文档 §5 |
-| 观察 | `meta.roles` 收紧后 admin 落师生页现为 403 页（原可进页面但接口 403）——产品语义变化点 | R1-3 |
+| 观察 | `meta.roles` 收紧后**手输地址/旧书签**打开师生页、师傅页的管理员会落 403 说明页（管理端侧边栏本就没有这些入口）——产品语义变化点；如需放行请明确「页面可看但接口仍 403」还是「后端一并放行只读」 | §0.5 |
 
 ## 4. 本轮验证证据（可复现）
 
@@ -51,12 +53,14 @@
 - `tsc --noEmit -p packages/shared` exit 0；`vue-tsc --noEmit -p apps/admin-web` exit 0。
 - **双档形态断言** `node .scratch/assert-dual.mjs` → 5 个页面 × {1272, 390} **10/10 PASS**（宽档有表格行且 0 卡片、窄档有卡片且 0 表格；工单报表 1272→19 表格行 / 390→19 卡片）。
 - **卡片交互断言** `node .scratch/assert-cards-interact.mjs` → **3/3 PASS**（点卡片 `/`→`/student/orders/1005`；卡片内「时间轴」「流水」分别打开对应抽屉）。
+- **大屏合并断言** `node .scratch/assert-cockpit-merged.mjs` → **13/13 PASS**：首页 6 KPI 卡 + 账号自检 + 3 图表容器 + **3 个 canvas 均已绘制非空像素**（927×320:514 / 435×300:199 / 435×300:253）+ 荣誉榜 6 行（窄档 6 卡片）+ 侧边栏 6 项无「大屏」+ 标题「控制台概览」+ `/cockpit` 重定向到 `/` + 宽窄档均 0 横向溢出。
+- **403 复核** `node .scratch/repro-403.mjs admin`（逐项点击侧边栏）与 `node .scratch/check-paths.mjs admin`（逐条直输 URL）→ 侧边栏 6 项全部正常、0 失败请求；仅 `/student/*`、`/worker/*`、`/orders/:id` 落 403（刻意的角色边界）。
 - **窄档走查（设备度量仿真，零侵入）** `node .scratch/narrow-walkthrough.mjs <role> <width>` →
   - 390px：admin 8 页 / student 4 页 / worker 3 页，全部 `scrollWidth-clientWidth = 0`、0 控制台 error；spatial 仅剩 2 个元素越出**可滚动**页签容器；
   - 600px：全 0（该档同样渲染卡片）；1272px 桌面回归：全 0，登录卡仍 440px 居中；
   - 页签可达性：390px 下滚动后最后一个页签 `[226..354]` 完全入视口，点击切换成功（`verify-tabs.mjs`）；
   - 演示图自愈：删 `uploads/demo/finish-09.jpg` → 重启后端 6s 后重新可取（200 image/jpeg）。
-- 原始证据：`.scratch/narrow/{admin,student,worker,public}-{390,600,1272}/report.json` + 截图（`_composite/` 与 `crops/` 为拼图/裁图中间产物）。
+- 原始证据：`.scratch/narrow/{admin,student,worker,public}-{390,600,1272}/report.json` + 截图；403 复现记录 `.scratch/repro403/nav-{admin,student,worker}.json`。
 
 ## 5. 环境与运行现状（会话收尾时）
 
@@ -76,7 +80,7 @@
 
 - 本会话已清理临时产物：`.scratch/backend*.log`、一次性量测 JSON（`m-*/m2-*/p-*`）、探针失败品（`probe-cdp.mjs`、`tdom-390.json`）、上一会话的 `resize/` 与旧验收图（`unified-*.png`）、拼图中间产物（`_composite/`、`crops/`）、`.scratch/campus-repair-system/`（已入 `docs/` 的规格草稿）。
 - 保留的可复用工具（依赖 Edge 9222，全部为无侵入设备度量仿真）：
-  - 走查/断言：`narrow-walkthrough.mjs`（逐页走查 + 截图）、`narrow-public.mjs`（登录/注册）、`assert-dual.mjs`（双档形态）、`assert-cards-interact.mjs`（卡片交互）、`verify-tabs.mjs`（页签可达）。
+  - 走查/断言：`narrow-walkthrough.mjs`（逐页走查 + 截图）、`narrow-public.mjs`（登录/注册）、`assert-dual.mjs`（双档形态）、`assert-cards-interact.mjs`（卡片交互）、`assert-cockpit-merged.mjs`（大屏已并入控制台）、`verify-tabs.mjs`（页签可达）、`repro-403.mjs`（逐项点导航复现 403）、`check-paths.mjs`（逐条直输 URL 复现 403）。
   - 量测/诊断：`measure.mjs`、`probe-el.mjs`、`table-dom.mjs`、`diag-page.mjs`（控制台/网络失败）、`shot-after.mjs`（注入切页签后再截图）。
   - 遗留：`cdp-login.mjs`（经代理 3456 注入登录态）。
 - `.scratch/narrow*/`：走查截图与 `report.json`（含每页溢出量/越界元素/控制台错误），无敏感信息。

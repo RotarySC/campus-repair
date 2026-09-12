@@ -5,7 +5,6 @@ import UserManageView from '../views/system/UserManageView.vue';
 import SpatialManageView from '../views/spatial/SpatialManageView.vue';
 import DispatchCenterView from '../views/dispatch/DispatchCenterView.vue';
 import InventoryManageView from '../views/inventory/InventoryManageView.vue';
-import CockpitView from '../views/analytics/CockpitView.vue';
 import WorkOrderReportView from '../views/analytics/WorkOrderReportView.vue';
 import ForbiddenView from '../views/error/ForbiddenView.vue';
 import LoginView from '../views/login/LoginView.vue';
@@ -52,7 +51,7 @@ const routes: RouteRecordRaw[] = [
     component: AdminLayout,
     children: [
       {
-        // 按角色分流：管理员→控制台概览，师生→我的工单，师傅→守卫重定向工作台
+        // 按角色分流：管理员→控制台概览（含运营指挥看板），师生→我的工单，师傅→守卫重定向工作台
         path: '',
         name: 'RoleHome',
         component: RoleHomeGate,
@@ -122,12 +121,6 @@ const routes: RouteRecordRaw[] = [
         name: 'UserManage',
         component: UserManageView,
         meta: { title: '用户台账管理', requiresAuth: true, roles: ADMIN_ROLES }
-      },
-      {
-        path: 'cockpit',
-        name: 'Cockpit',
-        component: CockpitView,
-        meta: { title: '运营指挥大屏', requiresAuth: true, roles: ADMIN_ROLES }
       }
     ]
   },
@@ -137,6 +130,8 @@ const routes: RouteRecordRaw[] = [
     redirect: (to) => ({ path: `/student/orders/${String(to.params.id)}` })
   },
   { path: '/home', redirect: '/' },
+  // 运营指挥大屏已并入控制台概览（2026-09-12），旧书签/外链统一回首页
+  { path: '/cockpit', redirect: '/' },
   { path: '/worker-pc-notice', redirect: '/worker/workbench' },
   { path: '/mobile-admin-notice', redirect: '/' },
   {
