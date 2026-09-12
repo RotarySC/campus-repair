@@ -536,18 +536,25 @@ public class AnalyticsAggregationEquivalenceTest {
     @Test
     @DisplayName("聚合数值准确性：用字面期望值核对 KPI 与趋势的算术，不依赖任何参考实现")
     public void testLiteralAggregateValues() {
-        LocalDateTime now = LocalDateTime.now();
+        // ⚠️ 时间必须锚定在「今日之内」，不能用 now.minusHours(3)：
+        // 该用例原本用 now-3h 造「今日 3 张单」，在 00:00~03:00 之间跑时 now-3h 会落到昨天，
+        // 「今日新增」只数到 2 张 → 断言 `>= 3` 必失败（2026-09-13 01:17 实测定位）。
+        // KPI 的今日口径是 `created_at >= todayStart`（无上界），所以今日 00:0x 的锚点在任何时刻都成立。
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime t1 = todayStart.plusMinutes(1);
+        LocalDateTime t2 = todayStart.plusMinutes(2);
+        LocalDateTime t3 = todayStart.plusMinutes(3);
 
         Long approved = insertWorker("字面核对师傅", "PLUMBER", new BigDecimal("4.00"));
         // 已结单：闭环耗时 2 小时 → 平均时效应为 2.00
         insertOrder("东校区/学生生活区/1号楼", "水暖管道/爆管", "COMPLETED",
-                now.minusHours(3), now.minusHours(1), approved);
+                t1, t1.plusHours(2), approved);
         // 在办：进 activeProcessingCount，不进平均时效
         insertOrder("东校区/学生生活区/2号楼", "水暖管道/阀门", "ASSIGNED",
-                now.minusMinutes(20), null, approved);
+                t2, null, approved);
         // 未结单：只进今日新增
         insertOrder("东校区/教学科研区/实验楼", "电气照明/灯具", "PENDING_DISPATCH",
-                now.minusMinutes(5), null, null);
+                t3, null, null);
 
         DashboardKpiVO kpi = analyticsService.getDashboardKpi();
 

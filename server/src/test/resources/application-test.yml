@@ -10,6 +10,9 @@ spring:
   sql:
     init:
       mode: always
+      # 必须显式 UTF-8：否则 H2 以平台默认字符集（本机为 GBK）读取 UTF-8 脚本，
+      # 种子里的中文会读成「寮犲悓瀛」这类乱码（与 application-local.yml 同一处修复）。
+      encoding: UTF-8
       schema-locations: classpath:schema-test.sql
       data-locations: classpath:data-test.sql
 

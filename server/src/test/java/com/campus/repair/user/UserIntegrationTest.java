@@ -3,6 +3,8 @@ package com.campus.repair.user;
 import com.alibaba.excel.EasyExcel;
 import com.campus.repair.framework.util.JwtUtils;
 import com.campus.repair.modules.auth.dto.RegisterRequest;
+import com.campus.repair.modules.spatial.entity.SpatialNode;
+import com.campus.repair.modules.spatial.mapper.SpatialNodeMapper;
 import com.campus.repair.modules.user.dto.PasswordChangeRequest;
 import com.campus.repair.modules.user.dto.UserImportRow;
 import com.campus.repair.modules.user.dto.UserProfileUpdateRequest;
@@ -16,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
@@ -38,6 +41,9 @@ class UserIntegrationTest {
 
     @Autowired
     private JwtUtils jwtUtils;
+
+    @Autowired
+    private SpatialNodeMapper spatialNodeMapper;
 
     @Test
     @DisplayName("师生自主注册成功并在再次注册相同学号或手机号时被阻断")
@@ -105,13 +111,28 @@ class UserIntegrationTest {
 
     @Test
     @DisplayName("个人中心更新联系电话与默认住址")
+    @Transactional
     void testUpdateProfile() throws Exception {
         String token = jwtUtils.generateAccessToken(3L, "student01", List.of("USER_STUDENT"));
+
+        // 默认空间必须真实存在（本轮起 updateProfile 会校验），事务内造一个并在结束后回滚
+        SpatialNode campus = new SpatialNode();
+        campus.setName("集成测试校区");
+        campus.setParentId(0L);
+        campus.setLevelType(1);
+        campus.setFullPathName("集成测试校区");
+        campus.setSortOrder(1);
+        campus.setStatus(1);
+        campus.setDeleted(0);
+        campus.setCreatedAt(java.time.LocalDateTime.now());
+        campus.setUpdatedAt(java.time.LocalDateTime.now());
+        spatialNodeMapper.insert(campus);
 
         UserProfileUpdateRequest updateReq = new UserProfileUpdateRequest();
         updateReq.setRealName("张同学已更名");
         updateReq.setPhone("13811112222");
-        updateReq.setDefaultSpaceId(402L);
+        updateReq.setDepartment("机械学院");
+        updateReq.setDefaultSpaceId(campus.getId());
 
         mockMvc.perform(put("/api/v1/users/profile")
                         .header("Authorization", "Bearer " + token)
