@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -12,8 +13,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
 
+@Slf4j
 @Component
 public class JwtUtils {
+
+    // 与 application.yml 的内置默认值一致，仅用于识别「未注入 JWT_SECRET」并在启动时告警
+    static final String BUILTIN_DEFAULT_SECRET = "CampusRepairSystemSuperSecureSecretKeyForJjwtVerification2026!#";
 
     @Value("${jwt.secret}")
     private String secret;
@@ -28,6 +33,9 @@ public class JwtUtils {
 
     @PostConstruct
     public void init() {
+        if (BUILTIN_DEFAULT_SECRET.equals(secret)) {
+            log.warn("jwt.secret 仍为内置默认密钥：生产环境必须通过环境变量 JWT_SECRET 注入独立密钥，否则令牌可被离线伪造");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 

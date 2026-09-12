@@ -184,6 +184,25 @@ pnpm run dev:admin
 # 管理员请用 PC 访问（师生/师傅在 PC 上分别获得师生门户与作业指引页）
 ```
 
+### 3.3 生产部署安全配置（必读）
+
+以下两项在 `application.yml` 中只提供了**仅供本地开发/测试的默认值**，生产环境必须通过环境变量覆盖：
+
+| 环境变量 | 作用 | 默认值（仅限本地） |
+| :--- | :--- | :--- |
+| `JWT_SECRET` | JWT 双令牌签名密钥，**生产必填**。不设置时启动打 WARN 并沿用内置默认密钥——任何拿到源码的人都能离线伪造令牌 | 内置开发密钥（启动告警） |
+| `APP_CORS_ALLOWED_ORIGINS` | 跨域精确来源白名单（逗号分隔，非通配符）。白名单外来源的预检与实际请求一律 403 | `http://localhost:3000` |
+
+```powershell
+# 生产启动示例（密钥长度至少 32 字节，否则 JJWT HS256 拒绝签名）
+$env:SPRING_PROFILES_ACTIVE = "dev"
+$env:JWT_SECRET = "<独立的随机长密钥>"
+$env:APP_CORS_ALLOWED_ORIGINS = "https://repair.example.edu.cn"
+mvn spring-boot:run
+```
+
+> 前端以同源相对路径 `/api/v1` 访问后端，推荐生产采用**同源反向代理**同时转发 `/api` 与 `/uploads`（见 AGENTS.md 部署约束）；跨域白名单只服务于前后端分域部署的场景。
+
 ---
 
 ## 4. 默认内置角色与测试账号
@@ -230,7 +249,7 @@ pnpm run dev:admin
 系统全流程坚持测试先行与代码审查闭环，所有状态机流转、并发锁与数据一致性均具备完整的单元与集成测试套件防护：
 
 ```powershell
-# 1. 运行后端 64 项单元与高并发集成测试套件
+# 1. 运行后端 67 项单元与高并发集成测试套件
 mvn test -f server/pom.xml
 
 # 2. 运行前端 Monorepo 全量静态类型检查（两包）
