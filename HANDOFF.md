@@ -8,7 +8,7 @@
 
 ## 0. 30 秒速读
 
-1. **代码已提交（本轮会话末完成）**：两批改动按主题拆成 **3 个提交**落在 `feat/admin-fixed-sidebar-layout` 上 —— `07d085b`（analytics 后端重构）→ `d2312d3`（web 修复）→ 最后一个 docs 提交（即本文件所在提交，用 `git log --oneline -3` 看即可）。**只剩「合并到 `master`」没做**。
+1. **代码已提交（本轮会话末完成）**：两批改动按主题拆成 **3 个提交**落在 `feat/admin-fixed-sidebar-layout` 上 —— `07d085b`（analytics 后端重构）→ `d2312d3`（web 修复）→ 最后一个 docs 提交（即本文件所在提交，用 `git log --oneline -3` 看即可）。**✅ 分支已合并进 `master`（2026-09-12，fast-forward 至 `b069cec`）**，同轮还完成 §3 的两个 P2（未知路径 404 化、管理端全校广播入口），对应提交 `f6defb1` / `b069cec`。
 2. **本轮完成原 P1 头号功能缺陷**：`packages/shared/src/api/http.ts` 改为返回「已解包」的 `HttpClient`，mobile-web 的 **22 处** `res.data.code`/`res.data.data` 全部修正，跨两端 **62 处**两参泛型调用收敛，**22 处**失效的 `ApiResponse` 导入清除。**「类型全绿但是假信号」的问题已根治**。
 3. **验证**：`mvn test` **57/57**；`tsc`/`vue-tsc` 三包 **exit 0**；并做了**负向对照**证明旧写法现在会被类型系统拒绝；真机走通 `/orders/1005` 正常渲染（不再永久「加载中」）、**完整的师生验收结单**链路（打分 5★+2 标签+评语 → 后端落库一致），以及**管理端 `/cockpit` 运行时回归**（KPI 真实值 + 3 图有像素 + 榜单 6 行）。以上均在**提交后的 HEAD 上复跑确认**。
 4. 下一步最值钱的三件事：**把分支合并进 `master`（`--ff-only` 已就绪）** → **安全基线（JWT 明文密钥 / CORS 通配）** → `WorkOrderService` 拆分。
@@ -65,11 +65,11 @@ M  HANDOFF.md                   (本文件)
 
 | 优先级 | 事项 | 依据 / 线索 |
 | :--- | :--- | :--- |
-| **P0** | **把分支合并进 `master`**（提交已在本轮完成，落点见 §1）：`git checkout master && git merge --ff-only feat/admin-fixed-sidebar-layout` | 本文件 §1 |
+| ~~P0~~ | ~~把分支合并进 `master`~~ **✅ 已完成（2026-09-12）**：`master` 已 fast-forward 至 `b069cec` | 本文件 §0 |
 | **P1** | 安全基线：`application.yml` 的 JWT 密钥为明文；`SecurityConfig` 的 `allowedOriginPatterns("*")` + `allowCredentials(true)` 过宽 | 两文件；生产前必须外置化/收敛 |
 | **P1** | `WorkOrderService` 已膨胀到 1083 行（发散式变化）；双端 `WorkOrderTimeline.vue` 渲染逻辑重复，未下沉到 `packages/shared/src/utils/format.ts` | `docs/20260907-1900-...-issue07-12-code-review.md` §2.2 / §2.4 |
-| **P2** | 全校广播只有后端 `POST /api/v1/notifications/broadcast`，管理端没有发布入口（需求 §7.1 未闭环） | 后端 `NotificationController`；管理端无调用点 |
-| **P2** | 未知路径返回 HTTP 500 而非 404（`NoResourceFoundException` 落进通用异常处理） | `common/exception/GlobalExceptionHandler.java` |
+| ~~P2~~ | ~~全校广播只有后端接口、管理端没有发布入口~~ **✅ 已完成（2026-09-12，`b069cec`）**：入口在管理端消息抽屉工具栏「发布全校广播」，含鉴权测试 | `NotificationCenterDrawer.vue` |
+| ~~P2~~ | ~~未知路径返回 HTTP 500 而非 404~~ **✅ 已完成（2026-09-12，`f6defb1`）**：`GlobalExceptionHandler` 新增 `NoResourceFoundException` 处理器返回 404，含 MockMvc 回归 | `common/exception/GlobalExceptionHandler.java` |
 | **P2** | 分析聚合可继续优化：`selectTopSpacePaths()` 无 `LIMIT`；若要极致性能可用 `spatial_node` 层级 JOIN 替代表达式切分 | 上轮刻意选择「无 `LIMIT` + Java 归并」以保证等价 |
 | **P3** | 清理 `.scratch/` 调试残留（见 §6）；`student01` 的 `is_first_login=1` 保持不变（有测试依赖），演示请用 `student02` / `teacher01` | `AGENTS.md` §2.1 演示账号 |
 | **待验证** | ① 订单编辑类写操作、全校广播、移动端 375px 小屏适配、三端并发抢单；② **未覆盖**：`delete` 类调用（`SpatialManageView` 的节点/分类删除、`InventoryManageView` 的物料删除）只做了类型检查与整页渲染验证，**没有真实点过删除** | 验证手法见 `AGENTS.md` §2.2 |
@@ -82,7 +82,7 @@ M  HANDOFF.md                   (本文件)
 
 | 项 | 结果 |
 | :--- | :--- |
-| `mvn test -f server/pom.xml` | **`Tests run: 57, Failures: 0, Errors: 0` / BUILD SUCCESS**（本轮未改后端，此为独立复跑，确认上轮基线成立） |
+| `mvn test -f server/pom.xml` | **`Tests run: 62, Failures: 0, Errors: 0` / BUILD SUCCESS**（2026-09-12 复跑：原 57 + 404 回归 2 + 广播接口 3） |
 | `tsc --noEmit -p packages/shared` | exit 0 |
 | `vue-tsc --noEmit -p apps/admin-web` | **exit 0** |
 | `vue-tsc --noEmit -p apps/mobile-web` | **exit 0**（修复前基线也是 0——所以「0 报错」本身不构成证据，见下条） |
