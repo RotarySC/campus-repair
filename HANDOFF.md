@@ -12,7 +12,7 @@
 2. **范围（用户选定）**：基础重整（账户概览 + 资料维护 + 安全改密 + 顶栏入口）＋ 师生「我的报修概览」＋ 师傅「我的作业概览」＋ 头像上传；**不做**师傅在岗/休息自助开关、管理员调度统计；**入口只放顶栏用户菜单**。
 3. **后端**：`GET /users/me` 由薄 principal 改为完整 `UserProfileVO`（登录响应用同一类型/同一 builder，删掉两份重复 builder）；`PUT /users/profile` 改全量覆盖；新增 `PUT /users/me/avatar`、`GET /users/me/repair-summary`（师生）、`GET /users/me/worker-profile`（师傅）；改密新增强度规则。跨模块一律走既有 Service 接口（`WorkOrderStatisticsService` / `SpatialNodeService`），**零新增跨模块 VO 引用**。
 4. **前端**：`PersonalCenterView.vue` 重构为「左栏 账户概览＋资料维护 / 右栏 安全改密＋角色化统计区」；顶栏用户菜单加「个人中心」；顶栏头像改 `:src`；进页面/外壳挂载用 `/users/me` 刷新登录快照；`ROLE_LABELS` 三处重复收敛到 shared。
-5. **验证**：`mvn test` **80/80 BUILD SUCCESS**；`tsc` + `vue-tsc` exit 0；新增 `.scratch/assert-profile.mjs` **33 条断言 ALL PASS**；四条既有探针零回归（126/126、42/42、16/16、14/14）。
+5. **验证**：`mvn test` **80/80 BUILD SUCCESS**；`tsc` + `vue-tsc` exit 0；新增 `.scratch/assert-profile.mjs` **32 条断言 ALL PASS**（用 `Select-String "^PASS"` 数过，别凭印象写数字）；四条既有探针零回归（126/126、42/42、16/16、14/14）。
 6. **顺带修掉 3 个既有问题**（都不是本轮引入）：① `updateById` 跳 null 导致「清空字段」写不进库；② `AnalyticsAggregationEquivalenceTest#testLiteralAggregateValues` **在 00:00~03:00 跑必失败**（旧基线"绿"是假象，真实基线是 70 用例带 1 必失败）；③ `application-test.yml` 缺 `encoding: UTF-8` 导致测试库种子中文乱码。
 7. **服务现状**：后端 8080（本会话重启过，跑的是新代码）、前端 3000（本会话以 `danger-full-access` 启动）、Edge 9222 均在跑。
 
@@ -83,7 +83,7 @@ mvn test -f server/pom.xml
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json   # exit 0
 
 # 个人中心页面级断言（三角色 × {1272,390}；含真实头像上传链路）
-node .scratch/assert-profile.mjs            # → 33 条断言 ALL PASS
+node .scratch/assert-profile.mjs            # → 32 条断言 ALL PASS
 
 # 既有探针回归
 node .scratch/assert-drill.mjs              # → 126/126（个人中心级联仍受保护）

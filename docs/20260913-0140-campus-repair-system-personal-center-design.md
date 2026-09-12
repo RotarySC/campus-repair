@@ -154,7 +154,7 @@ Double calculateAvgRatingByEvaluator(@Param("userId") Long userId);
 | :--- | :--- | :--- |
 | 后端契约与统计口径 | `UserIntegrationTest`（4）+ 新增 `PersonalCenterIntegrationTest`（10） | **`mvn test` 80/80 BUILD SUCCESS** |
 | 类型 | `tsc`（shared）+ `vue-tsc`（admin-web） | exit 0 / exit 0 |
-| 页面与角色差异 | 新增 `.scratch/assert-profile.mjs`：admin/student02/worker01 × {1272,390}——顶栏入口可达、三卡渲染、师生 6 项 KPI 与 `/users/me/repair-summary` **逐值一致**、无评价渲染 `—`、师傅档案字段齐全（水暖管道/东校区/在岗/4.86/132 单/25% 2-8）、头像真实上传后顶栏 `src` 与 localStorage 与服务端三处一致、0 横向溢出、0 控制台错误 | **33 条断言 ALL PASS** |
+| 页面与角色差异 | 新增 `.scratch/assert-profile.mjs`：admin/student02/worker01 × {1272,390}——顶栏入口可达、三卡渲染、师生 6 项 KPI 与 `/users/me/repair-summary` **逐值一致**、无评价渲染 `—`、师傅档案字段齐全（水暖管道/东校区/在岗/4.86/132 单/25% 2-8）、头像真实上传后顶栏 `src` 与 localStorage 与服务端三处一致、0 横向溢出、0 控制台错误 | **32 条断言 ALL PASS** |
 | 既有能力零回归 | `assert-drill.mjs` / `assert-shell-toggle.mjs` / `assert-actions-align.mjs` / `assert-switch-plain.mjs` | **126/126、42/42、ALL PASS、ALL PASS** |
 
 ### 8.1 实施中额外发现并修复的问题
