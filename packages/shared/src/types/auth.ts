@@ -16,6 +16,8 @@ export interface UserInfo {
   isFirstLogin: number;
   defaultSpaceId?: number;
   avatarUrl?: string;
+  /** 注册时间（个人中心「账户概览」）；老会话的 localStorage 快照里可能没有 */
+  createdAt?: string;
 }
 
 export interface LoginResult {

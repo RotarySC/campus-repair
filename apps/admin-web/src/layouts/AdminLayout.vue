@@ -77,7 +77,9 @@
 
           <el-dropdown trigger="click" @command="onUserCommand">
             <button type="button" class="user-chip" aria-label="账号菜单">
-              <el-avatar :size="28" class="user-avatar">{{ userInitial }}</el-avatar>
+              <el-avatar :size="28" class="user-avatar" :src="authStore.userInfo?.avatarUrl || undefined">
+                {{ userInitial }}
+              </el-avatar>
               <span class="user-meta">
                 <span class="user-name">{{ authStore.userInfo?.realName || authStore.userInfo?.username }}</span>
                 <span class="user-role">{{ roleLabel }}</span>
@@ -86,6 +88,10 @@
             </button>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User /></el-icon>
+                  个人中心
+                </el-dropdown-item>
                 <el-dropdown-item command="logout">
                   <el-icon><SwitchButton /></el-icon>
                   退出登录
@@ -117,6 +123,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown, Bell, Menu, SwitchButton } from '@element-plus/icons-vue';
+import { UserInfo, roleLabel as roleLabelOf } from '@campus/shared';
 import { useAuthStore, httpClient } from '../stores/auth';
 import { BREAKPOINTS, useViewport } from '../composables/useViewport';
 import NotificationCenterDrawer from '../components/NotificationCenterDrawer.vue';
@@ -157,14 +164,6 @@ const navItems = computed<NavItem[]>(() => {
   if (authStore.userInfo?.userType === 'REPAIR_WORKER') return WORKER_NAV_ITEMS;
   return isStudentTeacher.value ? STUDENT_NAV_ITEMS : ADMIN_NAV_ITEMS;
 });
-
-const ROLE_LABELS: Record<string, string> = {
-  SUPER_ADMIN: '超级管理员',
-  LOGISTICS_ADMIN: '后勤管理员',
-  REPAIR_WORKER: '维修师傅',
-  USER_STUDENT: '学生',
-  USER_TEACHER: '教工'
-};
 
 const COLLAPSE_STORAGE_KEY = 'admin_sidebar_collapsed';
 
@@ -247,10 +246,7 @@ const pageTitle = computed(() => {
   }
   return (title as string) || '控制台概览';
 });
-const roleLabel = computed(() => {
-  const userType = authStore.userInfo?.userType || '';
-  return ROLE_LABELS[userType] || userType || '未分配角色';
-});
+const roleLabel = computed(() => roleLabelOf(authStore.userInfo?.userType));
 const userInitial = computed(() => {
   const name = authStore.userInfo?.realName || authStore.userInfo?.username || '—';
   return name.slice(0, 1);
@@ -268,6 +264,10 @@ function toggleCollapse() {
 }
 
 function onUserCommand(command: string) {
+  if (command === 'profile') {
+    router.push('/profile');
+    return;
+  }
   if (command === 'logout') {
     authStore.logout();
     router.push('/login');
@@ -299,8 +299,27 @@ async function fetchUnreadCount() {
   }
 }
 
+/**
+ * 用服务端资料刷新登录快照（localStorage 里的 user_info 是登录时刻的副本，
+ * 管理员改过姓名/头像或换设备登录后会过期）。失败时保留本地快照，不打扰用户。
+ */
+async function refreshUserProfile() {
+  try {
+    const res = await httpClient.get<UserInfo>('/users/me');
+    // 只在拿到「形状正确」的资料时才覆盖本地快照：早期版本该端点返回的是薄对象
+    // （userId/username/roles），直接覆盖会让 userType 丢失、按角色渲染的导航与区块失效。
+    if (res.code === 200 && res.data?.id && res.data?.userType) {
+      authStore.userInfo = res.data;
+      localStorage.setItem('user_info', JSON.stringify(res.data));
+    }
+  } catch (e) {
+    // 资料刷新为非关键路径，失败时沿用本地快照
+  }
+}
+
 onMounted(() => {
   fetchUnreadCount();
+  refreshUserProfile();
 });
 </script>
 

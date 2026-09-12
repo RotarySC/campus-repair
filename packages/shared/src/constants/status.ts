@@ -30,3 +30,18 @@ export const WorkerSkillLabels: Record<string, string> = {
   NETWORK: '弱电网络',
   GENERAL: '综合维修'
 };
+
+/** 角色/身份中文名（原在 AdminLayout / PersonalCenterView / ForbiddenView 各重复一份） */
+export const RoleLabels: Record<string, string> = {
+  SUPER_ADMIN: '超级管理员',
+  LOGISTICS_ADMIN: '后勤管理员',
+  REPAIR_WORKER: '维修师傅',
+  USER_STUDENT: '学生',
+  USER_TEACHER: '教工'
+};
+
+/** 取角色中文名；取不到时回退原值，再兜底为「未分配角色」 */
+export function roleLabel(code?: string | null): string {
+  if (!code) return '未分配角色';
+  return RoleLabels[code] || code;
+}

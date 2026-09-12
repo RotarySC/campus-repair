@@ -24,6 +24,7 @@
       <el-form-item label="设置新密码">
         <el-input v-model="pwdForm.newPassword" type="password" placeholder="请输入新密码" show-password />
       </el-form-item>
+      <el-alert :title="PASSWORD_RULE_MESSAGE" type="info" :closable="false" show-icon />
     </el-form>
 
     <template #footer>
@@ -38,6 +39,7 @@
 import { ref, reactive, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { PASSWORD_PATTERN, PASSWORD_RULE_MESSAGE } from '@campus/shared';
 import { useAuthStore, httpClient } from './stores/auth';
 
 const route = useRoute();
@@ -70,6 +72,10 @@ async function handleForceChange() {
   }
   if (pwdForm.oldPassword === pwdForm.newPassword) {
     ElMessage.warning('新密码不能与原密码相同');
+    return;
+  }
+  if (!PASSWORD_PATTERN.test(pwdForm.newPassword)) {
+    ElMessage.warning(PASSWORD_RULE_MESSAGE);
     return;
   }
 

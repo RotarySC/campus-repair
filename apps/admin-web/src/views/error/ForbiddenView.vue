@@ -33,24 +33,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { RoleLabels } from '@campus/shared';
 import { useAuthStore } from '../../stores/auth';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
-const ROLE_LABELS: Record<string, string> = {
-  SUPER_ADMIN: '超级管理员',
-  LOGISTICS_ADMIN: '后勤管理员',
-  REPAIR_WORKER: '维修师傅',
-  USER_STUDENT: '学生',
-  USER_TEACHER: '教工'
-};
-
 const roleLabel = computed(() => {
   const codes: string[] = authStore.userInfo?.roleCodes?.length
     ? authStore.userInfo.roleCodes
     : [authStore.userInfo?.userType || ''];
-  return codes.map((c: string) => ROLE_LABELS[c] || c).filter(Boolean).join('、') || '未知角色';
+  return codes.map((c: string) => RoleLabels[c] || c).filter(Boolean).join('、') || '未知角色';
 });
 
 function handleLogout() {
