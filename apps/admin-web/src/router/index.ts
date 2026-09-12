@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { getDeviceMode } from '../utils/device';
-import { desktopRoutes, ADMIN_ROLES } from './desktop';
+import { desktopRoutes } from './desktop';
 import { mobileRoutes } from './mobile';
 
 /**
@@ -12,11 +12,10 @@ import { mobileRoutes } from './mobile';
 const deviceMode = getDeviceMode();
 const routes = deviceMode === 'mobile' ? mobileRoutes : desktopRoutes;
 
-function isAdminUser(authStore: ReturnType<typeof useAuthStore>): boolean {
+function getUserRoles(authStore: ReturnType<typeof useAuthStore>): string[] {
   const userInfo = authStore.userInfo;
-  if (!userInfo) return false;
-  const roles = userInfo.roleCodes?.length ? userInfo.roleCodes : [userInfo.userType];
-  return roles.some((role) => ADMIN_ROLES.includes(role));
+  if (!userInfo) return [];
+  return userInfo.roleCodes?.length ? userInfo.roleCodes : [userInfo.userType];
 }
 
 const router = createRouter({
@@ -38,6 +37,7 @@ router.beforeEach((to, from, next) => {
   }
 
   const userType = authStore.userInfo?.userType;
+  const roles = getUserRoles(authStore);
 
   if (deviceMode === 'mobile') {
     // 移动树：师傅角色智能分流（保留原 mobile-web 行为）
@@ -56,8 +56,15 @@ router.beforeEach((to, from, next) => {
     return;
   }
 
-  // 桌面树：仅管理员放行管理页（师生与师傅的放行规则在师生页落地时扩展）
-  if (!isAdminUser(authStore)) {
+  // 桌面树：按路由 meta.roles 做角色放行（Q5 矩阵）
+  if (userType === 'REPAIR_WORKER' && to.path !== '/worker-pc-notice') {
+    // 师傅×桌面：作业功能在移动端，统一引到提示页
+    next('/worker-pc-notice');
+    return;
+  }
+  const requiredRoles = to.meta.roles as string[] | undefined;
+  if (requiredRoles && !roles.some((role) => requiredRoles.includes(role))) {
+    // 越权访问（如师生调管理页、管理员进师生页）：落 403 说明页
     next({ path: '/403' });
     return;
   }

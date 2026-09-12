@@ -1,7 +1,7 @@
 <template>
   <div class="forbidden-page">
     <el-card shadow="never" class="forbidden-card">
-      <el-result icon="warning" title="无权访问管理端" sub-title="当前账号的角色不在管理端可访问范围内">
+      <el-result icon="warning" title="无权访问该页面" sub-title="当前账号的角色没有访问此功能的权限">
         <template #extra>
           <div class="account-box">
             <p>
@@ -18,7 +18,7 @@
             show-icon
             class="tips"
             title="说明"
-            description="管理端仅供超级管理员与后勤管理员使用。师生报修与维修师傅作业请使用移动端 (http://localhost:3001)。"
+            description="调度、报表、台账等管理功能仅对超级管理员与后勤管理员开放。师生可使用侧边栏「提交报修 / 我的工单」，维修师傅的接单作业请在手机上打开本系统地址（界面将自动适配为移动端）。"
           />
 
           <div class="actions">

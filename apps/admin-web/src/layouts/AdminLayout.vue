@@ -103,8 +103,8 @@ interface NavItem {
   icon: string;
 }
 
-/** 导航顺序按使用频次与重要性排列：日常入口在上，只读看板与大屏在下 */
-const navItems: NavItem[] = [
+/** 管理员导航：顺序按使用频次与重要性排列，日常入口在上，只读看板与大屏在下 */
+const ADMIN_NAV_ITEMS: NavItem[] = [
   { path: '/', label: '控制台概览', icon: 'Odometer' },
   { path: '/dispatch', label: '后勤调度中心', icon: 'Headset' },
   { path: '/reports/orders', label: '工单检索报表', icon: 'Document' },
@@ -113,6 +113,20 @@ const navItems: NavItem[] = [
   { path: '/system/users', label: '用户台账管理', icon: 'User' },
   { path: '/cockpit', label: '运营指挥大屏', icon: 'DataLine' }
 ];
+
+/** 师生导航（Q8）：提单与跟单两个高频入口 */
+const STUDENT_NAV_ITEMS: NavItem[] = [
+  { path: '/student/submit', label: '提交报修', icon: 'EditPen' },
+  { path: '/', label: '我的工单', icon: 'Tickets' }
+];
+
+const isStudentTeacher = computed(() =>
+  ['USER_STUDENT', 'USER_TEACHER'].includes(authStore.userInfo?.userType || '')
+);
+
+const navItems = computed<NavItem[]>(() =>
+  isStudentTeacher.value ? STUDENT_NAV_ITEMS : ADMIN_NAV_ITEMS
+);
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: '超级管理员',
@@ -132,7 +146,14 @@ const showNotificationDrawer = ref(false);
 const unreadCount = ref(0);
 const collapsed = ref(localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1');
 
-const pageTitle = computed(() => (route.meta.title as string) || '控制台概览');
+const pageTitle = computed(() => {
+  const title = route.meta.title;
+  // 支持函数型标题（如「/」按角色显示 控制台概览 / 我的工单）
+  if (typeof title === 'function') {
+    return (title as (auth: { isStudentTeacher: boolean }) => string)({ isStudentTeacher: isStudentTeacher.value });
+  }
+  return (title as string) || '控制台概览';
+});
 const roleLabel = computed(() => {
   const userType = authStore.userInfo?.userType || '';
   return ROLE_LABELS[userType] || userType || '未分配角色';
@@ -158,10 +179,16 @@ function onUserCommand(command: string) {
   }
 }
 
-/** 通知中携带关联工单时，跳到调度中心并由该页打开审计时间轴（承接原先视图内抽屉的行为） */
+/** 通知中携带关联工单时，按角色跳转：师生→工单详情（含评价），管理员→调度中心，师傅→作业台 */
 function handleSelectOrder(orderId: number) {
   showNotificationDrawer.value = false;
-  if (orderId) {
+  if (!orderId) return;
+  const userType = authStore.userInfo?.userType;
+  if (userType === 'USER_STUDENT' || userType === 'USER_TEACHER') {
+    router.push(`/student/orders/${orderId}`);
+  } else if (userType === 'REPAIR_WORKER') {
+    router.push('/worker/workbench');
+  } else {
     router.push({ path: '/dispatch', query: { orderId: String(orderId) } });
   }
 }

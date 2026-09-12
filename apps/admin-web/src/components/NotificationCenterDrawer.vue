@@ -105,7 +105,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessage, FormInstance, FormRules } from 'element-plus';
 import { httpClient } from '../stores/auth';
 import {
@@ -119,7 +118,6 @@ const emit = defineEmits<{
   (e: 'select-order', orderId: number): void;
 }>();
 
-const router = useRouter();
 
 const loading = ref(false);
 const filterRead = ref<number>(-1);
@@ -193,9 +191,9 @@ function handleItemClick(item: NotificationItemVO) {
   if (item.isRead === 0) {
     handleMarkSingleRead(item);
   }
+  // 关联工单跳转交给宿主（AdminLayout）按角色路由：师生→详情，管理员→调度中心，师傅→作业台
   if (item.relatedOrderId) {
     emit('select-order', item.relatedOrderId);
-    router.push({ path: '/dispatch', query: { orderId: item.relatedOrderId } });
   }
 }
 
