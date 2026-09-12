@@ -13,8 +13,8 @@
 ```text
 ┌────────────────────────────────────────────────────────────────────────────────┐
 │                         Presentation Layer (前端交互表现层)                    │
-│   ├── apps/admin-web (PC管理端)       : 调度中心、大屏看板、耗材进销存、空间/分类字典、人员权限│
-│   └── apps/mobile-web (移动自适应端)  : 师生报修中心、工单时间轴、师傅工作台、完工填报│
+│   ├── apps/admin-web (统一门户)        : 按设备自动切换——桌面树：调度中心、大屏看板、进销存、字典权限 + 师生 PC 端（提单/跟单/评价）│
+│   │                                    : 移动树（Vant）：师生报修中心、师傅工作台、完工填报（同一地址自动适配）│
 │   └── packages/shared (共享公共包)    : 全栈契约模型、双Token无感重发网络库、Canvas防伪水印│
 └───────────────────────────────────────┬────────────────────────────────────────┘
                                         │ HTTP / JSON / Multipart
@@ -177,13 +177,11 @@ mvn spring-boot:run
 # 1. 安装 Monorepo 依赖 (使用 pnpm)
 pnpm install
 
-# 2. 启动 PC 管理端应用 (Element Plus)
+# 2. 启动统一门户（唯一前端；桌面/移动界面按访问设备自动切换）
 pnpm run dev:admin
 # 访问地址: http://localhost:3000
-
-# 3. 启动 移动作业与提单端应用 (Vant 4)
-pnpm run dev:mobile
-# 访问地址: http://localhost:3001
+# 手机浏览器打开同一地址即得移动版界面（师生提单/师傅作业台）；
+# 管理员请用 PC 访问（师生/师傅在 PC 上分别获得师生门户与作业指引页）
 ```
 
 ---
@@ -232,13 +230,12 @@ pnpm run dev:mobile
 系统全流程坚持测试先行与代码审查闭环，所有状态机流转、并发锁与数据一致性均具备完整的单元与集成测试套件防护：
 
 ```powershell
-# 1. 运行后端 50 项单元与高并发集成测试套件
+# 1. 运行后端 64 项单元与高并发集成测试套件
 mvn test -f server/pom.xml
 
-# 2. 运行前端 Monorepo 全量静态类型检查
+# 2. 运行前端 Monorepo 全量静态类型检查（两包）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json
 ./node_modules/.bin/tsc.CMD --noEmit -p apps/admin-web/tsconfig.json
-./node_modules/.bin/tsc.CMD --noEmit -p apps/mobile-web/tsconfig.json
 ```
 
 ### 核心测试套件分布
