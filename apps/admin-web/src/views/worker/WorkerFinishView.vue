@@ -1,79 +1,82 @@
 <template>
   <div class="finish-container">
     <!-- 顶部导航栏 -->
-    <van-nav-bar
-      title="现场完工填报"
-      left-arrow
-      @click-left="router.back()"
-      fixed
-      placeholder
+    <header class="finish-header">
+      <button type="button" class="back-btn" aria-label="返回工作台" @click="router.back()">
+        <el-icon :size="18"><ArrowLeft /></el-icon>
+      </button>
+      <span class="finish-title">现场完工填报</span>
+    </header>
+
+    <el-alert
+      class="finish-notice"
+      type="info"
+      :closable="false"
+      show-icon
+      title="上传现场照片自动压制防伪防篡改时间与单号水印，领用耗材实时校验物理库存。"
     />
 
-    <van-notice-bar
-      left-icon="info-o"
-      text="上传现场照片自动压制防伪防篡改时间与单号水印，领用耗材实时校验物理库存。"
-    />
-
-    <van-form @submit="onSubmitFinish" class="finish-form">
+    <el-form ref="finishFormRef" :model="finishForm" :rules="finishRules" label-position="top" class="finish-form" @submit.prevent>
       <!-- 1. 工单信息摘要卡片 -->
-      <van-cell-group inset title="工单信息">
-        <van-cell title="工单单号" :value="orderInfo.orderNo || `BX-${orderId}`" />
-        <van-cell title="报修位置" :label="orderInfo.spaceFullPath || '空间位置加载中...'" />
-        <van-cell title="报修描述" :label="orderInfo.description || '现场排查处置'" />
-      </van-cell-group>
+      <section class="finish-section">
+        <h3 class="section-title">工单信息</h3>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="工单单号">{{ orderInfo.orderNo || `BX-${orderId}` }}</el-descriptions-item>
+          <el-descriptions-item label="报修位置">{{ orderInfo.spaceFullPath || '空间位置加载中...' }}</el-descriptions-item>
+          <el-descriptions-item label="报修描述">{{ orderInfo.description || '现场排查处置' }}</el-descriptions-item>
+        </el-descriptions>
+      </section>
 
       <!-- 2. 现场完工拍照 (带防伪水印) -->
-      <van-cell-group inset title="完工照片 (1~3张，自动合成防伪水印)" style="margin-top: 12px;">
-        <div style="padding: 12px 16px;">
-          <van-uploader
-            v-model="fileList"
-            multiple
-            :max-count="3"
-            capture="camera"
-            :before-read="beforeReadImage"
-            :after-read="afterReadImage"
-            @delete="onDeleteImage"
-          />
-          <div class="watermark-tip">
-            * 拍照或选择图片后，客户端将自动压制包含【工单单号】、【师傅姓名】及【当前时间戳】的高清防篡改水印。
-          </div>
+      <section class="finish-section">
+        <h3 class="section-title">完工照片 (1~3张，自动合成防伪水印)</h3>
+        <el-upload
+          v-model:file-list="fileList"
+          list-type="picture-card"
+          multiple
+          accept="image/*"
+          :limit="3"
+          :on-exceed="() => ElMessage.warning('最多上传 3 张完工照片')"
+          :before-upload="beforeImageUpload"
+          :http-request="uploadWithWatermark"
+          :on-remove="onRemoveImage"
+        >
+          <el-icon :size="22"><Plus /></el-icon>
+        </el-upload>
+        <div class="watermark-tip">
+          * 拍照或选择图片后，客户端将自动压制包含【工单单号】、【师傅姓名】及【当前时间戳】的高清防篡改水印。
         </div>
-      </van-cell-group>
+      </section>
 
       <!-- 3. 维修处理总结文本框 -->
-      <van-cell-group inset title="维修总结" style="margin-top: 12px;">
-        <van-field
-          v-model="repairSummary"
-          rows="3"
-          autosize
-          label="处理说明"
-          type="textarea"
-          maxlength="500"
-          placeholder="请详细描述维修处置过程、更换配件及最终测验结果（如：更换冷水角阀，缠绕生料带，闭水打压测试5分钟无渗漏）"
-          show-word-limit
-          :rules="[{ required: true, message: '请填写现场维修总结' }]"
-        />
-      </van-cell-group>
+      <section class="finish-section">
+        <h3 class="section-title">维修总结</h3>
+        <el-form-item label="处理说明" prop="repairSummary">
+          <el-input
+            v-model="finishForm.repairSummary"
+            type="textarea"
+            :rows="4"
+            maxlength="500"
+            show-word-limit
+            placeholder="请详细描述维修处置过程、更换配件及最终测验结果（如：更换冷水角阀，缠绕生料带，闭水打压测试5分钟无渗漏）"
+          />
+        </el-form-item>
+      </section>
 
       <!-- 4. 耗材备件领用核销面板 -->
-      <van-cell-group inset title="物料核销 (若无消耗可不添加)" style="margin-top: 12px;">
+      <section class="finish-section">
         <div class="consume-header">
-          <span class="consume-title">已选领料清单</span>
-          <van-button
-            type="primary"
-            size="small"
-            plain
-            round
-            icon="plus"
-            @click="openMaterialPicker"
-          >
+          <h3 class="section-title">物料核销 (若无消耗可不添加)</h3>
+          <el-button type="primary" size="small" plain round :icon="Plus" @click="openMaterialPicker">
             添加耗材
-          </van-button>
+          </el-button>
         </div>
 
-        <div v-if="selectedParts.length === 0" class="empty-material">
-          <van-empty image="search" description="本次维修暂未领用库房耗材" />
-        </div>
+        <el-empty
+          v-if="selectedParts.length === 0"
+          description="本次维修暂未领用库房耗材"
+          :image-size="72"
+        />
 
         <div v-else class="part-list">
           <div v-for="(item, index) in selectedParts" :key="item.part.id" class="part-item">
@@ -92,19 +95,14 @@
             </div>
 
             <div class="part-action">
-              <van-stepper
+              <el-input-number
                 v-model="item.consumeQuantity"
                 :min="1"
                 :max="item.part.stockQuantity"
-                integer
+                :step-strictly="true"
+                size="small"
               />
-              <van-icon
-                name="delete-o"
-                color="#ee0a24"
-                size="20"
-                style="margin-left: 12px;"
-                @click="removePart(index)"
-              />
+              <el-button type="danger" :icon="Delete" circle size="small" plain @click="removePart(index)" />
             </div>
           </div>
         </div>
@@ -113,79 +111,78 @@
           <span>直接耗材总金额：</span>
           <span class="cost-amount">¥ {{ totalMaterialCost.toFixed(2) }}</span>
         </div>
-      </van-cell-group>
+      </section>
 
       <!-- 5. 提交按钮 -->
-      <div style="margin: 24px 16px 40px;">
-        <van-button
-          round
-          block
+      <div class="submit-row">
+        <el-button
           type="primary"
-          native-type="submit"
+          size="large"
+          class="submit-btn"
           :loading="submitting"
-          loading-text="正在核销出库并提交..."
+          @click="onSubmitFinish"
         >
-          确认完工并提交验收
-        </van-button>
+          {{ submitting ? '正在核销出库并提交...' : '确认完工并提交验收' }}
+        </el-button>
       </div>
-    </van-form>
+    </el-form>
 
     <!-- 耗材选择面板弹窗 -->
-    <van-popup
-      v-model:show="showMaterialPopup"
-      position="bottom"
-      round
-      :style="{ height: '75%' }"
-      closeable
+    <el-dialog
+      v-model="showMaterialPopup"
+      title="选择库房耗材备件"
+      width="min(560px, 94vw)"
+      top="6vh"
+      :close-on-click-modal="false"
     >
-      <div class="picker-popup">
-        <div class="picker-title">选择库房耗材备件</div>
-        <van-search
-          v-model="searchKeyword"
-          placeholder="搜索物料名称 / 编号 / 规格"
-          @search="searchParts"
-          @clear="searchParts"
-        />
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索物料名称 / 编号 / 规格"
+        clearable
+        :prefix-icon="Search"
+        @keyup.enter="searchParts"
+        @clear="searchParts"
+      >
+        <template #append>
+          <el-button :icon="Search" @click="searchParts">搜索</el-button>
+        </template>
+      </el-input>
 
-        <div class="picker-list">
-          <van-loading v-if="loadingParts" size="24px" vertical>加载耗材台账中...</van-loading>
-          <div v-else-if="availableParts.length === 0" class="empty-result">
-            <van-empty description="未找到匹配的在库耗材" />
-          </div>
-          <div
-            v-else
-            v-for="part in availableParts"
-            :key="part.id"
-            class="picker-item"
-            :class="{ 'disabled-part': part.stockQuantity <= 0 }"
-            @click="selectPart(part)"
-          >
-            <div class="picker-item-info">
-              <div class="picker-part-name">
-                {{ part.partName }}
-                <van-tag v-if="part.stockQuantity <= 0" type="danger">缺货</van-tag>
-                <van-tag v-else-if="part.isLowStock" type="warning">紧缺</van-tag>
-              </div>
-              <div class="picker-part-sub">
-                编号: {{ part.partCode }} | 规格: {{ part.specification || '通用' }}
-              </div>
-              <div class="picker-part-bottom">
-                <span class="picker-price">¥{{ part.guidePrice.toFixed(2) }} / {{ part.unit }}</span>
-                <span class="picker-stock">当前库存: {{ part.stockQuantity }} {{ part.unit }}</span>
-              </div>
+      <div v-loading="loadingParts" class="picker-list">
+        <el-empty v-if="!loadingParts && availableParts.length === 0" description="未找到匹配的在库耗材" />
+        <div
+          v-for="part in availableParts"
+          :key="part.id"
+          class="picker-item"
+          :class="{ 'disabled-part': part.stockQuantity <= 0 }"
+          @click="selectPart(part)"
+        >
+          <div class="picker-item-info">
+            <div class="picker-part-name">
+              {{ part.partName }}
+              <el-tag v-if="part.stockQuantity <= 0" type="danger" size="small">缺货</el-tag>
+              <el-tag v-else-if="part.isLowStock" type="warning" size="small">紧缺</el-tag>
             </div>
-            <van-icon name="plus" size="18" color="#1989fa" v-if="part.stockQuantity > 0" />
+            <div class="picker-part-sub">
+              编号: {{ part.partCode }} | 规格: {{ part.specification || '通用' }}
+            </div>
+            <div class="picker-part-bottom">
+              <span class="picker-price">¥{{ part.guidePrice.toFixed(2) }} / {{ part.unit }}</span>
+              <span class="picker-stock">当前库存: {{ part.stockQuantity }} {{ part.unit }}</span>
+            </div>
           </div>
+          <el-icon :size="18" color="#1677FF" v-if="part.stockQuantity > 0"><Plus /></el-icon>
         </div>
       </div>
-    </van-popup>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { showToast, showSuccessToast, showFailToast, UploaderFileListItem } from 'vant';
+import { ElMessage, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions } from 'element-plus';
+import { ArrowLeft, Delete, Plus, Search } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import {
   DispatchOrderItemVO,
@@ -200,8 +197,13 @@ const authStore = useAuthStore();
 
 const orderId = Number(route.params.id);
 const orderInfo = ref<Partial<DispatchOrderItemVO>>({});
-const repairSummary = ref('');
-const fileList = ref<UploaderFileListItem[]>([]);
+const finishFormRef = ref<FormInstance>();
+const finishForm = ref({ repairSummary: '' });
+const finishRules: FormRules = {
+  repairSummary: [{ required: true, message: '请填写现场维修总结', trigger: 'blur' }]
+};
+
+const fileList = ref<UploadFile[]>([]);
 const uploadedImageUrls = ref<string[]>([]);
 const submitting = ref(false);
 
@@ -229,7 +231,7 @@ onMounted(() => {
 
 async function fetchOrderDetail() {
   try {
-    const res = await httpClient.get<DispatchOrderItemVO>(`/api/v1/work-orders/${orderId}`);
+    const res = await httpClient.get<DispatchOrderItemVO>(`/work-orders/${orderId}`);
     if (res.code === 200 && res.data) {
       orderInfo.value = res.data;
     }
@@ -238,23 +240,30 @@ async function fetchOrderDetail() {
   }
 }
 
-// 现场完工照片上传与防伪水印处理
-function beforeReadImage(file: File | File[]) {
-  if (Array.isArray(file)) {
-    return file.every(f => f.type.startsWith('image/'));
-  }
-  return file.type.startsWith('image/');
+// 现场完工照片上传与防伪水印处理（拦截默认上传，改为「压水印 → 传后端」两步）
+type UploadError = Parameters<UploadRequestOptions['onError']>[0];
+function makeUploadError(message: string): UploadError {
+  return Object.assign(new Error(message), { status: 0, method: 'POST', url: '' }) as UploadError;
 }
 
-async function afterReadImage(item: any) {
-  item.status = 'uploading';
-  item.message = '压制防伪水印...';
+function beforeImageUpload(file: File) {
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('仅支持图片文件');
+    return false;
+  }
+  if (fileList.value.length >= 3) {
+    ElMessage.warning('最多上传 3 张完工照片');
+    return false;
+  }
+  return true;
+}
+
+async function uploadWithWatermark(options: UploadRequestOptions) {
+  const file = options.file as File;
+  const workerName = authStore.userInfo?.realName || '作业师傅';
+  const orderNo = orderInfo.value.orderNo || `BX-${orderId}`;
 
   try {
-    const file = item.file as File;
-    const workerName = authStore.userInfo?.realName || '作业师傅';
-    const orderNo = orderInfo.value.orderNo || `BX-${orderId}`;
-
     // 1. 调用 Canvas 防伪水印工具压制时间戳、师傅与单号
     const watermarkedBlob = await addWatermarkToImage(file, {
       orderNo,
@@ -262,8 +271,6 @@ async function afterReadImage(item: any) {
       maxDimension: 1600,
       quality: 0.85
     });
-
-    item.message = '上传中...';
 
     // 2. 上传至后端统一文件服务端点（相对 baseURL /api/v1，勿写绝对路径以免被拦截器二次拼接）
     const formData = new FormData();
@@ -274,23 +281,24 @@ async function afterReadImage(item: any) {
     });
 
     if (res.code === 200 && res.data?.url) {
-      item.status = 'done';
-      item.url = res.data.url;
       uploadedImageUrls.value.push(res.data.url);
+      options.onSuccess(res.data);
     } else {
-      item.status = 'failed';
-      item.message = '上传失败';
-      showFailToast('照片上传失败');
+      options.onError(makeUploadError(res.message || '上传失败'));
+      ElMessage.error('照片上传失败');
     }
   } catch (err: any) {
-    item.status = 'failed';
-    item.message = '处理失败';
-    showFailToast(err.message || '水印生成或上传失败');
+    options.onError(makeUploadError(err?.message || '水印生成或上传失败'));
+    ElMessage.error(err?.message || '水印生成或上传失败');
   }
 }
 
-function onDeleteImage(item: any, detail: { index: number }) {
-  uploadedImageUrls.value.splice(detail.index, 1);
+function onRemoveImage(file: UploadFile) {
+  const url = (file.response as { url?: string } | undefined)?.url;
+  if (url) {
+    const idx = uploadedImageUrls.value.indexOf(url);
+    if (idx >= 0) uploadedImageUrls.value.splice(idx, 1);
+  }
 }
 
 // 耗材选择面板
@@ -302,7 +310,7 @@ function openMaterialPicker() {
 async function searchParts() {
   loadingParts.value = true;
   try {
-    const res = await httpClient.get<{ records: SparePartVO[] }>('/api/v1/inventory/parts', {
+    const res = await httpClient.get<{ records: SparePartVO[] }>('/inventory/parts', {
       params: {
         keyword: searchKeyword.value.trim(),
         page: 1,
@@ -312,8 +320,8 @@ async function searchParts() {
     if (res.code === 200 && res.data) {
       availableParts.value = res.data.records || [];
     }
-  } catch (e: any) {
-    showFailToast('获取耗材台账失败');
+  } catch (e) {
+    ElMessage.error('获取耗材台账失败');
   } finally {
     loadingParts.value = false;
   }
@@ -321,7 +329,7 @@ async function searchParts() {
 
 function selectPart(part: SparePartVO) {
   if (part.stockQuantity <= 0) {
-    showToast('该耗材当前库存为0，无法领用');
+    ElMessage.warning('该耗材当前库存为0，无法领用');
     return;
   }
   const existing = selectedParts.value.find(p => p.part.id === part.id);
@@ -329,7 +337,7 @@ function selectPart(part: SparePartVO) {
     if (existing.consumeQuantity < part.stockQuantity) {
       existing.consumeQuantity += 1;
     } else {
-      showToast(`已达该耗材库存上限 (${part.stockQuantity}${part.unit})`);
+      ElMessage.warning(`已达该耗材库存上限 (${part.stockQuantity}${part.unit})`);
     }
   } else {
     selectedParts.value.push({
@@ -338,7 +346,7 @@ function selectPart(part: SparePartVO) {
     });
   }
   showMaterialPopup.value = false;
-  showSuccessToast(`已选入: ${part.partName}`);
+  ElMessage.success(`已选入: ${part.partName}`);
 }
 
 function removePart(index: number) {
@@ -347,15 +355,18 @@ function removePart(index: number) {
 
 // 提交完工
 async function onSubmitFinish() {
+  const valid = await finishFormRef.value?.validate().catch(() => false);
+  if (!valid) return;
+
   if (uploadedImageUrls.value.length === 0) {
-    showToast('请至少拍摄或上传1张现场完工带水印照片');
+    ElMessage.warning('请至少拍摄或上传1张现场完工带水印照片');
     return;
   }
 
   // 检查是否超出库存
   for (const item of selectedParts.value) {
     if (item.consumeQuantity > item.part.stockQuantity) {
-      showToast(`物料 [${item.part.partName}] 领用量超过当前物理库存！`);
+      ElMessage.warning(`物料 [${item.part.partName}] 领用量超过当前物理库存！`);
       return;
     }
   }
@@ -363,7 +374,7 @@ async function onSubmitFinish() {
   submitting.value = true;
   try {
     const payload: WorkOrderFinishRequest = {
-      repairSummary: repairSummary.value.trim(),
+      repairSummary: finishForm.value.repairSummary.trim(),
       repairImages: uploadedImageUrls.value,
       materialConsumptions: selectedParts.value.map(item => ({
         partId: item.part.id,
@@ -371,17 +382,17 @@ async function onSubmitFinish() {
       }))
     };
 
-    const res = await httpClient.post<void>(`/api/v1/work-orders/${orderId}/finish`, payload);
+    const res = await httpClient.post<void>(`/work-orders/${orderId}/finish`, payload);
     if (res.code === 200) {
-      showSuccessToast('完工上报成功，已流转待验收');
+      ElMessage.success('完工上报成功，已流转待验收');
       setTimeout(() => {
         router.push('/worker/workbench');
       }, 1000);
     } else {
-      showFailToast(res.message || '完工填报失败');
+      ElMessage.error(res.message || '完工填报失败');
     }
   } catch (err: any) {
-    showFailToast(err.message || '网络请求异常');
+    ElMessage.error(err.message || '网络请求异常');
   } finally {
     submitting.value = false;
   }
@@ -391,12 +402,72 @@ async function onSubmitFinish() {
 <style scoped>
 .finish-container {
   min-height: 100vh;
-  background-color: #f7f8fa;
-  padding-bottom: 24px;
+  background-color: #f5f7fa;
+  padding-bottom: 40px;
 }
 
+.finish-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding-inline: 8px;
+  background-color: #FFFFFF;
+  border-bottom: 1px solid #ECEEF2;
+}
+
+.finish-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1F2937;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  color: #4B5563;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.back-btn:hover {
+  background-color: #F5F7FA;
+  color: #1677FF;
+}
+
+.finish-notice {
+  border-radius: 0;
+}
+
+/* 表单主体限宽居中：手机档自然满宽，桌面档不无限拉伸 */
 .finish-form {
-  margin-top: 8px;
+  max-width: 760px;
+  margin-inline: auto;
+  padding: 12px 16px 0;
+}
+
+.finish-section {
+  background-color: #FFFFFF;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1F2937;
 }
 
 .watermark-tip {
@@ -410,33 +481,30 @@ async function onSubmitFinish() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px 8px;
 }
 
-.consume-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #323233;
-}
-
-.empty-material {
-  padding: 8px 0;
+.consume-header .section-title {
+  margin-bottom: 12px;
 }
 
 .part-list {
-  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .part-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 10px 0;
-  border-bottom: 1px solid #ebedf0;
+  border-bottom: 1px solid #EBEDF0;
 }
 
 .part-info {
   flex: 1;
+  min-width: 220px;
 }
 
 .part-name {
@@ -469,16 +537,16 @@ async function onSubmitFinish() {
 .part-action {
   display: flex;
   align-items: center;
+  gap: 12px;
 }
 
 .cost-summary {
   display: flex;
   justify-content: flex-end;
   align-items: baseline;
-  padding: 12px 16px;
+  padding: 12px 0 0;
   font-size: 13px;
   color: #646566;
-  background-color: #fafafa;
 }
 
 .cost-amount {
@@ -488,37 +556,40 @@ async function onSubmitFinish() {
   margin-left: 4px;
 }
 
-/* 耗材弹出层 */
-.picker-popup {
+.submit-row {
+  margin: 20px 0 8px;
+}
+
+.submit-btn {
+  width: 100%;
+  min-height: 44px;
+}
+
+/* 耗材选择弹窗列表 */
+.picker-list {
+  max-height: 56vh;
+  overflow-y: auto;
+  padding-top: 12px;
   display: flex;
   flex-direction: column;
-  height: 100%;
-}
-
-.picker-title {
-  font-size: 16px;
-  font-weight: bold;
-  text-align: center;
-  padding: 16px;
-  color: #323233;
-}
-
-.picker-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 16px 20px;
+  gap: 8px;
 }
 
 .picker-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 12px;
   border-radius: 8px;
   background-color: #fff;
-  border: 1px solid #ebedf0;
-  margin-bottom: 8px;
+  border: 1px solid #EBEDF0;
   cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.picker-item:hover {
+  border-color: #1677FF;
 }
 
 .picker-item.disabled-part {
@@ -555,10 +626,6 @@ async function onSubmitFinish() {
 }
 
 .picker-stock {
-  color: #1989fa;
-}
-
-.empty-result {
-  padding-top: 30px;
+  color: #1677FF;
 }
 </style>
