@@ -1,6 +1,12 @@
 <template>
-  <div class="admin-shell" :class="{ 'sidebar-collapsed': collapsed }">
-    <!-- 固定左侧边栏 -->
+  <div
+    class="admin-shell"
+    :class="{ 'sidebar-collapsed': collapsed && !isNarrowPhone, 'sidebar-drawer-open': drawerOpen }"
+  >
+    <!-- 窄屏抽屉遮罩 -->
+    <div v-if="isNarrowPhone" class="drawer-backdrop" :class="{ visible: drawerOpen }" @click="drawerOpen = false" />
+
+    <!-- 固定左侧边栏（<768px 转覆盖抽屉） -->
     <aside class="sidebar" aria-label="主导航">
       <div class="brand">
         <el-icon :size="24" color="#1677FF" class="brand-icon"><Management /></el-icon>
@@ -16,13 +22,14 @@
           :class="{ 'is-active': isActive(item.path) }"
           :aria-current="isActive(item.path) ? 'page' : undefined"
           :title="collapsed ? item.label : undefined"
+          @click="drawerOpen = false"
         >
           <el-icon :size="18" class="nav-icon"><component :is="item.icon" /></el-icon>
           <span v-show="!collapsed" class="nav-label">{{ item.label }}</span>
         </router-link>
       </nav>
 
-      <div class="sidebar-footer">
+      <div v-if="!isNarrowPhone" class="sidebar-footer">
         <button
           type="button"
           class="collapse-btn"
@@ -39,7 +46,19 @@
     <!-- 右侧内容区：顶部条固定，仅页面内容滚动 -->
     <div class="content-area">
       <header class="topbar">
-        <h1 class="page-title">{{ pageTitle }}</h1>
+        <div class="topbar-left">
+          <button
+            v-if="isNarrowPhone"
+            type="button"
+            class="hamburger-btn"
+            aria-label="打开导航菜单"
+            :aria-expanded="drawerOpen"
+            @click="drawerOpen = !drawerOpen"
+          >
+            <el-icon :size="20"><Menu /></el-icon>
+          </button>
+          <h1 class="page-title">{{ pageTitle }}</h1>
+        </div>
 
         <div class="topbar-actions">
           <el-badge :value="unreadCount" :max="99" :hidden="unreadCount === 0">
@@ -82,7 +101,7 @@
     <el-drawer
       v-model="showNotificationDrawer"
       title="站内消息通知中心"
-      size="420px"
+      :size="notificationDrawerSize"
       direction="rtl"
     >
       <NotificationCenterDrawer @unread-updated="fetchUnreadCount" @select-order="handleSelectOrder" />
@@ -91,10 +110,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Bell, ArrowDown, SwitchButton } from '@element-plus/icons-vue';
+import { ArrowDown, Bell, Menu, SwitchButton } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../stores/auth';
+import { BREAKPOINTS, useViewport } from '../composables/useViewport';
 import NotificationCenterDrawer from '../components/NotificationCenterDrawer.vue';
 
 interface NavItem {
@@ -142,9 +162,50 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 
+// 窄屏抽屉态下切换路由后自动收起
+watch(
+  () => route.path,
+  () => {
+    if (isNarrowPhone.value) drawerOpen.value = false;
+  }
+);
+
 const showNotificationDrawer = ref(false);
 const unreadCount = ref(0);
 const collapsed = ref(localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1');
+const drawerOpen = ref(false);
+
+const { isNarrowPhone, isTablet, isWide, viewportWidth } = useViewport();
+
+/** 窄屏下通知抽屉占满全宽，桌面档维持 420px */
+const notificationDrawerSize = computed(() => (isNarrowPhone.value ? '100%' : '420px'));
+
+type WidthBand = 'phone' | 'tablet' | 'wide';
+function bandOf(width: number): WidthBand {
+  if (width < BREAKPOINTS.PHONE) return 'phone';
+  return width < BREAKPOINTS.TABLET ? 'tablet' : 'wide';
+}
+
+// 初始即处于平板档：默认折叠一次（不写 localStorage，避免覆盖用户在桌面档的偏好）
+if (isTablet.value) {
+  collapsed.value = true;
+}
+
+watch(viewportWidth, (width, oldWidth) => {
+  const from = bandOf(oldWidth ?? width);
+  const to = bandOf(width);
+  if (from === to) return;
+  drawerOpen.value = false;
+  if (to === 'tablet') {
+    // 跨入平板档：自动折叠为图标栏；用户随后手动展开仍会写入偏好
+    collapsed.value = true;
+  } else if (to === 'wide') {
+    // 回到桌面档：恢复用户自己的折叠偏好
+    collapsed.value = localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1';
+  }
+});
+
+// 窄屏抽屉态下切换路由后自动收起（见下方 route 声明后的 watch）
 
 const pageTitle = computed(() => {
   const title = route.meta.title;
@@ -441,5 +502,90 @@ onMounted(() => {
 .page-scroll {
   flex: 1;
   min-height: 0;
+}
+
+/* ---------- 窄屏三档自适应（<768px） ---------- */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 汉堡按钮仅窄屏渲染（模板 v-if），桌面档兜底隐藏 */
+.hamburger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  color: #4b5563;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.hamburger-btn:hover {
+  background-color: #f5f7fa;
+  color: #1677ff;
+}
+
+/* 遮罩仅窄屏生效；桌面档永不渲染视觉 */
+.drawer-backdrop {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* 侧边栏转为覆盖抽屉：默认滑出屏幕，drawer-open 时滑入（z-index 20 高于遮罩 19） */
+  .sidebar {
+    width: var(--sidebar-w);
+    transform: translateX(-105%);
+    transition: transform 0.22s ease, box-shadow 0.22s ease;
+  }
+
+  .sidebar-drawer-open .sidebar {
+    transform: translateX(0);
+    box-shadow: 0 0 24px rgba(15, 23, 42, 0.18);
+  }
+
+  .sidebar-collapsed .sidebar {
+    width: var(--sidebar-w);
+  }
+
+  .content-area,
+  .sidebar-collapsed .content-area {
+    margin-inline-start: 0;
+  }
+
+  .topbar {
+    padding-inline: 12px;
+    gap: 10px;
+  }
+
+  /* 顶栏只保留头像，避免用户名/角色把标题挤出屏幕 */
+  .user-meta {
+    display: none;
+  }
+
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 19;
+    background-color: rgba(15, 23, 42, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .drawer-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 </style>
