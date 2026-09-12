@@ -169,6 +169,43 @@ public class WorkOrderService {
         return orderLogService.getTimeline(orderId);
     }
 
+    /**
+     * 师生本人报修工单分页（PC 门户「我的工单」）。status 支持单个状态或逗号分隔的多状态
+     * （前端「在办」这类聚合页签一次传多个），按创建时间倒序。
+     */
+    public com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> getMyOrders(
+            Long studentUserId, long page, long size, String status) {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> pageParam =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, size);
+        LambdaQueryWrapper<RepairOrder> query = new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getStudentUserId, studentUserId);
+        if (StringUtils.hasText(status)) {
+            List<String> statuses = java.util.Arrays.stream(status.split(","))
+                    .map(String::trim).filter(StringUtils::hasText).toList();
+            if (statuses.size() == 1) {
+                query.eq(RepairOrder::getStatus, statuses.get(0));
+            } else if (!statuses.isEmpty()) {
+                query.in(RepairOrder::getStatus, statuses);
+            }
+        }
+        query.orderByDesc(RepairOrder::getCreatedAt);
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> orderPage =
+                orderMapper.selectPage(pageParam, query);
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> resultPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                        orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
+        resultPage.setRecords(orderPage.getRecords().stream().map(order -> {
+            com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo =
+                    new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
+            org.springframework.beans.BeanUtils.copyProperties(order, vo);
+            vo.setStatus(order.getStatus());
+            return vo;
+        }).collect(java.util.stream.Collectors.toList()));
+        return resultPage;
+    }
+
     public com.campus.repair.modules.workorder.vo.DispatchOrderItemVO getOrderDetail(Long orderId) {
         RepairOrder order = orderMapper.selectById(orderId);
         if (order == null) {

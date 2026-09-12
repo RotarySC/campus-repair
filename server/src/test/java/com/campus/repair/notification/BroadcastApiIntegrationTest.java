@@ -43,9 +43,31 @@ class BroadcastApiIntegrationTest {
     @MockBean
     private ValueOperations<String, String> valueOperations;
 
+    @Autowired
+    private com.campus.repair.modules.user.mapper.SysUserMapper userMapper;
+
+    @Autowired
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
     @BeforeEach
     void setUp() {
         Mockito.when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        resetStudentPassword();
+    }
+
+    /**
+     * UserIntegrationTest（非事务）会把 student01 密码改为 NewPassword@2026 且在共享
+     * Spring 上下文里持久生效，测试类执行顺序不定，故登录前显式重置回 password
+     * （本测试类事务回滚，重置不外泄）。
+     */
+    private void resetStudentPassword() {
+        com.campus.repair.modules.user.entity.SysUser student = userMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.campus.repair.modules.user.entity.SysUser>()
+                        .eq(com.campus.repair.modules.user.entity.SysUser::getUsername, "student01"));
+        if (student != null && !passwordEncoder.matches("password", student.getPassword())) {
+            student.setPassword(passwordEncoder.encode("password"));
+            userMapper.updateById(student);
+        }
     }
 
     private String loginAndGetToken(String username, String password) throws Exception {

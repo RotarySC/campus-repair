@@ -35,10 +35,22 @@ public class WorkOrderController {
 
     @Operation(summary = "师生提交报修工单")
     @PostMapping("/submit")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
     public R<WorkOrderSubmitResultVO> submitOrder(
             @AuthenticationPrincipal LoginUserPrincipal user,
             @Valid @RequestBody WorkOrderSubmitRequest request) {
         return R.success(workOrderService.submitOrder(user.getUserId(), request));
+    }
+
+    @Operation(summary = "师生获取本人报修工单分页列表 (PC 门户「我的工单」)")
+    @GetMapping("/my")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
+    public R<com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO>> getMyOrders(
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "1") long page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "10") long size,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String status) {
+        return R.success(workOrderService.getMyOrders(user.getUserId(), page, size, status));
     }
 
     @Operation(summary = "获取工单流转审计时间轴")
