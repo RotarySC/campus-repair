@@ -49,7 +49,10 @@ export const httpClient = createHttpClient('/api/v1', {
     localStorage.setItem('refresh_token', refresh);
   },
   onSessionExpired: () => {
-    localStorage.clear();
+    // 只清登录三件套，保留提单草稿等业务缓存（统一门户后本 origin 还承载移动树）
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_info');
     window.location.href = '/login?expired=1';
   }
 });
