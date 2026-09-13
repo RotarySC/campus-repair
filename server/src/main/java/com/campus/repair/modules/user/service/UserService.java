@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.modules.auth.dto.RegisterRequest;
@@ -18,6 +19,7 @@ import com.campus.repair.modules.user.entity.SysUserRole;
 import com.campus.repair.modules.user.mapper.SysRoleMapper;
 import com.campus.repair.modules.user.mapper.SysUserMapper;
 import com.campus.repair.modules.user.mapper.SysUserRoleMapper;
+import com.campus.repair.modules.user.mapper.WorkerProfileMapper;
 import com.campus.repair.modules.user.vo.UserImportResultVO;
 import com.campus.repair.modules.user.vo.UserProfileVO;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +42,7 @@ public class UserService {
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;
     private final SysUserRoleMapper userRoleMapper;
+    private final WorkerProfileMapper workerProfileMapper;
     private final PasswordEncoder passwordEncoder;
     private final SpatialNodeService spatialNodeService;
 
@@ -55,30 +59,41 @@ public class UserService {
             throw new BusinessException(ErrorCode.PHONE_EXISTS);
         }
 
-        // 2. 匹配角色
-        String userType = StringUtils.hasText(request.getUserType()) ? request.getUserType() : "USER_STUDENT";
-        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, userType));
-        if (role == null) {
-            throw new BusinessException("无效的用户角色: " + userType);
+        // 2. 校验组织条线：客户端只能说「我是谁」，**不能说「我能干什么」**
+        //    （此前把 userType 当角色码直接查 sys_role，传 SUPER_ADMIN 即可自封超管）
+        String branch = StringUtils.hasText(request.getUserType())
+                ? request.getUserType().trim().toUpperCase(Locale.ROOT)
+                : IdentityCodes.BRANCH_STUDENT;
+        if (!IdentityCodes.SELF_REGISTRABLE_BRANCHES.contains(branch)) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(),
+                    "不支持自助注册的所属条线: " + request.getUserType());
         }
 
-        // 3. 实体保存
+        // 3. 自助注册一律只授「报修人」职能，与客户端请求无关
+        SysRole reporterRole = roleMapper.selectOne(
+                new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, IdentityCodes.FUNC_REPORTER));
+        if (reporterRole == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR.getCode(),
+                    "角色字典缺少 " + IdentityCodes.FUNC_REPORTER + "，请检查数据初始化");
+        }
+
+        // 4. 实体保存
         SysUser user = new SysUser();
         user.setUsername(username);
         user.setRealName(request.getRealName().trim());
         user.setPhone(phone);
         user.setPassword(passwordEncoder.encode(request.getPassword().trim()));
-        user.setUserType(userType);
+        user.setUserType(branch);
         user.setDepartment(request.getDepartment());
         user.setDefaultSpaceId(request.getDefaultSpaceId());
         user.setStatus(1);
         user.setIsFirstLogin(0); // 自助注册账号初始密码无需强制改密
         userMapper.insert(user);
 
-        // 4. 角色绑定
+        // 5. 职能绑定
         SysUserRole userRole = new SysUserRole();
         userRole.setUserId(user.getId());
-        userRole.setRoleId(role.getId());
+        userRole.setRoleId(reporterRole.getId());
         userRoleMapper.insert(userRole);
     }
 
@@ -154,7 +169,8 @@ public class UserService {
 
     public UserImportResultVO importUsers(MultipartFile file) {
         try (InputStream inputStream = file.getInputStream()) {
-            UserExcelImportListener listener = new UserExcelImportListener(userMapper, roleMapper, userRoleMapper, passwordEncoder);
+            UserExcelImportListener listener = new UserExcelImportListener(
+                    userMapper, roleMapper, userRoleMapper, workerProfileMapper, passwordEncoder);
             EasyExcel.read(inputStream, UserImportRow.class, listener).sheet().doRead();
             return listener.getResult();
         } catch (Exception e) {
@@ -221,12 +237,13 @@ public class UserService {
 
     /**
      * 由已加载的用户实体组装资料视图，避免调用方重复 10 字段 builder。
-     * 角色码取自 sys_user_role，为空时回退到 userType（与登录流程既有行为一致）。
+     * 职能码取自 sys_user_role；**空集不再回退到 userType**（userType 是组织条线，不是职能码，
+     * 回退会让「删掉职能绑定」反而升权）——无职能即视为账号不可用。
      */
     public UserProfileVO buildProfile(SysUser user) {
         List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
         if (roleCodes == null || roleCodes.isEmpty()) {
-            roleCodes = List.of(user.getUserType());
+            throw new BusinessException(ErrorCode.USER_NO_FUNCTION);
         }
         return UserProfileVO.builder()
                 .id(user.getId())

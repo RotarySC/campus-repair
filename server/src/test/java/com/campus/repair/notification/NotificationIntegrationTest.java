@@ -158,7 +158,7 @@ public class NotificationIntegrationTest {
         student.setRealName("审计学生");
         student.setPhone("13911112222");
         student.setPassword(passwordEncoder.encode("123456"));
-        student.setUserType("USER_STUDENT");
+        student.setUserType("STUDENT");
         student.setStatus(1);
         student.setIsFirstLogin(0);
         userMapper.insert(student);
@@ -168,7 +168,7 @@ public class NotificationIntegrationTest {
         worker.setRealName("审计师傅");
         worker.setPhone("13911113333");
         worker.setPassword(passwordEncoder.encode("123456"));
-        worker.setUserType("REPAIR_WORKER");
+        worker.setUserType("LOGISTICS");
         worker.setStatus(1);
         worker.setIsFirstLogin(0);
         userMapper.insert(worker);

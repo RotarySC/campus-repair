@@ -129,10 +129,11 @@ public class AuthService {
         // 登录成功，清理失败计数器
         authStateStore.delete(failedKey);
 
-        // 获取用户角色列表
+        // 获取用户职能列表（**不做 userType 回退**：userType 是组织条线，不是职能码；
+        // 回退会让"删掉角色绑定"反而升权，见 CONTEXT.md 与设计文档 §4.2）
         List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
         if (roleCodes.isEmpty()) {
-            roleCodes = List.of(user.getUserType());
+            throw new BusinessException(ErrorCode.USER_NO_FUNCTION);
         }
 
         // 签发双 Token
@@ -161,7 +162,7 @@ public class AuthService {
 
         List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
         if (roleCodes.isEmpty()) {
-            roleCodes = List.of(user.getUserType());
+            throw new BusinessException(ErrorCode.USER_NO_FUNCTION);
         }
 
         String newAccessToken = jwtUtils.generateAccessToken(user.getId(), user.getUsername(), roleCodes);

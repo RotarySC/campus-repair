@@ -24,7 +24,7 @@ public class WorkerController {
 
     @Operation(summary = "获取调度中心师傅负荷实时看板列表")
     @GetMapping("/dispatch-board")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<List<WorkerBoardVO>> getWorkerBoard(WorkerBoardQueryRequest request) {
         return R.success(workerService.getWorkerBoardList(request));
     }

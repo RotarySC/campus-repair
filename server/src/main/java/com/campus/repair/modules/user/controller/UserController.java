@@ -62,21 +62,21 @@ public class UserController {
 
     @Operation(summary = "师生获取本人报修概览（个人中心统计区）")
     @GetMapping("/me/repair-summary")
-    @PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
+    @PreAuthorize("hasRole('REPORTER')")
     public R<RepairSummaryVO> getRepairSummary(@AuthenticationPrincipal LoginUserPrincipal user) {
         return R.success(profileStatisticsService.getRepairSummary(user.getUserId()));
     }
 
     @Operation(summary = "师傅获取本人作业概览（无档案时 data 为 null）")
     @GetMapping("/me/worker-profile")
-    @PreAuthorize("hasRole('REPAIR_WORKER')")
+    @PreAuthorize("hasRole('WORKER')")
     public R<MyWorkerProfileVO> getMyWorkerProfile(@AuthenticationPrincipal LoginUserPrincipal user) {
         return R.success(profileStatisticsService.getMyWorkerProfile(user.getUserId()));
     }
 
     @Operation(summary = "管理员分页查询用户台账")
     @GetMapping("/page")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<IPage<SysUser>> pageUsers(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -88,7 +88,7 @@ public class UserController {
 
     @Operation(summary = "启用/停用用户状态")
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public R<Void> updateUserStatus(@PathVariable Long id, @RequestParam Integer status) {
         userService.updateUserStatus(id, status);
         return R.success("状态已更新", null);
@@ -96,7 +96,7 @@ public class UserController {
 
     @Operation(summary = "重置用户初始密码")
     @PutMapping("/{id}/password/reset")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public R<Void> resetUserPassword(@PathVariable Long id, @RequestParam(required = false) String newPassword) {
         userService.resetUserPassword(id, newPassword);
         return R.success("密码已重置", null);
@@ -104,7 +104,7 @@ public class UserController {
 
     @Operation(summary = "Excel批量导入用户账号")
     @PostMapping(value = "/import", consumes = "multipart/form-data")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public R<UserImportResultVO> importUsers(@RequestParam("file") MultipartFile file) {
         return R.success("导入完成", userService.importUsers(file));
     }

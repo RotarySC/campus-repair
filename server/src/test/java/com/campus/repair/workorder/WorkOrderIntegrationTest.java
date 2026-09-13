@@ -47,7 +47,7 @@ class WorkOrderIntegrationTest {
     @Test
     @DisplayName("报修提单成功生成BX单号并触发同空间同分类防重阻断")
     void testOrderSubmitAndDuplicatePrevention() throws Exception {
-        String studentToken = jwtUtils.generateAccessToken(3L, "student01", List.of("USER_STUDENT"));
+        String studentToken = jwtUtils.generateAccessToken(3L, "student01", List.of("REPORTER"));
 
         // 1. 初始化空间与分类
         SpatialNode room = new SpatialNode();

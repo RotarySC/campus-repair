@@ -46,7 +46,7 @@ class SpatialDictIntegrationTest {
     @Test
     @DisplayName("构建四级校园空间树，支持全路径冗余、软停用与根校区追溯")
     void testSpatialTreeLifecycle() throws Exception {
-        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("SUPER_ADMIN"));
+        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("PLATFORM_ADMIN"));
 
         // 1. 创建校区
         SpatialNode campus = new SpatialNode();
@@ -97,7 +97,7 @@ class SpatialDictIntegrationTest {
     @Test
     @DisplayName("构建故障两级分类树并验证工种映射与SLA时限")
     void testCategoryTreeLifecycle() throws Exception {
-        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("SUPER_ADMIN"));
+        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("PLATFORM_ADMIN"));
 
         // 1. 创建一级大类
         RepairCategory parent = new RepairCategory();
@@ -141,7 +141,7 @@ class SpatialDictIntegrationTest {
     @Test
     @DisplayName("系统核心业务配置读写 (72h超时与差评阈值)")
     void testSysConfigLifecycle() throws Exception {
-        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("SUPER_ADMIN"));
+        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("PLATFORM_ADMIN"));
 
         // 初始化/更新 72h 超时参数
         mockMvc.perform(put("/api/v1/configs/auto_acceptance_timeout_hours")

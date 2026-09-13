@@ -9,6 +9,7 @@ import com.campus.repair.modules.notification.vo.NotificationVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -50,7 +51,7 @@ public class NotificationController {
 
     @Operation(summary = "发布全校后勤广播公告 (管理员权限)")
     @PostMapping("/broadcast")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Integer> broadcastAnnouncement(
             @jakarta.validation.Valid @RequestBody com.campus.repair.modules.notification.dto.BroadcastNotificationRequest request) {
         return R.success(notificationService.broadcastAnnouncement(request.getTitle(), request.getContent()));

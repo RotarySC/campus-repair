@@ -37,14 +37,14 @@ public class SpatialDictController {
 
     @Operation(summary = "创建空间网格节点")
     @PostMapping("/spatial/nodes")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<SpatialNode> createSpatialNode(@RequestBody SpatialNode node) {
         return R.success(spatialNodeService.createNode(node));
     }
 
     @Operation(summary = "更新空间网格节点")
     @PutMapping("/spatial/nodes")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> updateSpatialNode(@RequestBody SpatialNode node) {
         spatialNodeService.updateNode(node);
         return R.success("更新成功", null);
@@ -52,7 +52,7 @@ public class SpatialDictController {
 
     @Operation(summary = "删除空间网格叶子节点")
     @DeleteMapping("/spatial/nodes/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> deleteSpatialNode(@PathVariable Long id) {
         spatialNodeService.deleteNode(id);
         return R.success("删除成功", null);
@@ -60,7 +60,7 @@ public class SpatialDictController {
 
     @Operation(summary = "切换空间节点启用/软停用状态")
     @PutMapping("/spatial/nodes/{id}/status")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> toggleNodeStatus(@PathVariable Long id, @RequestParam Integer status) {
         spatialNodeService.updateNodeStatus(id, status);
         return R.success("状态更新成功", null);
@@ -75,14 +75,14 @@ public class SpatialDictController {
 
     @Operation(summary = "创建故障分类节点")
     @PostMapping("/categories")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<RepairCategory> createCategory(@RequestBody RepairCategory category) {
         return R.success(categoryService.createCategory(category));
     }
 
     @Operation(summary = "更新故障分类节点")
     @PutMapping("/categories")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> updateCategory(@RequestBody RepairCategory category) {
         categoryService.updateCategory(category);
         return R.success("更新成功", null);
@@ -90,7 +90,7 @@ public class SpatialDictController {
 
     @Operation(summary = "删除故障分类叶子节点")
     @DeleteMapping("/categories/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> deleteCategory(@PathVariable Long id) {
         categoryService.deleteCategory(id);
         return R.success("删除成功", null);
@@ -99,14 +99,14 @@ public class SpatialDictController {
     // --- 系统配置 ---
     @Operation(summary = "获取系统全局业务参数列表")
     @GetMapping("/configs")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<List<SysConfig>> getConfigs() {
         return R.success(configService.listConfigs());
     }
 
     @Operation(summary = "更新系统全局业务参数")
     @PutMapping("/configs/{key}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public R<Void> updateConfig(@PathVariable String key, @RequestParam String value) {
         configService.updateConfig(key, value);
         return R.success("配置已更新", null);

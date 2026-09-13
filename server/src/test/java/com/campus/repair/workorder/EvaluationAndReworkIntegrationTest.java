@@ -103,8 +103,8 @@ public class EvaluationAndReworkIntegrationTest {
         cat = categoryService.createCategory(cat);
         testCategoryId = cat.getId();
 
-        studentUser = createTestUser("student_eval", "赵同学", "13899990001", "USER_STUDENT");
-        workerOriginal = createTestUser("worker_eval_orig", "张师傅(原工)", "13899990002", "REPAIR_WORKER");
+        studentUser = createTestUser("student_eval", "赵同学", "13899990001", "STUDENT");
+        workerOriginal = createTestUser("worker_eval_orig", "张师傅(原工)", "13899990002", "LOGISTICS");
         WorkerProfile p1 = new WorkerProfile();
         p1.setUserId(workerOriginal.getId());
         p1.setSkillCode("MANUAL_EVAL_SKILL");
@@ -115,7 +115,7 @@ public class EvaluationAndReworkIntegrationTest {
         p1.setRatingAvg(new BigDecimal("4.80"));
         workerProfileMapper.insert(p1);
 
-        workerSenior = createTestUser("worker_eval_snr", "孙高级技师", "13899990003", "REPAIR_WORKER");
+        workerSenior = createTestUser("worker_eval_snr", "孙高级技师", "13899990003", "LOGISTICS");
         WorkerProfile p2 = new WorkerProfile();
         p2.setUserId(workerSenior.getId());
         p2.setSkillCode("MANUAL_EVAL_SKILL");
@@ -126,7 +126,7 @@ public class EvaluationAndReworkIntegrationTest {
         p2.setRatingAvg(new BigDecimal("4.99"));
         workerProfileMapper.insert(p2);
 
-        adminUser = createTestUser("admin_eval", "李后勤主管", "13899990004", "LOGISTICS_ADMIN");
+        adminUser = createTestUser("admin_eval", "李后勤主管", "13899990004", "LOGISTICS");
     }
 
     private SysUser createTestUser(String username, String realName, String phone, String role) {

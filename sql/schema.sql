@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
   `phone` VARCHAR(20) NOT NULL COMMENT '联系手机号',
   `password` VARCHAR(128) NOT NULL COMMENT 'BCrypt加密密码',
   `real_name` VARCHAR(32) NOT NULL COMMENT '真实姓名',
-  `user_type` VARCHAR(20) NOT NULL COMMENT '角色类型: SUPER_ADMIN, LOGISTICS_ADMIN, REPAIR_WORKER, USER_STUDENT, USER_TEACHER',
+  `user_type` VARCHAR(20) NOT NULL COMMENT '组织条线（单值）: STUDENT, FACULTY, LOGISTICS, ADMIN。身份（学生/教职工）由条线派生；职能见 sys_role/sys_user_role',
   `department` VARCHAR(64) DEFAULT NULL COMMENT '所属学院/行政后勤部门',
   `default_space_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '默认物理住址空间节点ID',
   `avatar_url` VARCHAR(255) DEFAULT NULL COMMENT '头像URL',
@@ -62,6 +62,27 @@ CREATE TABLE IF NOT EXISTS `sys_role_permission` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_role_perm` (`role_id`, `permission_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色权限关联表';
+
+-- 单位/组织层级字典（个人中心「所属单位」逐级下钻取数；只读接口 GET /api/v1/org/tree）
+--   audience = 组织条线，取值与 sys_user.user_type 一致：
+--     STUDENT 年级分支 / FACULTY 教学科研 / LOGISTICS 后勤保障 / ADMIN 行政信息化 / NULL 不限
+--   可在任意层级声明、子节点继承；种子把条线打在二级单位上，服务端逐层剪枝
+--   full_path_name 用**空格**连级，并与 sys_user.department 存**同一个字符串**（对外契约，勿改分隔符）
+CREATE TABLE IF NOT EXISTS `org_node` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `parent_id` BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '父节点ID，0=根',
+  `name` VARCHAR(64) NOT NULL COMMENT '节点名称，如 2024级 / 后勤维修中心 / 电工班',
+  `level_type` TINYINT NOT NULL COMMENT '层级: 1-年级或所属单位, 2-学院/处室, 3-班级/班组',
+  `audience` VARCHAR(16) DEFAULT NULL COMMENT '组织条线: STUDENT/FACULTY/LOGISTICS/ADMIN/NULL(不限)',
+  `full_path_name` VARCHAR(255) NOT NULL COMMENT '全路径，空格连级，与 sys_user.department 同串',
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态: 1-启用, 0-停用',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_parent` (`parent_id`, `sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='单位组织字典（所属单位逐级下钻）';
 
 -- 12. 完工详情与验收评价质检表
 CREATE TABLE IF NOT EXISTS `repair_order_evaluation` (
@@ -162,7 +183,7 @@ CREATE TABLE IF NOT EXISTS `repair_order_log` (
   `order_no` VARCHAR(32) NOT NULL COMMENT '关联工单编号',
   `operator_id` BIGINT UNSIGNED NOT NULL COMMENT '操作人ID (0为系统自动)',
   `operator_name` VARCHAR(32) NOT NULL COMMENT '经办操作人真实姓名',
-  `operator_role` VARCHAR(32) NOT NULL COMMENT '经办人角色代码 (STUDENT, TEACHER, REPAIR_WORKER, LOGISTICS_ADMIN, SUPER_ADMIN, SYSTEM)',
+  `operator_role` VARCHAR(32) NOT NULL COMMENT '经办人职能码 (REPORTER, WORKER, DISPATCHER, PLATFORM_ADMIN, SYSTEM)。历史行可能仍是旧角色码，展示层需兼容',
   `action_type` VARCHAR(32) NOT NULL COMMENT '动作类型 (SUBMIT, AUTO_DISPATCH, MANUAL_DISPATCH, ACCEPT, SUSPEND, RESUME, TRANSFER_APPLY, FINISH_UPLOAD, MANUAL_ACCEPT, AUTO_ACCEPT, REWORK_TRIGGER, ARBITRATE, CANCEL)',
   `from_status` VARCHAR(32) NOT NULL COMMENT '跃迁前工单状态',
   `to_status` VARCHAR(32) NOT NULL COMMENT '跃迁后工单状态',

@@ -20,7 +20,12 @@ public class RegisterRequest {
     @NotBlank(message = "登录密码不能为空")
     private String password;
 
-    private String userType = "USER_STUDENT"; // 默认学生，也可选 USER_TEACHER
+    /**
+     * 所属条线（见 CONTEXT.md「组织条线」）：STUDENT / FACULTY / LOGISTICS 三选一，
+     * 由服务端白名单校验（ADMIN 条线不开放自助注册）。**它只表达「我是谁」，
+     * 自助注册一律只授 REPORTER 职能，与客户端无关。**
+     */
+    private String userType = "STUDENT";
 
     private String department;
 

@@ -29,49 +29,49 @@ public class AnalyticsController {
 
     @Operation(summary = "获取后勤运营指挥大屏顶层 6 大核心 KPI 汇总指标")
     @GetMapping("/dashboard-kpi")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<DashboardKpiVO> getDashboardKpi() {
         return R.success(analyticsService.getDashboardKpi());
     }
 
     @Operation(summary = "获取近 N 天提单量与结单量双折线趋势")
     @GetMapping("/trend-chart")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<TrendChartVO> getTrendChart(@RequestParam(defaultValue = "30") Integer days) {
         return R.success(analyticsService.getTrendChart(days));
     }
 
     @Operation(summary = "获取各校区与空间建筑故障频次热力排行")
     @GetMapping("/spatial-distribution")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<List<SpatialHeatVO>> getSpatialDistribution(@RequestParam(defaultValue = "10") Integer limit) {
         return R.success(analyticsService.getSpatialDistribution(limit));
     }
 
     @Operation(summary = "获取故障大类结构占比分布")
     @GetMapping("/category-pie")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<List<CategoryRatioVO>> getCategoryDistribution() {
         return R.success(analyticsService.getCategoryDistribution());
     }
 
     @Operation(summary = "获取维修师傅月度战绩排行榜")
     @GetMapping("/worker-ranking")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<List<WorkerLeaderboardVO>> getWorkerLeaderboard(@RequestParam(defaultValue = "10") Integer limit) {
         return R.success(analyticsService.getWorkerLeaderboard(limit));
     }
 
     @Operation(summary = "工单多维高级条件分页检索")
     @PostMapping("/orders/search")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Page<DispatchOrderItemVO>> searchOrders(@RequestBody WorkOrderFilterQueryRequest request) {
         return R.success(analyticsService.queryOrdersWithFilter(request));
     }
 
     @Operation(summary = "工单多维组合检索结果流式导出标准 Excel")
     @PostMapping(value = {"/orders/export-excel", "/work-orders/export-excel"})
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public void exportOrdersExcel(
             @RequestBody WorkOrderFilterQueryRequest request,
             HttpServletResponse response) throws IOException {
@@ -89,7 +89,7 @@ public class AnalyticsController {
 
     @Operation(summary = "将超过 180 天历史已结单工单标记为冷数据归档")
     @PostMapping("/orders/archive")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public R<Integer> archiveOrders(@RequestParam(defaultValue = "180") Integer days) {
         return R.success(analyticsService.archiveHistoricalOrders(days));
     }

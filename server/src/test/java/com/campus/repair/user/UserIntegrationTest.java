@@ -53,7 +53,7 @@ class UserIntegrationTest {
         req.setRealName("新注册学生");
         req.setPhone("13988880001");
         req.setPassword("Password@2026");
-        req.setUserType("USER_STUDENT");
+        req.setUserType("STUDENT");
         req.setDepartment("计算机学院");
 
         // 首次注册应成功
@@ -82,7 +82,7 @@ class UserIntegrationTest {
     @Test
     @DisplayName("修改登录密码并清除首次登录标记")
     void testChangePassword() throws Exception {
-        String token = jwtUtils.generateAccessToken(3L, "student01", List.of("USER_STUDENT"));
+        String token = jwtUtils.generateAccessToken(3L, "student01", List.of("REPORTER"));
 
         // 原密码错误应返回 1002
         PasswordChangeRequest wrongOldPwd = new PasswordChangeRequest();
@@ -113,7 +113,7 @@ class UserIntegrationTest {
     @DisplayName("个人中心更新联系电话与默认住址")
     @Transactional
     void testUpdateProfile() throws Exception {
-        String token = jwtUtils.generateAccessToken(3L, "student01", List.of("USER_STUDENT"));
+        String token = jwtUtils.generateAccessToken(3L, "student01", List.of("REPORTER"));
 
         // 默认空间必须真实存在（本轮起 updateProfile 会校验），事务内造一个并在结束后回滚
         SpatialNode campus = new SpatialNode();
@@ -145,7 +145,7 @@ class UserIntegrationTest {
     @Test
     @DisplayName("管理员使用 EasyExcel 批量导入用户包含合规与异常数据行")
     void testImportUsersWithExcel() throws Exception {
-        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("SUPER_ADMIN"));
+        String adminToken = jwtUtils.generateAccessToken(1L, "admin", List.of("PLATFORM_ADMIN"));
 
         // 构造测试 Excel 数据
         List<UserImportRow> rows = new ArrayList<>();
@@ -154,7 +154,7 @@ class UserIntegrationTest {
         row1.setUsername("2026888801");
         row1.setRealName("导入学生A");
         row1.setPhone("13912340001");
-        row1.setUserType("USER_STUDENT");
+        row1.setBranch("STUDENT");
         row1.setDepartment("机械学院");
         row1.setPassword("InitPass@2026");
         rows.add(row1);
@@ -164,7 +164,7 @@ class UserIntegrationTest {
         row2.setUsername("2026888802");
         row2.setRealName("导入学生B");
         row2.setPhone("12345"); // 不合法
-        row2.setUserType("USER_STUDENT");
+        row2.setBranch("STUDENT");
         rows.add(row2);
 
         // 异常行 3: 学号与系统已有账号重复 (admin)
@@ -172,7 +172,7 @@ class UserIntegrationTest {
         row3.setUsername("admin");
         row3.setRealName("管理员重复");
         row3.setPhone("13912340003");
-        row3.setUserType("USER_STUDENT");
+        row3.setBranch("STUDENT");
         rows.add(row3);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -150,15 +150,15 @@ class PersonalCenterIntegrationTest {
     @DisplayName("GET /users/me 返回完整资料（含角色码与注册时间）")
     void testGetCurrentUserReturnsFullProfile() throws Exception {
         mockMvc.perform(get("/api/v1/users/me")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(STUDENT_ID))
                 .andExpect(jsonPath("$.data.username").value("student01"))
                 .andExpect(jsonPath("$.data.realName").value("张同学"))
                 .andExpect(jsonPath("$.data.phone").value("13800000003"))
-                .andExpect(jsonPath("$.data.userType").value("USER_STUDENT"))
-                .andExpect(jsonPath("$.data.roleCodes[0]").value("USER_STUDENT"))
+                .andExpect(jsonPath("$.data.userType").value("STUDENT"))
+                .andExpect(jsonPath("$.data.roleCodes[0]").value("REPORTER"))
                 .andExpect(jsonPath("$.data.isFirstLogin").exists())
                 .andExpect(jsonPath("$.data.createdAt").exists());
     }
@@ -179,14 +179,14 @@ class PersonalCenterIntegrationTest {
         setAll.setDefaultSpaceId(campusId);
 
         mockMvc.perform(put("/api/v1/users/profile")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(setAll)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         mockMvc.perform(get("/api/v1/users/me")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(jsonPath("$.data.realName").value("张同学改名"))
                 .andExpect(jsonPath("$.data.phone").value("13800000090"))
                 .andExpect(jsonPath("$.data.department").value("计算机学院"))
@@ -200,14 +200,14 @@ class PersonalCenterIntegrationTest {
         clearAll.setDefaultSpaceId(null);
 
         mockMvc.perform(put("/api/v1/users/profile")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(clearAll)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         mockMvc.perform(get("/api/v1/users/me")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(jsonPath("$.data.realName").value("张同学改名"))
                 .andExpect(jsonPath("$.data.phone").value("13800000090"))
                 .andExpect(jsonPath("$.data.department").value(nullValue()))
@@ -223,7 +223,7 @@ class PersonalCenterIntegrationTest {
 
         // 注解校验失败走 @ResponseStatus(BAD_REQUEST)：HTTP 400 + 体内 code=400
         mockMvc.perform(put("/api/v1/users/profile")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(badPhone)))
                 .andExpect(status().isBadRequest())
@@ -235,7 +235,7 @@ class PersonalCenterIntegrationTest {
 
         // 业务异常（PHONE_EXISTS）无 @ResponseStatus：HTTP 200 + 体内 code=1007
         mockMvc.perform(put("/api/v1/users/profile")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(duplicatePhone)))
                 .andExpect(status().isOk())
@@ -247,7 +247,7 @@ class PersonalCenterIntegrationTest {
         ghostSpace.setDefaultSpaceId(999999L);
 
         mockMvc.perform(put("/api/v1/users/profile")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(ghostSpace)))
                 .andExpect(status().isOk())
@@ -265,7 +265,7 @@ class PersonalCenterIntegrationTest {
         external.setAvatarUrl("https://evil.example.com/a.png");
 
         mockMvc.perform(put("/api/v1/users/me/avatar")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(external)))
                 .andExpect(status().isBadRequest())
@@ -275,7 +275,7 @@ class PersonalCenterIntegrationTest {
         valid.setAvatarUrl("/uploads/20260913/ab12cd34ef56.jpg");
 
         mockMvc.perform(put("/api/v1/users/me/avatar")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(valid)))
                 .andExpect(status().isOk())
@@ -283,7 +283,7 @@ class PersonalCenterIntegrationTest {
                 .andExpect(jsonPath("$.data.avatarUrl").value("/uploads/20260913/ab12cd34ef56.jpg"));
 
         mockMvc.perform(get("/api/v1/users/me")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(jsonPath("$.data.avatarUrl").value("/uploads/20260913/ab12cd34ef56.jpg"));
     }
 
@@ -300,7 +300,7 @@ class PersonalCenterIntegrationTest {
         weak.setOldPassword("password");
         weak.setNewPassword("abcdefgh"); // 纯字母
         mockMvc.perform(put("/api/v1/users/password/change")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(weak)))
                 .andExpect(status().isBadRequest())
@@ -310,7 +310,7 @@ class PersonalCenterIntegrationTest {
         tooShort.setOldPassword("password");
         tooShort.setNewPassword("ab12"); // 长度不足
         mockMvc.perform(put("/api/v1/users/password/change")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(tooShort)))
                 .andExpect(status().isBadRequest())
@@ -320,14 +320,14 @@ class PersonalCenterIntegrationTest {
         ok.setOldPassword("password");
         ok.setNewPassword("NewPassword@2026");
         mockMvc.perform(put("/api/v1/users/password/change")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT"))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(ok)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         mockMvc.perform(get("/api/v1/users/me")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(jsonPath("$.data.isFirstLogin").value(0));
     }
 
@@ -357,7 +357,7 @@ class PersonalCenterIntegrationTest {
         insertEvaluation(insertOrder(OTHER_STUDENT_ID, "COMPLETED"), OTHER_STUDENT_ID, 1);
 
         mockMvc.perform(get("/api/v1/users/me/repair-summary")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.pendingDispatchCount").value(3))
@@ -375,7 +375,7 @@ class PersonalCenterIntegrationTest {
         insertOrder(STUDENT_ID, "PENDING_DISPATCH");
 
         mockMvc.perform(get("/api/v1/users/me/repair-summary")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.avgRating").value(nullValue()));
@@ -385,7 +385,7 @@ class PersonalCenterIntegrationTest {
     @DisplayName("报修概览仅师生可用：管理员访问被 @PreAuthorize 拒绝（HTTP 403）")
     void testRepairSummaryForbiddenForAdmin() throws Exception {
         mockMvc.perform(get("/api/v1/users/me/repair-summary")
-                        .header("Authorization", bearer(ADMIN_ID, "admin", "SUPER_ADMIN")))
+                        .header("Authorization", bearer(ADMIN_ID, "admin", "PLATFORM_ADMIN")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
     }
@@ -398,7 +398,7 @@ class PersonalCenterIntegrationTest {
     @DisplayName("GET /users/me/worker-profile 无档案返回 data=null（不报错）")
     void testWorkerProfileWithoutArchiveReturnsNull() throws Exception {
         mockMvc.perform(get("/api/v1/users/me/worker-profile")
-                        .header("Authorization", bearer(WORKER_ID, "worker01", "REPAIR_WORKER")))
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "WORKER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value(nullValue()));
@@ -423,7 +423,7 @@ class PersonalCenterIntegrationTest {
         workerProfileMapper.insert(profile);
 
         mockMvc.perform(get("/api/v1/users/me/worker-profile")
-                        .header("Authorization", bearer(WORKER_ID, "worker01", "REPAIR_WORKER")))
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "WORKER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.skillCode").value("ELECTRICIAN"))
@@ -436,7 +436,7 @@ class PersonalCenterIntegrationTest {
                 .andExpect(jsonPath("$.data.todayCompletedCount").value(0));
 
         mockMvc.perform(get("/api/v1/users/me/worker-profile")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
     }

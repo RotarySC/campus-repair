@@ -23,19 +23,30 @@ import java.util.Set;
  * <p>刻意只暴露读能力：字典维护不在本轮范围内，避免新增无人使用的写路径
  * （写路径一旦开放就要一并处理 fullPathName 级联、停用校验与引用完整性）。
  *
- * <p>按身份剪枝：{@code audience} 在数据里声明分支归属，服务端据此过滤，而不是靠调用方
- * 或前端去认「教职工」这个字符串——学生只看到年级分支、教工与师傅只看到教职工分支。
+ * <p>按**组织条线**剪枝：{@code audience} 在数据里声明分支归属，服务端据此过滤，
+ * 而不是靠调用方或前端去认「所属单位」这个字符串。取值与 {@code sys_user.user_type}
+ * 完全一致（`STUDENT`/`FACULTY`/`LOGISTICS`/`ADMIN`），**同一个值、不做二次映射**，
+ * 因此前端直接把用户的 userType 当 audience 传进来（口径见仓库根 `CONTEXT.md`）。
+ *
+ * <p>标注位置：种子把 audience 打在**二级单位节点**上（后勤维修中心=LOGISTICS、
+ * 各学院=FACULTY、信息中心=ADMIN），子节点（班组/系）留 null 继承；根节点与年级分支
+ * 仍按「顶层分支」标注。逐层实现见 {@link #pruneByAudience}。
  */
 @Service
 @RequiredArgsConstructor
 public class OrgNodeService {
 
-    /** 年级分支 */
+    /** 学生（年级 → 学院）分支 */
     public static final String AUDIENCE_STUDENT = "STUDENT";
-    /** 教职工分支 */
-    public static final String AUDIENCE_STAFF = "STAFF";
+    /** 教职工·教学科研（各学院）分支 */
+    public static final String AUDIENCE_FACULTY = "FACULTY";
+    /** 教职工·后勤保障（后勤保障处/后勤维修中心/班组）分支 */
+    public static final String AUDIENCE_LOGISTICS = "LOGISTICS";
+    /** 教职工·行政信息化（信息中心等）分支 */
+    public static final String AUDIENCE_ADMIN = "ADMIN";
 
-    private static final Set<String> SUPPORTED_AUDIENCES = Set.of(AUDIENCE_STUDENT, AUDIENCE_STAFF);
+    private static final Set<String> SUPPORTED_AUDIENCES = Set.of(
+            AUDIENCE_STUDENT, AUDIENCE_FACULTY, AUDIENCE_LOGISTICS, AUDIENCE_ADMIN);
 
     private final OrgNodeMapper orgNodeMapper;
 
@@ -72,7 +83,11 @@ public class OrgNodeService {
 
     /**
      * 逐层剪枝：任何一层显式声明了不匹配的 audience 都会被剪掉，声明为 null 的节点视为继承/不限。
-     * （当前种子只在顶层分支上标注 audience，逐层实现是为了让语义在将来往子节点加标注时也不会悄悄失效。）
+     *
+     * <p><b>空的中间节点一并剪掉</b>：{@code 所属单位} 这个根节点本身不限条线（它的三条线在二级
+     * 单位上声明），若只按 audience 判断，它会作为"没有内容的空壳"出现在**每一条**条线的树里
+     * （学生视角也会看到「所属单位」）。因此这里额外加一条：原本有子节点、剪枝后一个不剩的
+     * 中间节点不再返回——「我这条线下一无所属」时，那个父节点本来就不该出现。
      */
     private List<OrgNodeVO> pruneByAudience(List<OrgNodeVO> nodes, String audience) {
         List<OrgNodeVO> result = new ArrayList<>();
@@ -80,7 +95,12 @@ public class OrgNodeService {
             if (node.getAudience() != null && !audience.equals(node.getAudience())) {
                 continue;
             }
-            node.setChildren(pruneByAudience(node.getChildren(), audience));
+            List<OrgNodeVO> children = node.getChildren();
+            List<OrgNodeVO> prunedChildren = pruneByAudience(children, audience);
+            if (!children.isEmpty() && prunedChildren.isEmpty()) {
+                continue;
+            }
+            node.setChildren(prunedChildren);
             result.add(node);
         }
         return result;

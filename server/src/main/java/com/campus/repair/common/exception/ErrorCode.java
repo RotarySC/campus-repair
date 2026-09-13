@@ -21,6 +21,7 @@ public enum ErrorCode {
     REFRESH_TOKEN_EXPIRED(1005, "Refresh Token 已过期，请重新登录"),
     USERNAME_EXISTS(1006, "学号/工号已存在，请勿重复注册"),
     PHONE_EXISTS(1007, "手机号已存在"),
+    USER_NO_FUNCTION(1008, "账号未分配职能，请联系管理员"),
     ORDER_DUPLICATE_ACTIVE(2001, "同一位置已存在未结单同类故障单"),
     ORDER_STATE_TRANSITION_INVALID(2002, "当前工单状态与流转动作不匹配"),
     ORDER_NOT_FOUND(2003, "工单不存在"),

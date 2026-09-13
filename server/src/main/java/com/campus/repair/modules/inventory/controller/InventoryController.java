@@ -43,14 +43,14 @@ public class InventoryController {
 
     @Operation(summary = "新增或修改耗材备件档案")
     @PostMapping("/parts")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<SparePartVO> saveOrUpdatePart(@Valid @RequestBody SparePartCreateUpdateRequest request) {
         return R.success(inventoryService.saveOrUpdateSparePart(request));
     }
 
     @Operation(summary = "删除耗材备件档案")
     @DeleteMapping("/parts/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> deletePart(@PathVariable Long id) {
         inventoryService.deleteSparePart(id);
         return R.success();
@@ -58,7 +58,7 @@ public class InventoryController {
 
     @Operation(summary = "登记采购批量入库")
     @PostMapping("/inbound")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<SparePartInbound> registerInbound(
             @AuthenticationPrincipal LoginUserPrincipal user,
             @Valid @RequestBody SparePartInboundRequest request) {
@@ -67,14 +67,14 @@ public class InventoryController {
 
     @Operation(summary = "查询耗材库存概况统计指标（总数、低库存警戒数等）")
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<InventorySummaryVO> getSummary() {
         return R.success(inventoryService.getInventorySummary());
     }
 
     @Operation(summary = "流式导出缺料采购补货建议清单 Excel")
     @GetMapping("/export-purchase-advice")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public void exportPurchaseAdvice(
             @RequestParam(required = false) String categoryType,
             HttpServletResponse response) throws IOException {
@@ -98,7 +98,7 @@ public class InventoryController {
 
     @Operation(summary = "查询指定物料的历史采购入库流水明细")
     @GetMapping("/inbound/history/{partId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<List<SparePartInbound>> getInboundHistory(@PathVariable Long partId) {
         return R.success(inventoryService.getInboundHistoryByPartId(partId));
     }

@@ -20,7 +20,7 @@ CREATE TABLE sys_user (
   phone VARCHAR(20) NOT NULL,
   password VARCHAR(128) NOT NULL,
   real_name VARCHAR(32) NOT NULL,
-  user_type VARCHAR(20) NOT NULL,
+  user_type VARCHAR(20) NOT NULL, -- 组织条线（单值）: STUDENT / FACULTY / LOGISTICS / ADMIN（见 CONTEXT.md）
   department VARCHAR(64),
   default_space_id BIGINT,
   avatar_url VARCHAR(255),
@@ -75,11 +75,13 @@ CREATE TABLE spatial_node (
   deleted TINYINT NOT NULL DEFAULT 0
 );
 
--- 单位/组织层级字典（年级 -> 学院 -> 班级；教职工 -> 处室 -> 班组）
+-- 单位/组织层级字典（学生：年级 -> 学院；教职工：所属单位 -> 单位 -> 班组）
 -- full_path_name 用**空格**分隔并与 sys_user.department 存同一串，前端据此精确回显级联路径
--- audience：该分支面向哪类身份（'STUDENT' 年级分支 / 'STAFF' 教职工分支 / NULL 表示不限）。
---   只在**顶层分支**上声明，子节点继承父分支语义；/org/tree?audience= 按它剪枝，
---   个人中心据此让学生只看到年级、教工与师傅只看到教职工（管理员不渲染该词条）。
+-- audience = **组织条线**，取值与 sys_user.user_type 完全一致：
+--   'STUDENT' 年级分支 / 'FACULTY' 教学科研 / 'LOGISTICS' 后勤保障 / 'ADMIN' 行政信息化 / NULL 不限。
+--   可在**任意层级**声明、子节点继承：种子把条线打在二级单位上（后勤维修中心=LOGISTICS、
+--   各学院=FACULTY、信息中心=ADMIN），/org/tree?audience= 逐层剪枝——
+--   教师只见学院、后勤只见处室/班组（根节点名是「所属单位」而不是「教职工」，后者是身份词）。
 -- sort_order 刻意留出空档（10/20/30…），data-demo.sql 会往里追加 2023/2025 级与更多处室
 CREATE TABLE org_node (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,

@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,7 +36,7 @@ public class WorkOrderController {
 
     @Operation(summary = "师生提交报修工单")
     @PostMapping("/submit")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
+    @PreAuthorize("hasRole('REPORTER')")
     public R<WorkOrderSubmitResultVO> submitOrder(
             @AuthenticationPrincipal LoginUserPrincipal user,
             @Valid @RequestBody WorkOrderSubmitRequest request) {
@@ -44,7 +45,7 @@ public class WorkOrderController {
 
     @Operation(summary = "师生获取本人报修工单分页列表 (PC 门户「我的工单」)")
     @GetMapping("/my")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
+    @PreAuthorize("hasRole('REPORTER')")
     public R<com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO>> getMyOrders(
             @AuthenticationPrincipal LoginUserPrincipal user,
             @org.springframework.web.bind.annotation.RequestParam(defaultValue = "1") long page,
@@ -67,7 +68,7 @@ public class WorkOrderController {
 
     @Operation(summary = "调度中心获取待办工单池列表及各分类统计")
     @GetMapping("/dispatch-pool")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<com.campus.repair.modules.workorder.vo.DispatchPoolResultVO> getDispatchPool(
             com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request) {
         return R.success(workOrderService.getDispatchPool(request));
@@ -75,7 +76,7 @@ public class WorkOrderController {
 
     @Operation(summary = "调度人员人工指派或改派维修师傅")
     @PostMapping("/{id}/dispatch")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> manualDispatch(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user,
@@ -86,7 +87,7 @@ public class WorkOrderController {
 
     @Operation(summary = "调度中心核实作废无效或虚假工单")
     @PostMapping("/{id}/cancel")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> cancelOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user,
@@ -99,7 +100,7 @@ public class WorkOrderController {
 
     @Operation(summary = "维修师傅获取个人工作台工单列表")
     @GetMapping("/worker-pool")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    @PreAuthorize("hasRole('WORKER')")
     public R<com.campus.repair.modules.workorder.vo.WorkerOrderListResultVO> getWorkerOrders(
             @AuthenticationPrincipal LoginUserPrincipal user,
             com.campus.repair.modules.workorder.dto.WorkerOrderListRequest request) {
@@ -108,7 +109,7 @@ public class WorkOrderController {
 
     @Operation(summary = "维修师傅接单出发")
     @PostMapping("/{id}/accept")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    @PreAuthorize("hasRole('WORKER')")
     public R<Void> acceptOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user) {
@@ -118,7 +119,7 @@ public class WorkOrderController {
 
     @Operation(summary = "维修师傅申请工单挂起")
     @PostMapping("/{id}/suspend")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    @PreAuthorize("hasRole('WORKER')")
     public R<Void> suspendOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user,
@@ -129,7 +130,7 @@ public class WorkOrderController {
 
     @Operation(summary = "维修师傅解除工单挂起恢复施工")
     @PostMapping("/{id}/resume")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    @PreAuthorize("hasRole('WORKER')")
     public R<Void> resumeOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user) {
@@ -139,7 +140,7 @@ public class WorkOrderController {
 
     @Operation(summary = "维修师傅申请工单转派")
     @PostMapping("/{id}/transfer-apply")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    @PreAuthorize("hasRole('WORKER')")
     public R<Void> transferApply(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user,
@@ -150,7 +151,7 @@ public class WorkOrderController {
 
     @Operation(summary = "维修师傅现场完工填报与耗材核销")
     @PostMapping("/{id}/finish")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('REPAIR_WORKER')")
+    @PreAuthorize("hasRole('WORKER')")
     public R<Void> finishOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user,
@@ -163,7 +164,7 @@ public class WorkOrderController {
 
     @Operation(summary = "师生确认完工并对服务进行满意度评价")
     @PostMapping("/{id}/evaluate")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('USER_STUDENT', 'USER_TEACHER')")
+    @PreAuthorize("hasRole('REPORTER')")
     public R<Void> evaluateOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user,
@@ -174,7 +175,7 @@ public class WorkOrderController {
 
     @Operation(summary = "后勤主管对差评或返工工单进行仲裁督办")
     @PostMapping("/{id}/arbitrate-rework")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN', 'LOGISTICS_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<Void> arbitrateRework(
             @PathVariable Long id,
             @AuthenticationPrincipal LoginUserPrincipal user,

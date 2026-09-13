@@ -129,7 +129,7 @@ public class AnalyticsAggregationEquivalenceTest {
         u.setRealName(name);
         u.setPhone("13900000000");
         u.setPassword("x");
-        u.setUserType("REPAIR_WORKER");
+        u.setUserType("LOGISTICS");
         u.setStatus(1);
         u.setIsFirstLogin(0);
         userMapper.insert(u);

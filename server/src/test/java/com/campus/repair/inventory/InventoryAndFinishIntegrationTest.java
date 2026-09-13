@@ -175,7 +175,7 @@ public class InventoryAndFinishIntegrationTest {
         u.setRealName(realName);
         u.setPhone(phone);
         u.setPassword(passwordEncoder.encode("password"));
-        u.setUserType("REPAIR_WORKER");
+        u.setUserType("LOGISTICS");
         u.setStatus(1);
         u.setIsFirstLogin(0);
         userMapper.insert(u);

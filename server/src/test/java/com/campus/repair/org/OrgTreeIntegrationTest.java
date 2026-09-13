@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * （前端靠整串精确匹配回显级联路径，一旦有人改成 `/` 或改格式，个人中心的回显会静默失效）；
  * ③ 停用节点只在 {@code onlyEnabled=false} 时出现。
  *
- * <p>只读用例，不加 {@code @Transactional}（种子来自 data-test.sql：2024级=1000 / 教职工=1010）。
+ * <p>只读用例，不加 {@code @Transactional}（种子来自 data-test.sql：2024级=1000 / 所属单位=1010）。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -50,65 +50,65 @@ class OrgTreeIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET /org/tree 返回嵌套树，根层为年级在前、教职工在后，fullPathName 用空格分隔")
+    @DisplayName("GET /org/tree 返回嵌套树，根层为年级在前、所属单位在后，fullPathName 用空格分隔")
     void testOrgTreeShapeAndRootOrder() throws Exception {
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                // 年级在前：根层第一个是年级，教职工排在年级之后
+                // 年级在前：根层第一个是年级，「所属单位」排在年级之后
                 .andExpect(jsonPath("$.data[0].name").value("2024级"))
-                .andExpect(jsonPath("$.data[1].name").value("教职工"))
+                .andExpect(jsonPath("$.data[1].name").value("所属单位"))
                 // 年级 -> 学院 两级完整路径
                 .andExpect(jsonPath("$.data[0].children[0].name").value("计算机学院"))
                 .andExpect(jsonPath("$.data[0].children[0].levelType").value(2))
                 .andExpect(jsonPath("$.data[0].children[0].fullPathName").value("2024级 计算机学院"))
-                // 教职工可再下钻一级（处室 -> 班组）
+                // 所属单位可再下钻一级（处室 -> 班组）
                 .andExpect(jsonPath("$.data[1].children[0].name").value("后勤维修中心"))
                 .andExpect(jsonPath("$.data[1].children[0].children[0].name").value("电工班"))
                 .andExpect(jsonPath("$.data[1].children[0].children[0].fullPathName")
-                        .value("教职工 后勤维修中心 电工班"));
+                        .value("所属单位 后勤维修中心 电工班"));
     }
 
     @Test
     @DisplayName("全路径一律用空格分隔且不含 / —— 与 sys_user.department 是同一套字面值")
     void testFullPathUsesSpaceSeparator() throws Exception {
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$..fullPathName", everyItem(not(containsString("/")))))
                 .andExpect(jsonPath("$..fullPathName", hasItem("2024级 计算机学院")))
-                .andExpect(jsonPath("$..fullPathName", hasItem("教职工 后勤维修中心 电工班")));
+                .andExpect(jsonPath("$..fullPathName", hasItem("所属单位 后勤维修中心 电工班")));
     }
 
     @Test
     @DisplayName("onlyEnabled=true 过滤停用节点，缺省 false 时包含")
     void testOnlyEnabledFilter() throws Exception {
-        // 骨架里「已停用单位」排在教职工的第 3 个子节点（sort_order=99）
+        // 骨架里「已停用单位」排在「所属单位」的子节点末位（sort_order=99）
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[1].children[2].name").value("已停用单位"))
-                .andExpect(jsonPath("$.data[1].children[2].status").value(0));
+                .andExpect(jsonPath("$.data[1].children[3].name").value("已停用单位"))
+                .andExpect(jsonPath("$.data[1].children[3].status").value(0));
 
         mockMvc.perform(get("/api/v1/org/tree")
                         .param("onlyEnabled", "true")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[1].children.length()").value(2))
-                .andExpect(jsonPath("$..fullPathName", not(hasItem("教职工 已停用单位"))));
+                .andExpect(jsonPath("$.data[1].children.length()").value(3))
+                .andExpect(jsonPath("$..fullPathName", not(hasItem("所属单位 已停用单位"))));
     }
 
     @Test
     @DisplayName("个人中心取字典不需要管理员角色，且未登录一律 401")
     void testVisibilityForAllRolesAndAnonymous() throws Exception {
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(WORKER_ID, "worker01", "REPAIR_WORKER")))
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "WORKER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(ADMIN_ID, "admin", "SUPER_ADMIN")))
+                        .header("Authorization", bearer(ADMIN_ID, "admin", "PLATFORM_ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
@@ -122,79 +122,123 @@ class OrgTreeIntegrationTest {
         // data-test.sql 给 student01 种了「2024级 计算机学院」；它必须能在字典里被整串命中，
         // 否则个人中心的级联选择器会对已存值显示为空（回显失效）。
         mockMvc.perform(get("/api/v1/users/me")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.department").value("2024级 计算机学院"));
 
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$..fullPathName", hasItem("2024级 计算机学院")));
     }
 
     @Test
-    @DisplayName("种子只在顶层分支标注 audience：年级=STUDENT、教职工=STAFF（子节点为 null）")
-    void testSeedDeclaresAudienceOnRootBranchesOnly() throws Exception {
+    @DisplayName("seed 把条线标在二级单位上：根节点不限、年级标 STUDENT、单位标各自的条线、班组为 null 继承")
+    void testSeedDeclaresAudienceOnBranchesAndUnits() throws Exception {
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
+                // 根层顺序由 sort_order 决定：2024级(20) → 所属单位(40)
                 .andExpect(jsonPath("$.data[0].name").value("2024级"))
                 .andExpect(jsonPath("$.data[0].audience").value("STUDENT"))
                 .andExpect(jsonPath("$.data[0].children[0].audience").value(nullValue()))
-                .andExpect(jsonPath("$.data[1].name").value("教职工"))
-                .andExpect(jsonPath("$.data[1].audience").value("STAFF"))
-                .andExpect(jsonPath("$.data[1].children[0].audience").value(nullValue()));
+                // 教职工侧的根节点名刻意不是「教职工」（那是身份词）；根节点本身不限条线
+                .andExpect(jsonPath("$.data[1].name").value("所属单位"))
+                .andExpect(jsonPath("$.data[1].audience").value(nullValue()))
+                // 二级单位各自声明条线（顺序由 sort_order 决定），其子节点（班组）留 null 继承
+                .andExpect(jsonPath("$.data[1].children[0].name").value("后勤维修中心"))
+                .andExpect(jsonPath("$.data[1].children[0].audience").value("LOGISTICS"))
+                .andExpect(jsonPath("$.data[1].children[0].children[0].name").value("电工班"))
+                .andExpect(jsonPath("$.data[1].children[0].children[0].audience").value(nullValue()))
+                .andExpect(jsonPath("$.data[1].children[1].name").value("计算机学院"))
+                .andExpect(jsonPath("$.data[1].children[1].audience").value("FACULTY"))
+                .andExpect(jsonPath("$.data[1].children[2].name").value("信息中心"))
+                .andExpect(jsonPath("$.data[1].children[2].audience").value("ADMIN"));
     }
 
     @Test
-    @DisplayName("audience=STUDENT 只留年级分支（学生看不到「教职工」），audience=STAFF 反之")
-    void testAudiencePruning() throws Exception {
-        // 学生：只有年级分支，且树里不应再出现「教职工」这个词
+    @DisplayName("按组织条线剪枝：教师看不到后勤班组，后勤/师傅看不到学院（堆叠现象回归）")
+    void testAudiencePruningPerBranch() throws Exception {
+        // 学生：只有年级分支
         mockMvc.perform(get("/api/v1/org/tree")
                         .param("audience", "STUDENT")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].name").value("2024级"))
-                .andExpect(jsonPath("$..name", not(hasItem("教职工"))))
+                // 空壳不出现：所属单位的三条线都不匹配 STUDENT，整根被剪掉
+                .andExpect(jsonPath("$..name", not(hasItem("所属单位"))))
                 .andExpect(jsonPath("$..fullPathName", hasItem("2024级 计算机学院")));
 
-        // 教工/师傅：只有教职工分支，且树里不应再出现任何年级
+        // 教学科研（教师）：**只**看到学院——看不到后勤维修中心与其班组
         mockMvc.perform(get("/api/v1/org/tree")
-                        .param("audience", "STAFF")
-                        .header("Authorization", bearer(WORKER_ID, "worker01", "REPAIR_WORKER")))
+                        .param("audience", "FACULTY")
+                        .header("Authorization", bearer(STUDENT_ID, "teacher", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].name").value("教职工"))
-                .andExpect(jsonPath("$..name", not(hasItem("2024级"))))
-                .andExpect(jsonPath("$..fullPathName", hasItem("教职工 后勤维修中心 电工班")));
+                .andExpect(jsonPath("$.data[0].name").value("所属单位"))
+                .andExpect(jsonPath("$..fullPathName", hasItem("所属单位 计算机学院")))
+                .andExpect(jsonPath("$..name", not(hasItem("后勤维修中心"))))
+                .andExpect(jsonPath("$..name", not(hasItem("电工班"))))
+                .andExpect(jsonPath("$..name", not(hasItem("2024级"))));
 
-        // 不传 audience 时返回全量树（管理员/字典维护用），且大小写不敏感
+        // 后勤保障（师傅/调度）：**只**看到后勤单位——看不到任何学院
         mockMvc.perform(get("/api/v1/org/tree")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .param("audience", "LOGISTICS")
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "WORKER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("所属单位"))
+                .andExpect(jsonPath("$..fullPathName", hasItem("所属单位 后勤维修中心 电工班")))
+                .andExpect(jsonPath("$..name", not(hasItem("计算机学院"))))
+                .andExpect(jsonPath("$..name", not(hasItem("土木工程学院"))));
+
+        // 行政信息化：只看到信息中心
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "ADMIN")
+                        .header("Authorization", bearer(ADMIN_ID, "admin", "PLATFORM_ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$..fullPathName", hasItem("所属单位 信息中心")))
+                .andExpect(jsonPath("$..name", not(hasItem("计算机学院"))))
+                .andExpect(jsonPath("$..name", not(hasItem("后勤维修中心"))));
+
+        // **用户报的现象的直接回归**：教师与后勤拿到的是两棵互不重叠的树
+        String facultyTree = mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "FACULTY")
+                        .header("Authorization", bearer(STUDENT_ID, "teacher", "REPORTER")))
+                .andReturn().getResponse().getContentAsString();
+        String logisticsTree = mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "LOGISTICS")
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "WORKER")))
+                .andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(facultyTree).doesNotContain("后勤维修中心");
+        org.assertj.core.api.Assertions.assertThat(logisticsTree).doesNotContain("学院");
+
+        // 不传 audience 时返回全量树（字典维护用）：测试库只加载 data-test.sql，故为 2 个根
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(jsonPath("$.data.length()").value(2));
 
         mockMvc.perform(get("/api/v1/org/tree")
-                        .param("audience", "staff")
-                        .header("Authorization", bearer(WORKER_ID, "worker01", "REPAIR_WORKER")))
+                        .param("audience", "faculty")
+                        .header("Authorization", bearer(STUDENT_ID, "teacher", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].name").value("教职工"));
+                .andExpect(jsonPath("$.data[0].name").value("所属单位"));
     }
-
     @Test
     @DisplayName("未知 audience 报参数错误（400），空串按不限制处理")
     void testUnknownAudienceRejected() throws Exception {
         mockMvc.perform(get("/api/v1/org/tree")
                         .param("audience", "PARENT")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400));
 
         mockMvc.perform(get("/api/v1/org/tree")
                         .param("audience", "")
-                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.length()").value(2));

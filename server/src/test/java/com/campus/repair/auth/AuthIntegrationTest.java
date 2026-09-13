@@ -83,7 +83,7 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.userInfo.username").value("admin"))
-                .andExpect(jsonPath("$.data.userInfo.userType").value("SUPER_ADMIN"));
+                .andExpect(jsonPath("$.data.userInfo.userType").value("ADMIN"));
     }
 
     @Test
@@ -176,7 +176,7 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.code").value(401));
 
         // 携带有效 Token
-        String token = jwtUtils.generateAccessToken(1L, "admin", java.util.List.of("SUPER_ADMIN"));
+        String token = jwtUtils.generateAccessToken(1L, "admin", java.util.List.of("PLATFORM_ADMIN"));
         mockMvc.perform(get("/api/v1/users/me")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())

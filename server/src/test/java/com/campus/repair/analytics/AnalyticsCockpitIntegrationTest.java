@@ -93,7 +93,7 @@ public class AnalyticsCockpitIntegrationTest {
         student.setRealName("大屏测试师生");
         student.setPhone("13966660001");
         student.setPassword(passwordEncoder.encode("123456"));
-        student.setUserType("USER_STUDENT");
+        student.setUserType("STUDENT");
         student.setStatus(1);
         student.setIsFirstLogin(0);
         userMapper.insert(student);
@@ -104,7 +104,7 @@ public class AnalyticsCockpitIntegrationTest {
         worker.setRealName("大屏金牌师傅");
         worker.setPhone("13966660002");
         worker.setPassword(passwordEncoder.encode("123456"));
-        worker.setUserType("REPAIR_WORKER");
+        worker.setUserType("LOGISTICS");
         worker.setStatus(1);
         worker.setIsFirstLogin(0);
         userMapper.insert(worker);
