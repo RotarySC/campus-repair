@@ -31,17 +31,42 @@ export const WorkerSkillLabels: Record<string, string> = {
   GENERAL: '综合维修'
 };
 
-/** 角色/身份中文名（原在 AdminLayout / PersonalCenterView / ForbiddenView 各重复一份） */
-export const RoleLabels: Record<string, string> = {
-  SUPER_ADMIN: '超级管理员',
-  LOGISTICS_ADMIN: '后勤管理员',
-  REPAIR_WORKER: '维修师傅',
-  USER_STUDENT: '学生',
-  USER_TEACHER: '教工'
+/**
+ * 职能中文名（口径见仓库根 CONTEXT.md）。
+ * **职能**回答「能干什么」，可多值，存在 `sys_role` / `sys_user_role`，是授权的唯一判据。
+ */
+export const FunctionLabels: Record<string, string> = {
+  REPORTER: '报修人',
+  WORKER: '维修作业',
+  DISPATCHER: '后勤调度',
+  PLATFORM_ADMIN: '平台管理'
 };
 
-/** 取角色中文名；取不到时回退原值，再兜底为「未分配角色」 */
-export function roleLabel(code?: string | null): string {
-  if (!code) return '未分配角色';
-  return RoleLabels[code] || code;
+/**
+ * 组织条线中文名。**条线**回答「你是谁、归哪条组织线」，单值，
+ * 同时就是单位字典 `org_node.audience` 的取值（同一个值，不做二次映射）。
+ */
+export const BranchLabels: Record<string, string> = {
+  STUDENT: '学生',
+  FACULTY: '教学科研',
+  LOGISTICS: '后勤保障',
+  ADMIN: '行政信息化'
+};
+
+/** 取职能中文名；取不到时回退原值，再兜底为「未分配职能」 */
+export function functionLabel(code?: string | null): string {
+  if (!code) return '未分配职能';
+  return FunctionLabels[code] || code;
+}
+
+/** 取组织条线中文名；取不到时回退原值 */
+export function branchLabel(code?: string | null): string {
+  if (!code) return '未分配';
+  return BranchLabels[code] || code;
+}
+
+/** 身份中文名：身份是条线的**派生视图**，只有「学生」与「教职工」两类 */
+export function identityLabelOf(branch?: string | null): string {
+  if (!branch) return '未分配';
+  return branch === 'STUDENT' ? '学生' : '教职工';
 }

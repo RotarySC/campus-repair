@@ -11,7 +11,7 @@
             联系电话：<strong>{{ authStore.userInfo?.phone || '—' }}</strong>
           </span>
           <span class="account-item">
-            系统角色：<strong>{{ authStore.userInfo?.roleCodes?.join('、') }}</strong>
+            系统职能：<strong>{{ functionList }}</strong>
           </span>
         </div>
         <el-tag type="success" effect="plain">系统运行正常</el-tag>
@@ -125,11 +125,16 @@ import {
   SpatialHeatVO,
   CategoryRatioVO,
   WorkerLeaderboardVO,
-  WorkerSkillLabels
+  WorkerSkillLabels,
+  functionLabel
 } from '@campus/shared';
 
 const router = useRouter();
 const authStore = useAuthStore();
+/** 系统职能（可多值，中文名，见 CONTEXT.md） */
+const functionList = computed(() =>
+  (authStore.userInfo?.roleCodes ?? []).map((code: string) => functionLabel(code)).join('、') || '—'
+);
 
 const dashboardRef = ref<HTMLDivElement | null>(null);
 const trendChartRef = ref<HTMLDivElement | null>(null);

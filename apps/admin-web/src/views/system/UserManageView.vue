@@ -3,12 +3,11 @@
     <div class="toolbar">
       <div class="search-inputs">
         <el-input v-model="query.keyword" placeholder="搜索学号/姓名/手机号" clearable style="width: 220px;" @clear="handleSearch" @keyup.enter="handleSearch" />
-        <el-select v-model="query.userType" placeholder="角色类型" clearable style="width: 160px;" @change="handleSearch">
-          <el-option label="超级管理员" value="SUPER_ADMIN" />
-          <el-option label="后勤管理员" value="LOGISTICS_ADMIN" />
-          <el-option label="维修师傅" value="REPAIR_WORKER" />
-          <el-option label="学生" value="USER_STUDENT" />
-          <el-option label="教工" value="USER_TEACHER" />
+        <el-select v-model="query.userType" placeholder="所属条线" clearable style="width: 160px;" @change="handleSearch">
+          <el-option label="学生" value="STUDENT" />
+          <el-option label="教学科研" value="FACULTY" />
+          <el-option label="后勤保障" value="LOGISTICS" />
+          <el-option label="行政信息化" value="ADMIN" />
         </el-select>
         <el-button type="primary" icon="Search" @click="handleSearch">查询</el-button>
       </div>
@@ -34,7 +33,7 @@
       empty-text="暂无用户"
     >
       <template #col-userType="{ row }">
-        <el-tag :type="getUserTypeTag(row.userType)">{{ row.userType }}</el-tag>
+        <el-tag :type="getUserTypeTag(row.userType)">{{ branchLabel(row.userType) }}</el-tag>
       </template>
 
       <template #col-status="{ row }">
@@ -94,6 +93,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { branchLabel } from '@campus/shared';
 import { httpClient } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { CardTagType, TableColumn } from '../../components/ResponsiveTable.vue';
@@ -111,10 +111,10 @@ const columns: TableColumn<any>[] = [
   { key: 'phone', label: '联系电话', width: 130 },
   {
     key: 'userType',
-    label: '角色身份',
+    label: '所属条线',
     width: 140,
     card: 'tag',
-    cardTag: (row) => ({ text: row.userType, type: getUserTypeTag(row.userType) })
+    cardTag: (row) => ({ text: branchLabel(row.userType), type: getUserTypeTag(row.userType) })
   },
   { key: 'department', label: '所属部门/学院' },
   {
@@ -140,11 +140,12 @@ const query = reactive({
 const reportVisible = ref(false);
 const importReport = ref<any>({});
 
+/** 条线配色：行政信息化=红、后勤保障=橙、教学科研=蓝、学生=灰 */
 function getUserTypeTag(type: string): CardTagType {
   switch (type) {
-    case 'SUPER_ADMIN': return 'danger';
-    case 'LOGISTICS_ADMIN': return 'warning';
-    case 'REPAIR_WORKER': return 'success';
+    case 'ADMIN': return 'danger';
+    case 'LOGISTICS': return 'warning';
+    case 'FACULTY': return 'primary';
     default: return 'info';
   }
 }

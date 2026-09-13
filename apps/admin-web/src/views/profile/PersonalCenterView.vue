@@ -60,7 +60,7 @@
             </el-form-item>
             <!-- 账号/身份不在表单里重复：它们是只读身份信息，统一由「账户概览」承载 -->
             <!--
-              管理员（超管/后勤）没有「学院/部门」这个概念 → 整行不渲染（v-if="!isAdmin"）。
+              行政信息化条线（原「超管/后勤」）没有「学院/部门」这个词条 → 整行不渲染（v-if="!isAdmin"）。
               注意仍然把已存 department 原样提交，不能在隐藏时把它清掉。
             -->
             <el-form-item v-if="!isAdmin" label="学院/部门" prop="department">
@@ -130,7 +130,7 @@
         </el-card>
 
         <!-- ④ 师生：我的报修概览 -->
-        <el-card v-if="isStudentTeacher" shadow="never" class="pc-card">
+        <el-card v-if="hasReporter" shadow="never" class="pc-card">
           <template #header>
             <div class="panel-header">
               <span class="block-title">我的报修概览</span>
@@ -244,15 +244,17 @@ import {
   httpClient,
   useAuthStore
 } from '../../stores/auth';
+import { useIdentity } from '../../composables/useIdentity';
 import {
   compressImage,
   OrderStatusLabels,
-  orgAudienceOf,
+  BranchOrgPlaceholders,
+  identityLabelOf,
   PASSWORD_PATTERN,
   PASSWORD_RULE_MESSAGE,
-  roleLabel as roleLabelOf,
   WorkerSkillLabels
 } from '@campus/shared';
+import type { OrgBranch } from '@campus/shared';
 import type {
   DispatchOrderItemVO,
   MyWorkerProfileVO,
@@ -271,22 +273,21 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const userInfo = computed<UserInfo | null>(() => authStore.userInfo);
-const isStudentTeacher = computed(() =>
-  ['USER_STUDENT', 'USER_TEACHER'].includes(userInfo.value?.userType || '')
-);
-const isWorker = computed(() => userInfo.value?.userType === 'REPAIR_WORKER');
-const roleText = computed(() => roleLabelOf(userInfo.value?.userType));
+/** 页面显隐一律按**职能**判定（口径见 CONTEXT.md）；userType 只用于单位字典的条线 */
+const identity = useIdentity();
+const hasReporter = computed(() => identity.isReporter.value);
+const isWorker = computed(() => identity.isWorker.value);
+const roleText = computed(() => identityLabelOf(userInfo.value?.userType));
 const initial = computed(() => (userInfo.value?.realName || userInfo.value?.username || '—').slice(0, 1));
 
-/** 管理员没有「学院/部门」词条（整行不渲染）；其映射口径见 shared 的 orgAudienceOf() */
-const isAdmin = computed(() =>
-  ['SUPER_ADMIN', 'LOGISTICS_ADMIN'].includes(userInfo.value?.userType || '')
-);
-/** 该身份可选的组织分支：学生→年级、教工/师傅→教职工、管理员→null（不取数也不渲染） */
-const orgAudience = computed(() => orgAudienceOf(userInfo.value?.userType));
-const orgPlaceholder = computed(() =>
-  orgAudience.value === 'STAFF' ? '选择所属处室 / 班组' : '选择年级 / 学院'
-);
+/** 行政信息化条线没有「学院/部门」词条（整行不渲染）；其余条线各自只见自己那条线下的单位 */
+const isAdmin = computed(() => userInfo.value?.userType === 'ADMIN');
+/**
+ * 该条线在字典里的分支键：**直接就是 userType**（同一个值、不做二次映射，见 CONTEXT.md）。
+ * 服务端据 org_node.audience 逐层剪枝——教师只见学院、后勤只见处室/班组，互为选项的堆叠现象由此消除。
+ */
+const orgAudience = computed<OrgBranch | null>(() => (userInfo.value?.userType as OrgBranch) ?? null);
+const orgPlaceholder = computed(() => BranchOrgPlaceholders[orgAudience.value ?? ''] ?? '选择所属单位');
 
 const profileFormRef = ref<FormInstance>();
 const passwordFormRef = ref<FormInstance>();
@@ -685,7 +686,7 @@ onMounted(async () => {
   await loadSpaceOptions();
   await loadOrgOptions();
 
-  if (isStudentTeacher.value) {
+  if (hasReporter.value) {
     loadRepairSummary();
     loadRecentOrders();
   } else if (isWorker.value) {

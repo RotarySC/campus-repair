@@ -16,14 +16,17 @@ import PersonalCenterView from '../views/profile/PersonalCenterView.vue';
 import WorkbenchView from '../views/worker/WorkbenchView.vue';
 import WorkerFinishView from '../views/worker/WorkerFinishView.vue';
 
-/** 角色集合，与后端 @PreAuthorize 保持一致 */
-export const STUDENT_TEACHER_ROLES = ['USER_STUDENT', 'USER_TEACHER'];
-export const ADMIN_ROLES = ['SUPER_ADMIN', 'LOGISTICS_ADMIN'];
-export const WORKER_ROLES = ['REPAIR_WORKER'];
+/**
+ * 职能集合，与后端 `@PreAuthorize` 保持一致（口径见仓库根 CONTEXT.md）。
+ * 职能可多值：同一个账号可以同时是「维修作业」与「报修人」（演示数据里的 worker02 即是）。
+ */
+export const REPORTER_FUNCTIONS = ['REPORTER'];
+export const ADMIN_FUNCTIONS = ['DISPATCHER', 'PLATFORM_ADMIN'];
+export const WORKER_FUNCTIONS = ['WORKER'];
 
 /**
  * 单树路由表（响应式单库重构）：同一份页面组件在所有宽度连续自适应，
- * 旧的「设备判定 + 双树选表 + 会话冻结」机制已移除；角色差异由守卫与 meta.roles 表达。
+ * 旧的「设备判定 + 双树选表 + 会话冻结」机制已移除；职能差异由守卫与 meta.functions 表达。
  * 管理端统一外壳（AdminLayout）承载全部已登录页面，业务页面作为子路由渲染进内容区。
  */
 const routes: RouteRecordRaw[] = [
@@ -51,28 +54,29 @@ const routes: RouteRecordRaw[] = [
     component: AdminLayout,
     children: [
       {
-        // 按角色分流：管理员→控制台概览（含运营指挥看板），师生→我的工单，师傅→守卫重定向工作台
+        // 按职能分流：管理职能→控制台概览（含运营指挥看板），报修人→我的工单，
+        // 纯维修作业由守卫重定向到工作台（见 beforeEach）
         path: '',
         name: 'RoleHome',
         component: RoleHomeGate,
         meta: {
           requiresAuth: true,
-          // 顶栏标题按角色给出（AdminLayout 支持函数型 title）
-          title: (auth: { isStudentTeacher: boolean }) =>
-            auth.isStudentTeacher ? '我的工单' : '控制台概览'
+          // 顶栏标题按职能给出（AdminLayout 支持函数型 title）
+          title: (auth: { isReporterOnly: boolean }) =>
+            auth.isReporterOnly ? '我的工单' : '控制台概览'
         }
       },
       {
         path: 'student/submit',
         name: 'StudentSubmit',
         component: StudentSubmitRepairView,
-        meta: { title: '提交报修', requiresAuth: true, roles: STUDENT_TEACHER_ROLES }
+        meta: { title: '提交报修', requiresAuth: true, functions: REPORTER_FUNCTIONS }
       },
       {
         path: 'student/orders/:id',
         name: 'StudentOrderDetail',
         component: StudentOrderDetailView,
-        meta: { title: '工单详情与评价验收', requiresAuth: true, roles: STUDENT_TEACHER_ROLES }
+        meta: { title: '工单详情与评价验收', requiresAuth: true, functions: REPORTER_FUNCTIONS }
       },
       {
         path: 'profile',
@@ -84,43 +88,43 @@ const routes: RouteRecordRaw[] = [
         path: 'worker/workbench',
         name: 'WorkerWorkbench',
         component: WorkbenchView,
-        meta: { title: '维修师傅工作台', requiresAuth: true, roles: WORKER_ROLES }
+        meta: { title: '维修师傅工作台', requiresAuth: true, functions: WORKER_FUNCTIONS }
       },
       {
         path: 'worker/finish/:id',
         name: 'WorkerFinish',
         component: WorkerFinishView,
-        meta: { title: '现场完工填报', requiresAuth: true, roles: WORKER_ROLES }
+        meta: { title: '现场完工填报', requiresAuth: true, functions: WORKER_FUNCTIONS }
       },
       {
         path: 'dispatch',
         name: 'DispatchCenter',
         component: DispatchCenterView,
-        meta: { title: '后勤调度中心干预控制台', requiresAuth: true, roles: ADMIN_ROLES }
+        meta: { title: '后勤调度中心干预控制台', requiresAuth: true, functions: ADMIN_FUNCTIONS }
       },
       {
         path: 'reports/orders',
         name: 'WorkOrderReport',
         component: WorkOrderReportView,
-        meta: { title: '工单全生命周期多维检索与分析报表', requiresAuth: true, roles: ADMIN_ROLES }
+        meta: { title: '工单全生命周期多维检索与分析报表', requiresAuth: true, functions: ADMIN_FUNCTIONS }
       },
       {
         path: 'inventory',
         name: 'InventoryManage',
         component: InventoryManageView,
-        meta: { title: '耗材备件进销存台账与采购建议', requiresAuth: true, roles: ADMIN_ROLES }
+        meta: { title: '耗材备件进销存台账与采购建议', requiresAuth: true, functions: ADMIN_FUNCTIONS }
       },
       {
         path: 'spatial',
         name: 'SpatialManage',
         component: SpatialManageView,
-        meta: { title: '校园空间网格与故障分类字典', requiresAuth: true, roles: ADMIN_ROLES }
+        meta: { title: '校园空间网格与故障分类字典', requiresAuth: true, functions: ADMIN_FUNCTIONS }
       },
       {
         path: 'system/users',
         name: 'UserManage',
         component: UserManageView,
-        meta: { title: '用户台账管理', requiresAuth: true, roles: ADMIN_ROLES }
+        meta: { title: '用户台账管理', requiresAuth: true, functions: ADMIN_FUNCTIONS }
       }
     ]
   },
@@ -140,10 +144,9 @@ const routes: RouteRecordRaw[] = [
   }
 ];
 
-function getUserRoles(authStore: ReturnType<typeof useAuthStore>): string[] {
-  const userInfo = authStore.userInfo;
-  if (!userInfo) return [];
-  return userInfo.roleCodes?.length ? userInfo.roleCodes : [userInfo.userType];
+/** 当前账号的职能码集合（**不再回退 userType**：userType 是组织条线，不是职能码） */
+function getUserFunctions(authStore: ReturnType<typeof useAuthStore>): string[] {
+  return authStore.userInfo?.roleCodes ?? [];
 }
 
 const router = createRouter({
@@ -164,17 +167,21 @@ router.beforeEach((to, from, next) => {
     return;
   }
 
-  const userType = authStore.userInfo?.userType;
+  const functions = getUserFunctions(authStore);
+  const has = (code: string) => functions.includes(code);
 
-  // 师傅默认落工作台（设备无关）
-  if (userType === 'REPAIR_WORKER' && to.path === '/') {
-    next('/worker/workbench');
-    return;
+  // 首页分流优先级：管理职能 > 维修作业 > 报修人（多职能账号取最高优先级）
+  if (to.path === '/') {
+    const isAdminSide = has('DISPATCHER') || has('PLATFORM_ADMIN');
+    if (!isAdminSide && has('WORKER')) {
+      next('/worker/workbench');
+      return;
+    }
   }
 
-  // 按路由 meta.roles 做角色放行：越权访问（师生调管理页、管理员进师生/师傅页等）落 403 说明页
-  const requiredRoles = to.meta.roles as string[] | undefined;
-  if (requiredRoles && !getUserRoles(authStore).some((role) => requiredRoles.includes(role))) {
+  // 按路由 meta.functions 做职能放行：越权访问（报修人调管理页、管理员进报修页等）落 403 说明页
+  const requiredFunctions = to.meta.functions as string[] | undefined;
+  if (requiredFunctions && !functions.some((code) => requiredFunctions.includes(code))) {
     next({ path: '/403' });
     return;
   }

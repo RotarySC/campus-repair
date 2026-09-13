@@ -183,7 +183,7 @@
             <el-option
               v-for="user in adminUserOptions"
               :key="user.id"
-              :label="`${user.realName} (${user.username} - ${user.userType})`"
+              :label="`${user.realName} (${user.username} - ${branchLabel(user.userType)})`"
               :value="user.id"
             />
           </el-select>
@@ -225,6 +225,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { branchLabel } from '@campus/shared';
 import { httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
 

@@ -9,9 +9,7 @@ export const useAuthStore = defineStore('auth', {
     userInfo: JSON.parse(localStorage.getItem('user_info') || 'null') as UserInfo | null
   }),
   getters: {
-    isAuthenticated: (state) => !!state.accessToken,
-    isSuperAdmin: (state) => state.userInfo?.roleCodes.includes('SUPER_ADMIN'),
-    isLogisticsAdmin: (state) => state.userInfo?.roleCodes.includes('LOGISTICS_ADMIN')
+    isAuthenticated: (state) => !!state.accessToken
   },
   actions: {
     setAuth(loginResult: LoginResult) {

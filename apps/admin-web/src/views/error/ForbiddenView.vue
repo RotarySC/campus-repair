@@ -8,7 +8,7 @@
               当前登录账号：<strong>{{ authStore.userInfo?.realName || authStore.userInfo?.username }}</strong>
             </p>
             <p>
-              账号角色：<el-tag type="warning" size="small">{{ roleLabel }}</el-tag>
+              账号职能：<el-tag type="warning" size="small">{{ roleLabel }}</el-tag>
             </p>
           </div>
 
@@ -33,17 +33,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { RoleLabels } from '@campus/shared';
+import { functionLabel } from '@campus/shared';
 import { useAuthStore } from '../../stores/auth';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
 const roleLabel = computed(() => {
-  const codes: string[] = authStore.userInfo?.roleCodes?.length
-    ? authStore.userInfo.roleCodes
-    : [authStore.userInfo?.userType || ''];
-  return codes.map((c: string) => RoleLabels[c] || c).filter(Boolean).join('、') || '未知角色';
+  const codes: string[] = authStore.userInfo?.roleCodes ?? [];
+  return codes.map((c: string) => functionLabel(c)).join('、') || '未分配职能';
 });
 
 function handleLogout() {

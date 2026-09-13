@@ -36,12 +36,27 @@
         <el-form-item label="学院/部门" prop="department">
           <el-input v-model="form.department" placeholder="例如：软件学院 / 计算机系" />
         </el-form-item>
-        <el-form-item label="身份类型" prop="userType">
-          <el-radio-group v-model="form.userType">
-            <el-radio value="USER_STUDENT">在校学生</el-radio>
-            <el-radio value="USER_TEACHER">教职员工</el-radio>
+        <el-form-item label="身份类型">
+          <el-radio-group v-model="identityType">
+            <el-radio value="STUDENT">在校学生</el-radio>
+            <el-radio value="STAFF">教职员工</el-radio>
           </el-radio-group>
         </el-form-item>
+        <!-- 教工必须选所属条线：教学科研 与 后勤保障 的单位是两棵不同的字典子树 -->
+        <el-form-item v-if="identityType === 'STAFF'" label="所属条线">
+          <el-radio-group v-model="staffBranch">
+            <el-radio value="FACULTY">教学科研（学院/系）</el-radio>
+            <el-radio value="LOGISTICS">后勤保障（处室/班组）</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          class="register-tip"
+          title="维修师傅、后勤调度与平台管理账号由管理员在「用户台账」建档，不开放自助注册。"
+        />
 
         <el-button
           type="primary"
@@ -68,14 +83,23 @@ const router = useRouter();
 const loading = ref(false);
 const registerFormRef = ref<FormInstance>();
 
+/** 身份（学生/教职工）——注册页的表达层；服务端只收「组织条线」 */
+const identityType = ref<'STUDENT' | 'STAFF'>('STUDENT');
+/** 教工所属条线（教学科研 / 后勤保障）；行政信息化不开放自助注册 */
+const staffBranch = ref<'FACULTY' | 'LOGISTICS'>('FACULTY');
+
 const form = reactive({
   username: '',
   realName: '',
   phone: '',
   password: '',
-  department: '',
-  userType: 'USER_STUDENT'
+  department: ''
 });
+
+/** 提交给服务端的组织条线（STUDENT / FACULTY / LOGISTICS，白名单见后端 IdentityCodes.SELF_REGISTRABLE_BRANCHES） */
+function currentBranch(): string {
+  return identityType.value === 'STUDENT' ? 'STUDENT' : staffBranch.value;
+}
 
 const rules: FormRules = {
   username: [{ required: true, message: '请填写学号或工号', trigger: 'blur' }],
@@ -93,7 +117,7 @@ async function onSubmit() {
 
   loading.value = true;
   try {
-    const res = await httpClient.post<null>('/auth/register', form);
+    const res = await httpClient.post<null>('/auth/register', { ...form, userType: currentBranch() });
     if (res.code === 200) {
       ElMessage.success('注册成功，请使用新密码登录');
       router.push('/login');

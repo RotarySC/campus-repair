@@ -11,7 +11,12 @@ export interface UserInfo {
   realName: string;
   phone: string;
   department?: string;
-  userType: 'SUPER_ADMIN' | 'LOGISTICS_ADMIN' | 'REPAIR_WORKER' | 'USER_STUDENT' | 'USER_TEACHER';
+  /**
+   * **组织条线**（单值）——回答「你是谁、归哪条组织线」，同时就是单位字典 `org_node.audience`
+   * 的取值。口径见仓库根 `CONTEXT.md`；**不要**再用它判断权限（那要用 `roleCodes`）。
+   */
+  userType: 'STUDENT' | 'FACULTY' | 'LOGISTICS' | 'ADMIN' | string;
+  /** **职能**（可多值）——回答「能干什么」，与后端 `@PreAuthorize` 一一对应 */
   roleCodes: string[];
   isFirstLogin: number;
   defaultSpaceId?: number;

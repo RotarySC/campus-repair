@@ -123,8 +123,10 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown, Bell, Menu, SwitchButton } from '@element-plus/icons-vue';
-import { UserInfo, roleLabel as roleLabelOf } from '@campus/shared';
+import { UserInfo, functionLabel } from '@campus/shared';
 import { useAuthStore, httpClient } from '../stores/auth';
+import { useIdentity } from '../composables/useIdentity';
+import type { FunctionCode } from '../composables/useIdentity';
 import { BREAKPOINTS, useViewport } from '../composables/useViewport';
 import NotificationCenterDrawer from '../components/NotificationCenterDrawer.vue';
 
@@ -132,37 +134,49 @@ interface NavItem {
   path: string;
   label: string;
   icon: string;
+  /** 需要哪一个**职能**才可见（口径见仓库根 CONTEXT.md；不再按 userType 判定） */
+  requires: FunctionCode;
 }
 
 /** 管理员导航：顺序按使用频次与重要性排列，日常入口在上，只读看板在下 */
 const ADMIN_NAV_ITEMS: NavItem[] = [
-  { path: '/', label: '控制台概览', icon: 'Odometer' },
-  { path: '/dispatch', label: '后勤调度中心', icon: 'Headset' },
-  { path: '/reports/orders', label: '工单检索报表', icon: 'Document' },
-  { path: '/inventory', label: '耗材进销存台账', icon: 'Box' },
-  { path: '/spatial', label: '空间与分类字典', icon: 'Grid' },
-  { path: '/system/users', label: '用户台账管理', icon: 'User' }
+  { path: '/', label: '控制台概览', icon: 'Odometer', requires: 'DISPATCHER' },
+  { path: '/dispatch', label: '后勤调度中心', icon: 'Headset', requires: 'DISPATCHER' },
+  { path: '/reports/orders', label: '工单检索报表', icon: 'Document', requires: 'DISPATCHER' },
+  { path: '/inventory', label: '耗材进销存台账', icon: 'Box', requires: 'DISPATCHER' },
+  { path: '/spatial', label: '空间与分类字典', icon: 'Grid', requires: 'DISPATCHER' },
+  { path: '/system/users', label: '用户台账管理', icon: 'User', requires: 'DISPATCHER' }
 ];
 
 /** 师生导航（Q8）：提单与跟单两个高频入口 */
 const STUDENT_NAV_ITEMS: NavItem[] = [
-  { path: '/student/submit', label: '提交报修', icon: 'EditPen' },
-  { path: '/', label: '我的工单', icon: 'Tickets' }
+  { path: '/student/submit', label: '提交报修', icon: 'EditPen', requires: 'REPORTER' },
+  { path: '/', label: '我的工单', icon: 'Tickets', requires: 'REPORTER' }
 ];
 
 /** 师傅导航：作业台与个人中心（单树重构后师傅首次拥有全宽度可用导航） */
 const WORKER_NAV_ITEMS: NavItem[] = [
-  { path: '/worker/workbench', label: '我的工作台', icon: 'Suitcase' },
-  { path: '/profile', label: '个人中心', icon: 'User' }
+  { path: '/worker/workbench', label: '我的工作台', icon: 'Suitcase', requires: 'WORKER' },
+  { path: '/profile', label: '个人中心', icon: 'User', requires: 'WORKER' }
 ];
 
-const isStudentTeacher = computed(() =>
-  ['USER_STUDENT', 'USER_TEACHER'].includes(authStore.userInfo?.userType || '')
-);
+const identity = useIdentity();
 
+/**
+ * 导航 = **有职能的项的并集**。多职能账号（例如演示数据里同时持「维修作业」与「报修人」的
+ * worker02）会同时看到两类入口——这正是「职能可叠加」的应有表现；
+ * 管理端条目以 DISPATCHER/PLATFORM_ADMIN 判定（任一即可）。
+ */
 const navItems = computed<NavItem[]>(() => {
-  if (authStore.userInfo?.userType === 'REPAIR_WORKER') return WORKER_NAV_ITEMS;
-  return isStudentTeacher.value ? STUDENT_NAV_ITEMS : ADMIN_NAV_ITEMS;
+  const items = [...ADMIN_NAV_ITEMS, ...STUDENT_NAV_ITEMS, ...WORKER_NAV_ITEMS];
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const allowed =
+      item.requires === 'DISPATCHER' ? identity.isAdminSide.value : identity.has(item.requires);
+    if (!allowed || seen.has(item.path)) return false;
+    seen.add(item.path);
+    return true;
+  });
 });
 
 const COLLAPSE_STORAGE_KEY = 'admin_sidebar_collapsed';
@@ -240,13 +254,19 @@ watch(viewportWidth, (width, oldWidth) => {
 
 const pageTitle = computed(() => {
   const title = route.meta.title;
-  // 支持函数型标题（如「/」按角色显示 控制台概览 / 我的工单）
+  // 支持函数型标题（如「/」按职能显示 控制台概览 / 我的工单）
   if (typeof title === 'function') {
-    return (title as (auth: { isStudentTeacher: boolean }) => string)({ isStudentTeacher: isStudentTeacher.value });
+    return (title as (auth: { isReporterOnly: boolean }) => string)({
+      isReporterOnly: identity.isReporterOnly.value
+    });
   }
   return (title as string) || '控制台概览';
 });
-const roleLabel = computed(() => roleLabelOf(authStore.userInfo?.userType));
+/** 顶栏称号显示**职能**（可多值，用「·」连接），例如「维修作业 · 报修人」 */
+const roleLabel = computed(() => {
+  const codes = authStore.userInfo?.roleCodes ?? [];
+  return codes.map((code) => functionLabel(code)).join(' · ') || '未分配职能';
+});
 const userInitial = computed(() => {
   const name = authStore.userInfo?.realName || authStore.userInfo?.username || '—';
   return name.slice(0, 1);
@@ -274,17 +294,16 @@ function onUserCommand(command: string) {
   }
 }
 
-/** 通知中携带关联工单时，按角色跳转：师生→工单详情（含评价），管理员→调度中心，师傅→作业台 */
+/** 通知中携带关联工单时，按**职能**跳转：报修人→工单详情（含评价），维修作业→作业台，其余→调度中心 */
 function handleSelectOrder(orderId: number) {
   showNotificationDrawer.value = false;
   if (!orderId) return;
-  const userType = authStore.userInfo?.userType;
-  if (userType === 'USER_STUDENT' || userType === 'USER_TEACHER') {
-    router.push(`/student/orders/${orderId}`);
-  } else if (userType === 'REPAIR_WORKER') {
+  if (identity.isAdminSide.value) {
+    router.push({ path: '/dispatch', query: { orderId: String(orderId) } });
+  } else if (identity.isWorker.value) {
     router.push('/worker/workbench');
   } else {
-    router.push({ path: '/dispatch', query: { orderId: String(orderId) } });
+    router.push(`/student/orders/${orderId}`);
   }
 }
 
