@@ -4,11 +4,16 @@
  *  - 师生「我的报修概览」的 KPI 与 /users/me/repair-summary **逐值一致**；零评价时均分渲染 `—`
  *  - 师傅「我的作业概览」字段齐全（工种/校区/负荷/评分/完工数）
  *  - 头像真实走「压缩 → /common/upload → /users/me/avatar」，顶栏 el-avatar 的 src 随之变化
+ *  - 【新增】头像悬浮遮罩：默认 opacity:0，真实鼠标移入后压暗并浮现「更换头像」，移开复原
+ *  - 【新增】「基本联系资料」不再重复账号/身份；概览里的身份标签收缩到文字宽
+ *  - 【新增】「学院/部门」按年级逐级下钻（GET /org/tree），触发器文案 =「年级 学院」（空格），
+ *            保存后服务端与「账户概览 · 单位」同步；三级（教职工→处室→班组）也能回显
+ *  - 【新增】历史自由文本回显不到字典时**不误清**（全量覆盖语义下的防误清）
  *  - 进页面会调 GET /users/me 刷新快照（localStorage.user_info 出现 createdAt）
  *  - 三档 0 横向溢出、0 控制台错误
  *
  * 用法: node .scratch/assert-profile.mjs
- * 前置: Edge 已开 9222；后端 8080、前端 3000 在跑。
+ * 前置: Edge 已开 9222；后端 8080（**必须已加载 org 模块**）、前端 3000 在跑。
  */
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -88,6 +93,42 @@ async function gotoProfile(width) {
 }
 
 const CARD_TITLES = `[...document.querySelectorAll('.pc-card .el-card__header')].map((h) => h.innerText.trim().split('\\n')[0].trim())`;
+/** 「基本联系资料」卡片（按卡片标题定位，避免命中改密卡的表单项） */
+const CONTACT_CARD = `[...document.querySelectorAll('.pc-card')].find((c) => c.querySelector('.el-card__header')?.innerText.includes('基本联系资料'))`;
+/** 学院/部门下钻触发器（按 aria-label 定位，不靠 DOM 顺序） */
+const DEPT_TRIGGER = `${CONTACT_CARD}?.querySelector('.dd-trigger[aria-label="学院/部门"]')`;
+const DEPT_TEXT = `${DEPT_TRIGGER}?.querySelector('.dd-trigger__text')?.innerText.trim() ?? null`;
+/**
+ * ⚠️ DrilldownCascader 的 el-popover 关闭后**面板仍留在 DOM**（只是不可见），
+ * 因此不能用 `document.querySelectorAll('.dd-panel …')` 全局查询——个人中心同时挂了
+ * 两个选择器（学院/部门 + 默认报修空间），全局查询会把另一个面板的选项算进来。
+ * 正解：触发器的 aria-controls → 面板 ul 的 id → getElementById 精确定位。
+ */
+const PANEL_UL = (ariaLabel) => `(() => {
+  const t = document.querySelector('.dd-trigger[aria-label="${ariaLabel}"]');
+  const id = t && t.getAttribute('aria-controls');
+  return id ? document.getElementById(id) : null;
+})()`;
+const PANEL_OPTS = (ariaLabel) => `(() => {
+  const ul = ${PANEL_UL(ariaLabel)};
+  return ul ? [...ul.querySelectorAll('.dd-option__label')].map((e) => e.innerText.trim()) : null;
+})()`;
+const PANEL_PICK = (ariaLabel, label) => `(() => {
+  const ul = ${PANEL_UL(ariaLabel)};
+  if (!ul) return 'no-panel';
+  const b = [...ul.querySelectorAll('.dd-option')].find((x) => x.querySelector('.dd-option__label')?.innerText.trim() === ${JSON.stringify(label)});
+  if (!b) return 'not-found';
+  b.click();
+  return 'clicked';
+})()`;
+/** 面包屑最左边那枚＝回到根层 */
+const PANEL_ROOT = (ariaLabel) => `(() => {
+  const ul = ${PANEL_UL(ariaLabel)};
+  const crumb = ul && ul.closest('.dd-panel')?.querySelector('.dd-crumb');
+  if (!crumb) return 'no-crumb';
+  crumb.click();
+  return 'clicked';
+})()`;
 const PROFILE_STATE = `(() => {
   const de = document.documentElement;
   const kpis = [...document.querySelectorAll('.mini-kpi')].map((k) => ({
@@ -95,12 +136,26 @@ const PROFILE_STATE = `(() => {
     value: k.querySelector('.mini-kpi__value')?.innerText.trim()
   }));
   const avatarImg = document.querySelector('.user-avatar img');
+  const contact = ${CONTACT_CARD};
+  const roleTag = document.querySelector('.account-role');
+  const meta = document.querySelector('.account-meta');
+  const mask = document.querySelector('.avatar-mask');
   return {
     cards: ${CARD_TITLES},
     kpis,
     recentRows: document.querySelectorAll('.el-table__body-wrapper .el-table__row').length,
     recentCards: document.querySelectorAll('.rl-card').length,
     avatarSrc: avatarImg ? avatarImg.getAttribute('src') : null,
+    maskOpacity: mask ? getComputedStyle(mask).opacity : null,
+    maskBg: mask ? getComputedStyle(mask).backgroundColor : null,
+    maskText: mask ? mask.innerText.replace(/\\s+/g, '') : '',
+    contactLabels: contact ? [...contact.querySelectorAll('.el-form-item__label')].map((l) => l.innerText.trim()) : [],
+    deptTriggerText: ${DEPT_TEXT},
+    unitLine: [...document.querySelectorAll('.account-line')].map((l) => l.innerText.trim()).find((t) => t.startsWith('单位')) || '',
+    roleTagBox: roleTag && meta
+      ? { tag: Math.round(roleTag.getBoundingClientRect().width), meta: Math.round(meta.getBoundingClientRect().width) }
+      : null,
+    legacyNote: document.querySelector('.field-note')?.innerText.replace(/\\s+/g, ' ').trim() || '',
     workerLabels: [...document.querySelectorAll('.el-descriptions__label')].map((l) => l.innerText.trim()),
     workerText: document.querySelector('.pc-card .el-descriptions')?.innerText.replace(/\\s+/g, ' ').trim() || '',
     hasWorkerEmpty: !!document.querySelector('.pc-card .el-empty'),
@@ -149,6 +204,18 @@ check('管理员 页标题为「个人中心」', (await evalJs(`document.queryS
 check('管理员 三张核心卡渲染', ADMIN_CARDS.every((t) => adminState.cards.includes(t)), adminState.cards.join(' / '));
 check('管理员 不渲染师生/师傅统计区', !adminState.cards.includes('我的报修概览') && !adminState.cards.includes('我的作业概览'));
 check('管理员 快照已由 /users/me 刷新（createdAt 落库）', !!adminState.storedCreatedAt, `createdAt=${adminState.storedCreatedAt}`);
+check('管理员 「基本联系资料」不再重复账号/身份行',
+  !adminState.contactLabels.includes('账号') && !adminState.contactLabels.includes('身份'),
+  adminState.contactLabels.join(' / '));
+check('管理员 「基本联系资料」保留 姓名/手机/学院部门/默认空间',
+  ['姓名', '手机号码', '学院/部门', '默认报修空间'].every((l) => adminState.contactLabels.includes(l)),
+  adminState.contactLabels.join(' / '));
+check('管理员 概览里的身份标签收缩到文字宽度',
+  !!adminState.roleTagBox && adminState.roleTagBox.tag > 0 && adminState.roleTagBox.tag < adminState.roleTagBox.meta * 0.6,
+  JSON.stringify(adminState.roleTagBox));
+check('管理员 头像遮罩默认隐藏，文案为「更换头像」',
+  adminState.maskOpacity === '0' && adminState.maskText === '更换头像',
+  `opacity=${adminState.maskOpacity} text=${adminState.maskText}`);
 check('管理员 无横向溢出', adminState.overflowX === 0, `overflowX=${adminState.overflowX}`);
 collectErrors('管理员');
 
@@ -191,6 +258,8 @@ for (const width of [1272, 390]) {
     state.ratingText);
 
   check(`${tag} 无横向溢出`, state.overflowX === 0, `overflowX=${state.overflowX}`);
+  // 注意：Emulation.setDeviceMetricsOverride({mobile:true}) **不会**让 @media (hover:none) 命中，
+  // 触屏档的遮罩常显另有专测（用例 5 用 Emulation.setEmulatedMedia 模拟）
   await forceFrame();
   const shot = await cdp('Page.captureScreenshot', { format: 'png' });
   writeFileSync(`.scratch/profile/student-${width}.png`, Buffer.from(shot.data, 'base64'));
@@ -249,6 +318,166 @@ if (!existsSync(AVATAR_FILE)) {
   console.log('[shot] .scratch/profile/student-avatar.png');
   collectErrors('头像上传');
 }
+
+// ================== 用例 5：头像悬浮遮罩（真实鼠标移入/移出） ==================
+events.length = 0;
+await login('student02');
+await gotoProfile(1272);
+const avatarCenter = await evalJs(`(() => {
+  const el = document.querySelector('.avatar-wrap');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+})()`);
+check('头像悬浮 能定位头像中心', !!avatarCenter, JSON.stringify(avatarCenter));
+check('头像悬浮 默认 opacity=0（不遮挡头像）',
+  (await evalJs(`getComputedStyle(document.querySelector('.avatar-mask')).opacity`)) === '0');
+
+// 必须用 CDP 可信鼠标事件：合成 MouseEvent 不会更新 :hover 状态
+await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: avatarCenter.x, y: avatarCenter.y, buttons: 0 });
+const hovered = await waitFor(`getComputedStyle(document.querySelector('.avatar-mask')).opacity`, (v) => v === '1', 6000);
+check('头像悬浮 鼠标移入后遮罩浮现（opacity=1）', hovered === '1', `opacity=${hovered}`);
+const maskBg = await evalJs(`getComputedStyle(document.querySelector('.avatar-mask')).backgroundColor`);
+check('头像悬浮 遮罩底色为半透明黑（即头像变深）', /^rgba?\(0,\s*0,\s*0/.test(String(maskBg)), String(maskBg));
+check('头像悬浮 中心文案为「更换头像」',
+  (await evalJs(`document.querySelector('.avatar-mask').innerText.replace(/\\s+/g, '')`)) === '更换头像');
+
+await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5, buttons: 0 });
+const unhovered = await waitFor(`getComputedStyle(document.querySelector('.avatar-mask')).opacity`, (v) => v === '0', 6000);
+check('头像悬浮 鼠标移开后遮罩复原', unhovered === '0', `opacity=${unhovered}`);
+
+// 触屏没有 hover：@media (hover:none) 下遮罩必须常显，否则手机上完全看不出头像可点。
+// ⚠️ 只能靠 Emulation.setTouchEmulationEnabled（+ mobile 度量）来命中该媒体特性：
+//   实测（.scratch/diag-hover-media.mjs）setEmulatedMedia 的 features=[hover:none] 与
+//   setDeviceMetricsOverride({mobile:true}) **都不会**让 matchMedia('(hover: none)') 变 true。
+await cdp('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
+await forceFrame();
+const touchMask = await waitFor(`getComputedStyle(document.querySelector('.avatar-mask')).opacity`, (v) => v === '1', 6000);
+check('头像悬浮 触屏档（hover:none）遮罩常显', touchMask === '1', `opacity=${touchMask}`);
+await cdp('Emulation.setTouchEmulationEnabled', { enabled: false });
+await cdp('Emulation.setDeviceMetricsOverride', { width: 1272, height: 1000, deviceScaleFactor: 1, mobile: false });
+await forceFrame();
+const restoredMask = await waitFor(`getComputedStyle(document.querySelector('.avatar-mask')).opacity`, (v) => v === '0', 6000);
+check('头像悬浮 退出触屏档后恢复为悬停才显示', restoredMask === '0', `opacity=${restoredMask}`);
+collectErrors('头像悬浮');
+
+// ================== 用例 6：学院/部门按年级逐级下钻 + 保存后概览同步 ==================
+events.length = 0;
+const auth6 = await login('student02'); // 种子值：2024级 计算机学院
+// 用例自洽：本用例最后会把 department 改成「2024级 外国语学院」，而 local 的 H2 是内存库、
+// 只有重启后端才会回滚；先把种子值写回去，保证同一实例上重复跑也是绿的（只改 department）。
+const me6 = (await (await fetch(`${BACKEND}/users/me`, { headers: { Authorization: `Bearer ${auth6.token}` } })).json()).data;
+await fetch(`${BACKEND}/users/profile`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth6.token}` },
+  body: JSON.stringify({
+    realName: me6.realName,
+    phone: me6.phone,
+    department: '2024级 计算机学院',
+    defaultSpaceId: me6.defaultSpaceId ?? null
+  })
+});
+await gotoProfile(1272);
+const state6 = await evalJs(PROFILE_STATE);
+check('学院部门 已存值回显为「2024级 计算机学院」（空格分隔）',
+  state6.deptTriggerText === '2024级 计算机学院', `trigger=${state6.deptTriggerText}`);
+check('学院部门 账户概览「单位」与选择器同格式',
+  state6.unitLine === '单位：2024级 计算机学院', state6.unitLine);
+check('学院部门 已命中字典时不显示历史值提示', state6.legacyNote === '', state6.legacyNote);
+
+const opened = await evalJs(`(() => {
+  const t = document.querySelector('.dd-trigger[aria-label="学院/部门"]');
+  if (!t) return 'missing';
+  t.click();
+  return 'clicked';
+})()`);
+check('学院部门 打开下钻面板', opened === 'clicked', opened);
+
+// 已选叶子时面板**定位在选中项所在层级**（2024级 → 四个学院），而不是回到根层
+const levelAtOpen = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.length >= 3, 8000);
+check('学院部门 打开即定位到已选年级的学院层',
+  JSON.stringify(levelAtOpen) === JSON.stringify(['计算机学院', '土木工程学院', '外国语学院', '经济管理学院']),
+  JSON.stringify(levelAtOpen));
+
+const toRoot = await evalJs(PANEL_ROOT('学院/部门'));
+check('学院部门 点面包屑根级回退', toRoot === 'clicked', toRoot);
+const level1 = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('教职工'), 8000);
+check('学院部门 根层「年级在前、教职工在后」',
+  JSON.stringify(level1) === JSON.stringify(['2023级', '2024级', '2025级', '教职工']), JSON.stringify(level1));
+// 同一时刻另一个选择器（默认报修空间）的面板不得被算进来（它也在 DOM 里）
+check('学院部门 选项查询不会串到「默认报修空间」面板',
+  Array.isArray(level1) && !level1.includes('东校区') && !level1.includes('西校区'), JSON.stringify(level1));
+
+const into2024 = await evalJs(PANEL_PICK('学院/部门', '2024级'));
+check('学院部门 下钻 2024级', into2024 === 'clicked', into2024);
+const level2 = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('外国语学院'), 8000);
+check('学院部门 下钻到学院层（含计算机/外国语学院）',
+  level2.includes('计算机学院') && level2.includes('外国语学院'), JSON.stringify(level2));
+
+const pickForeign = await evalJs(PANEL_PICK('学院/部门', '外国语学院'));
+check('学院部门 选择叶子「外国语学院」', pickForeign === 'clicked', pickForeign);
+const picked = await waitFor(DEPT_TEXT, (v) => v === '2024级 外国语学院', 6000);
+check('学院部门 选叶子后触发器显示「年级 学院」', picked === '2024级 外国语学院', `trigger=${picked}`);
+
+await evalJs(`(() => {
+  const b = [...document.querySelectorAll('.pc-card button')].find((x) => x.innerText.includes('保存资料修改'));
+  if (b) b.click();
+  return !!b;
+})()`);
+let savedDept = null;
+for (let i = 0; i < 40; i++) {
+  const me = await (await fetch(`${BACKEND}/users/me`, { headers: { Authorization: `Bearer ${auth6.token}` } })).json();
+  savedDept = me.data?.department;
+  if (savedDept === '2024级 外国语学院') break;
+  await sleep(400);
+}
+check('学院部门 保存后服务端落库为「2024级 外国语学院」', savedDept === '2024级 外国语学院', `server=${savedDept}`);
+const unit6 = await waitFor(`(${PROFILE_STATE}).unitLine`, (v) => v === '单位：2024级 外国语学院', 8000);
+check('学院部门 保存后账户概览「单位」同步（无需刷新页面）', unit6 === '单位：2024级 外国语学院', String(unit6));
+check('学院部门 保存后无横向溢出',
+  (await evalJs(`document.documentElement.scrollWidth - document.documentElement.clientWidth`)) === 0);
+collectErrors('学院部门');
+
+// ================== 用例 7：三级单位回显（教职工 → 处室 → 班组） ==================
+events.length = 0;
+await login('worker02'); // 种子值：教职工 后勤维修中心 电工班
+await gotoProfile(1272);
+const state7 = await evalJs(PROFILE_STATE);
+check('三级单位 回显为「教职工 后勤维修中心 电工班」',
+  state7.deptTriggerText === '教职工 后勤维修中心 电工班', `trigger=${state7.deptTriggerText}`);
+check('三级单位 账户概览「单位」同步三级文案',
+  state7.unitLine === '单位：教职工 后勤维修中心 电工班', state7.unitLine);
+collectErrors('三级单位');
+
+// ================== 用例 8：历史自由文本回显不到字典时不得被误清 ==================
+// 用 teacher01 而不是 student01：后者 isFirstLogin=1，App.vue 会弹强制改密弹窗遮住表单
+events.length = 0;
+const LEGACY = '老式自由文本单位';
+const auth8 = await login('teacher01');
+const putRes = await (await fetch(`${BACKEND}/users/profile`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth8.token}` },
+  body: JSON.stringify({ realName: '陈老师', phone: '13800000021', department: LEGACY, defaultSpaceId: null })
+})).json();
+check('历史自由文本 已通过接口写入', putRes.code === 200, `code=${putRes.code} message=${putRes.message}`);
+
+await gotoProfile(1272);
+const state8 = await evalJs(PROFILE_STATE);
+check('历史自由文本 选择器为空（回显不到）',
+  state8.deptTriggerText === '选择年级 / 学院', `trigger=${state8.deptTriggerText}`);
+check('历史自由文本 页面提示「不在字典中」', state8.legacyNote.includes(LEGACY), state8.legacyNote);
+
+// 什么都不改直接保存：PUT /users/profile 是全量覆盖，历史值必须原样保留
+await evalJs(`(() => {
+  const b = [...document.querySelectorAll('.pc-card button')].find((x) => x.innerText.includes('保存资料修改'));
+  if (b) b.click();
+  return !!b;
+})()`);
+await sleep(3000);
+const after8 = await (await fetch(`${BACKEND}/users/me`, { headers: { Authorization: `Bearer ${auth8.token}` } })).json();
+check('历史自由文本 未被误清（全量覆盖下仍保留原值）', after8.data?.department === LEGACY, `server=${after8.data?.department}`);
+collectErrors('历史自由文本');
 
 console.log(`\n[summary] ${failures === 0 ? 'ALL PASS' : failures + ' FAILED'}`);
 await raw('Target.closeTarget', { targetId }).catch(() => {});

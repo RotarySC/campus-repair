@@ -158,6 +158,8 @@ const props = withDefaults(
     emptyText?: string;
     /** 面板宽度：默认窄屏下不越界 */
     panelWidth?: string;
+    /** 触发器里各级名称的连接符；默认 ` / `（空间/分类用），单位字典传空格以与库中 department 文案一致 */
+    separator?: string;
   }>(),
   {
     valueKey: 'id',
@@ -169,7 +171,8 @@ const props = withDefaults(
     disabled: false,
     label: '',
     emptyText: '暂无可选项',
-    panelWidth: 'min(360px, 92vw)'
+    panelWidth: 'min(360px, 92vw)',
+    separator: ' / '
   }
 );
 
@@ -226,7 +229,7 @@ const displayText = computed(() => {
   const text = selectedNodes.value
     .map((node) => String(node[props.labelKey] ?? ''))
     .filter(Boolean)
-    .join(' / ');
+    .join(props.separator);
   // 选项还没加载完却已有选中值：先显示原始 id，避免"输入框看着是空的但表单有值"
   return text || String(selectedId.value ?? '');
 });

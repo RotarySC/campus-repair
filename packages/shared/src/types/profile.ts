@@ -19,6 +19,27 @@ export interface RepairSummaryVO {
   avgRating: number | null;
 }
 
+/**
+ * 单位组织字典节点（`GET /org/tree`）。
+ * 与后端 `modules/org/vo/OrgNodeVO` 一一对应。
+ *
+ * `fullPathName` 用**空格**分隔各级名称（如 `2024级 计算机学院`），且与
+ * `UserInfo.department` 存的是**同一个字符串**——个人中心靠整串精确匹配把已存文案
+ * 回显成级联路径，因此这里**不要**改成 `/` 分隔或做分隔符解析（改了回显会静默失效）。
+ */
+export interface OrgNodeVO {
+  id: number;
+  parentId: number;
+  name: string;
+  /** 1-年级/教职工, 2-学院/处室, 3-班级/班组 */
+  levelType: number;
+  fullPathName: string;
+  sortOrder: number;
+  /** 1-正常, 0-停用（前端取数一律带 onlyEnabled=true） */
+  status: number;
+  children: OrgNodeVO[];
+}
+
 /** 师傅「我的作业概览」；无 worker_profile 档案时后端返回 data=null */
 export interface MyWorkerProfileVO {
   skillCode: string | null;

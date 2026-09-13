@@ -485,26 +485,34 @@ async function profileCase(width) {
   await cdp('Emulation.setTouchEmulationEnabled', { enabled: width < 768, maxTouchPoints: 5 });
   await goto('/profile', '.dd-trigger');
 
-  check(`${tag} 一个下钻控件就位`, (await evalJs(countTriggers)) === 1);
-  const initial = await evalJs(triggerOf(0));
+  // 个人中心现在挂了**两个**下钻控件（学院/部门 + 默认报修空间）：按 aria-label 定位，
+  // 不要靠 DOM 顺序 —— 页面新增/调整控件顺序时，按下标定位会静默测错那个选择器。
+  check(`${tag} 两个下钻控件就位（学院/部门 + 默认报修空间）`, (await evalJs(countTriggers)) === 2, `count=${await evalJs(countTriggers)}`);
+  const spaceIdx = await evalJs(`[...document.querySelectorAll('.dd-trigger')].findIndex((t) => t.getAttribute('aria-label') === '默认报修空间')`);
+  const deptIdx = await evalJs(`[...document.querySelectorAll('.dd-trigger')].findIndex((t) => t.getAttribute('aria-label') === '学院/部门')`);
+  check(`${tag} 两个控件均可按 aria-label 定位`, spaceIdx >= 0 && deptIdx >= 0 && spaceIdx !== deptIdx, `spaceIdx=${spaceIdx} deptIdx=${deptIdx}`);
+  const initial = await evalJs(triggerOf(spaceIdx));
   check(`${tag} 已保存的默认空间回显`, initial.text.length > 0 && initial.text.includes('/'), initial.text);
 
-  await openPanel(0);
+  await openPanel(spaceIdx);
   await sleep(420);
-  const panel = await panelState(0);
+  const panel = await panelState(spaceIdx);
   check(`${tag} 单列、0 圈`, panel.open === true && panel.columns === 1 && panel.radios === 0, `columns=${panel.columns} radios=${panel.radios}`);
   check(`${tag} 面板未越界`, panel.right <= panel.vw + 1 && panel.left >= -1, `panel=[${panel.left},${panel.right}] vw=${panel.vw}`);
   check(`${tag} 打开即停在已选层级（省→市），而非根层`, panel.crumbs.length >= 1 && panel.selected.length === 1, `crumbs=${panel.crumbs.join('/')} selected=${panel.selected.join(',')}`);
   console.error(`[shot] ${await screenshot(`profile-${width}-open`)}`);
 
-  check(`${tag} 面包屑可回到根层`, (await resetToRoot(0)) === 'clicked');
+  check(`${tag} 面包屑可回到根层`, (await resetToRoot(spaceIdx)) === 'clicked');
   await sleep(320);
-  const root = await panelState(0);
+  const root = await panelState(spaceIdx);
   check(`${tag} 回到根层`, JSON.stringify(root.options) === JSON.stringify(['东校区', '西校区']) && root.crumbs.join('/') === '全部', root.options.join(','));
 
   check(`${tag} 下钻到 501室`, (await drill(['西校区', '教工生活区', '教工宿舍A栋', '501室'])) === 'ok');
   await sleep(320);
-  check(`${tag} 触发器显示完整路径`, (await evalJs(triggerOf(0))).text === '西校区 / 教工生活区 / 教工宿舍A栋 / 501室', (await evalJs(triggerOf(0))).text);
+  check(`${tag} 触发器显示完整路径`, (await evalJs(triggerOf(spaceIdx))).text === '西校区 / 教工生活区 / 教工宿舍A栋 / 501室', (await evalJs(triggerOf(spaceIdx))).text);
+  // 同页的「学院/部门」不得被这条链路带偏（它有自己的文案格式：空格分隔）
+  check(`${tag} 学院/部门文案仍为空格分隔`,
+    !(await evalJs(triggerOf(deptIdx))).text.includes(' / '), (await evalJs(triggerOf(deptIdx))).text);
 
   collectErrors(tag);
   await cdp('Emulation.clearDeviceMetricsOverride').catch(() => {});

@@ -9,6 +9,7 @@
 -- 覆盖范围：
 --   · 账号：超管 / 后勤调度 / 6 名不同工种师傅 / 学生 / 教工（统一密码 password）
 --   · 四级空间网格（2 校区）、两级故障字典、系统参数
+--   · 单位组织字典：年级 → 学院（教职工 → 处室 → 班组），与演示账号的 department 逐字对齐
 --   · 20 张工单：覆盖全部 9 个状态 + 加急 / SLA 超时 / 转派待处理 / 差评返工 / 冷数据归档
 --   · 完整流转审计日志、质检评价（含“自动核销不打分”）、耗材进销存流水、站内信
 --
@@ -22,14 +23,14 @@ INSERT INTO sys_role (id, role_code, role_name, description) VALUES
 (5, 'USER_TEACHER', '报修教工', '教工报修与评价权限');
 
 INSERT INTO sys_user (id, username, phone, password, real_name, user_type, department, default_space_id, status, is_first_login) VALUES
-(10, 'logistics01', '13800000010', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '王调度', 'LOGISTICS_ADMIN', '后勤保障处·调度中心', NULL, 1, 0),
-(11, 'worker02', '13800000011', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '张电工', 'REPAIR_WORKER', '后勤维修中心·电工班', NULL, 1, 0),
-(12, 'worker03', '13800000012', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '赵空调', 'REPAIR_WORKER', '后勤维修中心·暖通班', NULL, 1, 0),
-(13, 'worker04', '13800000013', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '孙锁匠', 'REPAIR_WORKER', '后勤维修中心·五金班', NULL, 1, 0),
-(14, 'worker05', '13800000014', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '周网络', 'REPAIR_WORKER', '后勤维修中心·弱电班', NULL, 1, 0),
-(15, 'worker06', '13800000015', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '吴综合', 'REPAIR_WORKER', '后勤维修中心·综合班', NULL, 1, 0),
-(20, 'student02', '13800000020', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '李同学', 'USER_STUDENT', '计算机学院 2024 级', 120, 1, 0),
-(21, 'teacher01', '13800000021', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '陈老师', 'USER_TEACHER', '土木工程学院', 124, 1, 0);
+(10, 'logistics01', '13800000010', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '王调度', 'LOGISTICS_ADMIN', '教职工 后勤保障处·调度中心', NULL, 1, 0),
+(11, 'worker02', '13800000011', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '张电工', 'REPAIR_WORKER', '教职工 后勤维修中心 电工班', NULL, 1, 0),
+(12, 'worker03', '13800000012', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '赵空调', 'REPAIR_WORKER', '教职工 后勤维修中心 暖通班', NULL, 1, 0),
+(13, 'worker04', '13800000013', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '孙锁匠', 'REPAIR_WORKER', '教职工 后勤维修中心 五金班', NULL, 1, 0),
+(14, 'worker05', '13800000014', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '周网络', 'REPAIR_WORKER', '教职工 后勤维修中心 弱电班', NULL, 1, 0),
+(15, 'worker06', '13800000015', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '吴综合', 'REPAIR_WORKER', '教职工 后勤维修中心 综合班', NULL, 1, 0),
+(20, 'student02', '13800000020', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '李同学', 'USER_STUDENT', '2024级 计算机学院', 120, 1, 0),
+(21, 'teacher01', '13800000021', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '陈老师', 'USER_TEACHER', '教职工 土木工程学院', 124, 1, 0);
 
 INSERT INTO sys_user_role (id, user_id, role_id) VALUES
 (10, 10, 2),
@@ -78,6 +79,31 @@ INSERT INTO spatial_node (id, parent_id, name, level_type, building_nature, lead
 (220, 210, '维修值班室',   4, NULL,        NULL, '西校区/后勤保障区/后勤服务中心/维修值班室', 1, 1),
 (221, 211, '501室',        4, NULL,        NULL, '西校区/教工生活区/教工宿舍A栋/501室',   1, 1),
 (222, 211, '502室',        4, NULL,        NULL, '西校区/教工生活区/教工宿舍A栋/502室',   2, 1);
+
+-- ---------------------------------------------------------------------------
+-- 3.1 单位组织字典（**追加**，骨架在 data-test.sql：2024级=1000 / 教职工=1010 / 后勤维修中心=1011）
+--     · full_path_name 必须与 sys_user.department 的字面值**逐字符相同**（前端按整串回显路径）
+--     · 父节点在 data-test.sql 里已把 sort_order 留出空档，这里用 1/10/20… 即可插到期望位置
+--     · 追加后根层顺序为 2023级 → 2024级 → 2025级 → 教职工
+-- ---------------------------------------------------------------------------
+INSERT INTO org_node (id, parent_id, name, level_type, full_path_name, sort_order, status) VALUES
+(2000,    0, '2023级',              1, '2023级',                          10, 1),
+(2001, 1000, '外国语学院',           2, '2024级 外国语学院',                30, 1),
+(2002, 1000, '经济管理学院',         2, '2024级 经济管理学院',              40, 1),
+(2003, 2000, '计算机学院',           2, '2023级 计算机学院',                10, 1),
+(2004, 2000, '土木工程学院',         2, '2023级 土木工程学院',              20, 1),
+(2005, 2000, '外国语学院',           2, '2023级 外国语学院',                30, 1),
+(2010,    0, '2025级',              1, '2025级',                          30, 1),
+(2011, 2010, '计算机学院',           2, '2025级 计算机学院',                10, 1),
+(2012, 2010, '经济管理学院',         2, '2025级 经济管理学院',              20, 1),
+(2013, 1011, '暖通班',              3, '教职工 后勤维修中心 暖通班',         20, 1),
+(2014, 1011, '五金班',              3, '教职工 后勤维修中心 五金班',         30, 1),
+(2015, 1011, '弱电班',              3, '教职工 后勤维修中心 弱电班',         40, 1),
+(2016, 1011, '综合班',              3, '教职工 后勤维修中心 综合班',         50, 1),
+(2020, 1010, '后勤保障处·调度中心',   2, '教职工 后勤保障处·调度中心',         1, 1),
+(2021, 1010, '土木工程学院',         2, '教职工 土木工程学院',               30, 1),
+(2022, 1010, '外国语学院',           2, '教职工 外国语学院',                 40, 1),
+(2023, 1010, '经济管理学院',         2, '教职工 经济管理学院',               50, 1);
 
 -- ---------------------------------------------------------------------------
 -- 4. 两级故障字典（二级细类绑定标准工种与 SLA 承诺时效）

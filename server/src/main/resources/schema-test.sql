@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS sys_user_role;
 DROP TABLE IF EXISTS sys_role;
 DROP TABLE IF EXISTS sys_user;
 DROP TABLE IF EXISTS spatial_node;
+DROP TABLE IF EXISTS org_node;
 DROP TABLE IF EXISTS repair_category;
 DROP TABLE IF EXISTS sys_config;
 
@@ -66,6 +67,22 @@ CREATE TABLE spatial_node (
   level_type TINYINT NOT NULL,
   building_nature VARCHAR(32),
   leader_user_id BIGINT,
+  full_path_name VARCHAR(255) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  status TINYINT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted TINYINT NOT NULL DEFAULT 0
+);
+
+-- 单位/组织层级字典（年级 -> 学院 -> 班级；教职工 -> 处室 -> 班组）
+-- full_path_name 用**空格**分隔并与 sys_user.department 存同一串，前端据此精确回显级联路径
+-- sort_order 刻意留出空档（10/20/30…），data-demo.sql 会往里追加 2023/2025 级与更多处室
+CREATE TABLE org_node (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  parent_id BIGINT NOT NULL DEFAULT 0,
+  name VARCHAR(64) NOT NULL,
+  level_type TINYINT NOT NULL,
   full_path_name VARCHAR(255) NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   status TINYINT NOT NULL DEFAULT 1,

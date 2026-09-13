@@ -16,18 +16,25 @@
               :http-request="uploadAvatar"
               v-loading="avatarUploading"
             >
-              <el-avatar :size="72" :src="userInfo?.avatarUrl || undefined" class="account-avatar">
-                {{ initial }}
-              </el-avatar>
-              <div class="avatar-hint">
-                <el-icon :size="12"><Camera /></el-icon>
-                更换头像
+              <div class="avatar-wrap">
+                <el-avatar :size="72" :src="userInfo?.avatarUrl || undefined" class="account-avatar">
+                  {{ initial }}
+                </el-avatar>
+                <!--
+                  悬浮遮罩：桌面档鼠标悬停（或键盘聚焦上传控件）时把头像压暗、正中浮现「更换头像」。
+                  文案常驻 DOM（只用 opacity 隐藏），既作视觉提示也作上传入口的可访问名；
+                  触屏没有 hover，故 @media (hover:none) 下常显，避免手机上丢掉「可点」的提示。
+                -->
+                <div class="avatar-mask">
+                  <el-icon :size="16" aria-hidden="true"><Camera /></el-icon>
+                  <span>更换头像</span>
+                </div>
               </div>
             </el-upload>
 
             <div class="account-meta">
               <div class="account-name">{{ userInfo?.realName || '—' }}</div>
-              <el-tag size="small" effect="light">{{ roleText }}</el-tag>
+              <el-tag class="account-role" size="small" effect="light">{{ roleText }}</el-tag>
               <div class="account-line">账号：{{ userInfo?.username || '—' }}</div>
               <div class="account-line">单位：{{ userInfo?.department || '—' }}</div>
               <div class="account-line">注册时间：{{ formatDateTime(userInfo?.createdAt) }}</div>
@@ -45,20 +52,29 @@
             :label-width="isNarrowPhone ? undefined : '110px'"
             :label-position="isNarrowPhone ? 'top' : 'right'"
           >
-            <el-form-item label="账号">
-              <span class="readonly-value">{{ userInfo?.username || '—' }}</span>
-            </el-form-item>
-            <el-form-item label="身份">
-              <el-tag>{{ roleText }}</el-tag>
-            </el-form-item>
             <el-form-item label="姓名" prop="realName">
               <el-input v-model="profileForm.realName" placeholder="真实姓名" maxlength="32" />
             </el-form-item>
             <el-form-item label="手机号码" prop="phone">
               <el-input v-model="profileForm.phone" placeholder="常用联系电话" maxlength="11" />
             </el-form-item>
+            <!-- 账号/身份不在表单里重复：它们是只读身份信息，统一由「账户概览」承载 -->
             <el-form-item label="学院/部门" prop="department">
-              <el-input v-model="profileForm.department" placeholder="所在单位（可留空）" maxlength="64" />
+              <DrilldownCascader
+                v-model="orgPath"
+                :options="orgOptions"
+                label="学院/部门"
+                placeholder="选择年级 / 学院"
+                separator=" "
+                @change="onOrgChange"
+              />
+              <!--
+                历史自由文本（注册页/Excel 导入写入、或字典里已移除的旧值）：回显不到时**不清空**，
+                只提示；PUT /users/profile 是全量覆盖，若这里顺手置空会把用户没动过的值抹掉。
+              -->
+              <div v-if="departmentLegacy" class="field-note">
+                原单位「{{ departmentLegacy }}」不在字典中，未重新选择将保留原值
+              </div>
             </el-form-item>
             <el-form-item label="默认报修空间">
               <DrilldownCascader
@@ -232,7 +248,13 @@ import {
   roleLabel as roleLabelOf,
   WorkerSkillLabels
 } from '@campus/shared';
-import type { DispatchOrderItemVO, MyWorkerProfileVO, RepairSummaryVO, UserInfo } from '@campus/shared';
+import type {
+  DispatchOrderItemVO,
+  MyWorkerProfileVO,
+  OrgNodeVO,
+  RepairSummaryVO,
+  UserInfo
+} from '@campus/shared';
 import { useViewport } from '../../composables/useViewport';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
@@ -258,6 +280,10 @@ const passwordLoading = ref(false);
 const avatarUploading = ref(false);
 const spaceOptions = ref<any[]>([]);
 const spacePath = ref<number[]>([]);
+const orgOptions = ref<OrgNodeVO[]>([]);
+const orgPath = ref<number[]>([]);
+/** 回显不到字典的历史自由文本；非空时提交原值而不是空串（全量覆盖语义下的防误清） */
+const departmentLegacy = ref('');
 
 const summaryLoading = ref(false);
 const ordersLoading = ref(false);
@@ -388,6 +414,51 @@ function onSpaceChange() {
     : null;
 }
 
+/** 按 fullPathName **整串精确匹配**定位路径（字典与 sys_user.department 存的是同一串，无需解析分隔符） */
+function findOrgPathByFullPath(list: OrgNodeVO[], fullPath: string, prefix: number[] = []): number[] | null {
+  for (const node of list) {
+    const curPath = [...prefix, node.id];
+    if (node.fullPathName === fullPath) return curPath;
+    if (node.children?.length) {
+      const r = findOrgPathByFullPath(node.children, fullPath, curPath);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+/** 沿 id 路径取末端节点（用于把选中的级联路径写回 department 文案） */
+function orgNodeByPath(list: OrgNodeVO[], ids: number[]): OrgNodeVO | null {
+  let level = list;
+  let hit: OrgNodeVO | null = null;
+  for (const id of ids) {
+    hit = level.find((node) => node.id === id) || null;
+    if (!hit) return null;
+    level = hit.children || [];
+  }
+  return hit;
+}
+
+/**
+ * 把已存的 department 文案回显成级联路径。
+ * 回显不到（注册页/Excel 导入写的自由文本、或字典里已删掉的旧值）时**不置空** department：
+ * `PUT /users/profile` 是全量覆盖，若在这里顺手清空，会把用户没动过的旧值抹掉。
+ */
+function syncOrgPath() {
+  const saved = (userInfo.value?.department || '').trim();
+  const path = saved ? findOrgPathByFullPath(orgOptions.value, saved) : null;
+  orgPath.value = path || [];
+  departmentLegacy.value = saved && !path ? saved : '';
+}
+
+/** 只有用户真的动了选择器才改写 department（含「清空」——那是明确的用户意图） */
+function onOrgChange() {
+  departmentLegacy.value = '';
+  profileForm.department = orgPath.value.length
+    ? orgNodeByPath(orgOptions.value, orgPath.value)?.fullPathName || ''
+    : '';
+}
+
 function applyUserInfoToForm() {
   const info = userInfo.value;
   if (!info) return;
@@ -427,6 +498,17 @@ async function loadSpaceOptions() {
   } catch (_) {}
 }
 
+/** 单位组织字典（年级 → 学院）；取数后立刻回显已存文案 */
+async function loadOrgOptions() {
+  try {
+    const res = await httpClient.get<OrgNodeVO[]>('/org/tree', { params: { onlyEnabled: true } });
+    if (res.code === 200) {
+      orgOptions.value = res.data || [];
+    }
+  } catch (_) {}
+  syncOrgPath();
+}
+
 async function onUpdateProfile() {
   if (!profileFormRef.value) return;
   const valid = await profileFormRef.value.validate().catch(() => false);
@@ -446,6 +528,7 @@ async function onUpdateProfile() {
       ElMessage.success('资料保存成功');
       applyUserInfoToForm();
       await refreshProfile();
+      syncOrgPath();
     } else if (res.code === 1007) {
       // 手机号冲突：落到表单内联错误，而不是只弹一条消息
       profileFormRef.value.validateField('phone');
@@ -581,6 +664,7 @@ onMounted(async () => {
   await refreshProfile();
   applyUserInfoToForm();
   await loadSpaceOptions();
+  await loadOrgOptions();
 
   if (isStudentTeacher.value) {
     loadRepairSummary();
@@ -608,12 +692,15 @@ onMounted(async () => {
   gap: 8px;
   flex-wrap: wrap;
 }
-.readonly-value {
-  color: #6b7280;
-}
 .text-muted {
   color: #9ca3af;
   font-size: 13px;
+}
+.field-note {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9ca3af;
 }
 
 /* 账户概览 */
@@ -625,21 +712,47 @@ onMounted(async () => {
 }
 .avatar-upload {
   cursor: pointer;
-  text-align: center;
+}
+/* 头像 + 悬浮遮罩：遮罩压暗头像并在正中显示「更换头像」 */
+.avatar-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  line-height: 0;
 }
 .account-avatar {
   background-color: #1677ff;
   color: #ffffff;
   font-size: 26px;
 }
-.avatar-hint {
+.avatar-mask {
+  position: absolute;
+  inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 2px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.45);
+  color: #ffffff;
   font-size: 12px;
-  color: #6b7280;
+  line-height: 1.2;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.avatar-wrap:hover .avatar-mask,
+.avatar-upload:focus-within .avatar-mask {
+  opacity: 1;
+}
+/* 触屏没有 hover：常显遮罩，否则手机上完全看不出头像可点 */
+@media (hover: none) {
+  .avatar-mask {
+    opacity: 1;
+  }
 }
 .account-meta {
   flex: 1;
@@ -647,6 +760,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+/* 身份标签收缩到文字宽度：.account-meta 是 column flex，默认 stretch 会把标签拉满整行 */
+.account-role {
+  align-self: flex-start;
 }
 .account-name {
   font-size: 16px;

@@ -1,8 +1,8 @@
-# 交接文档 (HANDOFF) — 个人中心升级为全角色账户中心
+# 交接文档 (HANDOFF) — 个人中心升级为全角色账户中心 / 二期：学院·部门年级下钻
 
-> **日期**：2026-09-13　**分支**：`master`（本会话在工作区完成并提交，见 §1）
-> **机制与陷阱已沉淀在 `AGENTS.md`**：本文件只写「状态 + 待办 + 证据 + 环境」。相关条目：§1「个人中心（`/profile`，2026-09-13 升级为全角色账户中心）」、§2.1「✅ 当前后端测试基线」「个人中心的三条实现约定」、§4「MyBatis-Plus `updateById` 跳过 null 字段」「测试用例不要用 `now.minusHours(N)` 造『今日』数据」「H2 种子中文乱码（test profile 同样中招）」。
-> **本次未传参数**，未针对后续主题做定向裁剪。设计文档：`docs/20260913-0140-campus-repair-system-personal-center-design.md`。
+> **日期**：2026-09-13（二期同日追加）　**分支**：`feat/personal-center-org-tree`（二期在**新分支**上开发，未合回 `master`；一期已提交在 `master`）
+> **机制与陷阱已沉淀在 `AGENTS.md`**：本文件只写「状态 + 待办 + 证据 + 环境」。相关条目：§1「个人中心（`/profile`，2026-09-13 升级为全角色账户中心）」「单位组织字典 `modules/org`」、§2.1「✅ 当前后端测试基线」「个人中心的四条实现约定」「DrilldownCascader」、§2.2 四条 CDP 探针陷阱、§4「MyBatis-Plus `updateById` 跳过 null 字段」「测试用例不要用 `now.minusHours(N)` 造『今日』数据」「H2 种子中文乱码」「`el-table`/`el-tabs`/`DrilldownCascader` 常驻 DOM 污染」。
+> **本次未传参数**，未针对后续主题做定向裁剪。设计文档：一期 `docs/20260913-0140-campus-repair-system-personal-center-design.md`、二期 `docs/20260913-0950-campus-repair-system-org-tree-department-cascader-design.md`。
 
 ---
 
@@ -20,10 +20,10 @@
 
 | 项 | 值 |
 | :--- | :--- |
-| 当前分支 | `master` |
-| 本会话提交 | 5 个（见 §2），提交前 HEAD 为 `2372ce3` |
-| 审查基线 | 上一提交快照 `2372ce3`（`git diff 2372ce3 HEAD`） |
-| 未跟踪噪声 | `.scratch/` 下探针与截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）、`.zcode/`；探针入库策略仍未定（含 2 个已入库探针 `assert-drill.mjs`、`assert-shell-toggle.mjs`） |
+| 当前分支 | `feat/personal-center-org-tree`（二期；一期在 `master`） |
+| 本会话提交 | 一期 5 个（提交前 HEAD 为 `2372ce3`）；**二期 1 个（见 §2.1）**，二期基线 `master@76bdba1` |
+| 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期 `git diff master HEAD` |
+| 未跟踪噪声 | `.scratch/` 下探针与截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）、`.zcode/`；**已入库 5 个探针**（`assert-profile` / `assert-drill` / `assert-shell-toggle` / `assert-actions-align` / `assert-switch-plain`，二期均已更新并入库），其余 20+ 未跟踪（含二期新增的 `diag-hover-media.mjs`、`diag-category-align*.mjs`——AGENTS.md 引用它们作为可复现证据，**尚未入库**） |
 | 遗留悬空文件 | `.scratch/commit-msg3.txt`（历史遗留的临时提交信息文件，可删） |
 
 ## 2. 本会话改动清单
@@ -57,6 +57,24 @@
 - 新增 `.scratch/assert-profile.mjs`
 - `AGENTS.md`：§1 个人中心、§2.1 基线纠正 + 个人中心三条约定、§4 三条新陷阱
 
+## 2.1 二期改动清单（2026-09-13 同日，分支 `feat/personal-center-org-tree`）
+
+需求原文三条：① 头像鼠标悬停变深、中心浮现「更换头像」；② 删掉「基本联系信息」里与概览重复的账号/身份行，概览身份标签收缩到文字宽；③ 「学院/部门」改下拉、从年级逐级下钻、显示「年级在前学院在后」、概览同步格式、增加测试数据。
+
+**用户裁决（四问四答）**：字典**落库**新建组织树表 + 只读树接口；字典**提供非学生顶层**「教职工」；`department` **只存显示文案**（零 schema 变更）；本轮**只改个人中心**，注册页与 Excel 导入保持自由文本。
+
+**后端（新增模块 `modules/org`）**
+- `org_node` 表（`schema-test.sql` 主/测两份同步：`DROP` + `CREATE`）+ `OrgNode` / `OrgNodeMapper` / `OrgNodeVO` / `OrgNodeService`（**只读**）/ `OrgDictController` → `GET /api/v1/org/tree?onlyEnabled=`（不设 `@PreAuthorize`，匿名 401）
+- 种子：`data-test.sql`（主/测两份）加**骨架**（2024级/教职工/停用节点，`sort_order` 留空档）+ 给 `student01` 种 `department='2024级 计算机学院'`；`data-demo.sql` **追加** 2023/2025 级、各学院、后勤处室与 5 个班组，并改写 8 个演示账号的 `department` 为新格式
+- `server/src/test/java/com/campus/repair/org/OrgTreeIntegrationTest.java`（5 用例：树形状与根层顺序、空格分隔契约、onlyEnabled 过滤、各角色可见性 + 匿名 401、种子值与字典逐字一致）
+
+**前端**
+- `DrilldownCascader.vue`：新增 `separator` 属性（默认 ` / `，单位字典传 `" "`）
+- `packages/shared`：`types/profile.ts` 增 `OrgNodeVO`（注释写明 `fullPathName` 与 `department` 同串的契约）
+- `PersonalCenterView.vue`：① 头像 `.avatar-wrap` + `.avatar-mask` 悬浮遮罩（`rgba(0,0,0,.45)` + 居中「更换头像」，`@media (hover:none)` 常显），删除头像下方常显小字；② 删「账号」「身份」两个 form-item 与 `.readonly-value` 样式，`.account-role{align-self:flex-start}` 收缩标签；③ 「学院/部门」改 `DrilldownCascader`（`/org/tree`、`separator=" "`）+ `findOrgPathByFullPath` 整串回显 + `departmentLegacy` 防误清 + 「不在字典中」提示
+
+**文档**：新增二期设计文档；`AGENTS.md` 补 §1 组织字典模块与个人中心二期、§2.1 基线 85 与「个人中心的四条约定」、§2.2 两条新探针陷阱、§4 第三处常驻 DOM 污染。
+
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
@@ -69,11 +87,15 @@
 | P3 | `UserService` 与 `LoginResponseVO` 的资料装配虽已去重，但 `AuthService` 仍直接注入 `SysUserMapper`（历史遗留越界，见 §1 模块边界条） | `AGENTS.md` §1 |
 | 观察 | `WorkerService.getWorkerBoardList` 里 `avgHours ?? 1.5` 与 `rating_avg` 默认 5.00 属「看起来正常」的兜底值，与 §3「不虚增好评」精神相悖（本轮**未动**调度中心，只在个人中心按"零完工显示 `—`"处理） | `AGENTS.md` §4 仪表盘假值条 |
 | 可选 | `.scratch/` 入库策略（当前 2 个探针已入库、其余 20+ 未跟踪，另有合并历史遗留的 `commit-msg3.txt`） | §1 |
+| P2 | **二期遗留**：注册页（`RegisterView.vue`）与 Excel 导入（`UserImportRow`）的「学院/部门」仍是自由文本 → 新用户的单位可能不在字典里，个人中心只能显示「不在字典中」提示（用户本轮明确只改个人中心） | 二期设计文档 §5 |
+| P2 | **二期遗留**：`org_node` 没有维护界面（「空间字典」页只覆盖空间树与故障分类），改字典目前只能改 SQL 种子 | 二期设计文档 §5 |
+| P3 | **二期遗留**：生产 `sql/schema.sql` 未同步 `org_node`（该文件本身只有 11 张表、连 `spatial_node` 都没有）——上线前应统一补齐生产 DDL | 二期设计文档 §5 |
+| 观察 | 二期把探针计数写进文档时又发现两处过期值：`assert-actions-align` 实为 **15 条**（文档原写 16/16）、`assert-drill` 改后为 **130 条**；计数请现跑现数，不要沿用文档 | `AGENTS.md` §2.2/§4 |
 
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（本轮基线：Tests run: 80, Failures: 0, Errors: 0 / BUILD SUCCESS）
+# 后端全量（**二期基线：Tests run: 85, Failures: 0, Errors: 0 / BUILD SUCCESS**；一期为 80）
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml
@@ -82,15 +104,20 @@ mvn test -f server/pom.xml
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json          # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json   # exit 0
 
-# 个人中心页面级断言（三角色 × {1272,390}；含真实头像上传链路）
-node .scratch/assert-profile.mjs            # → 32 条断言 ALL PASS
+# 个人中心页面级断言（五角色/多档；含真实头像上传链路；二期加到 69 条）
+node .scratch/assert-profile.mjs            # → 69 条 ALL PASS（连跑两轮均绿 = 幂等）
+node .scratch/diag-hover-media.mjs          # 证据：hover:none 只能用 setTouchEmulationEnabled 模拟
 
-# 既有探针回归
-node .scratch/assert-drill.mjs              # → 126/126（个人中心级联仍受保护）
+# 既有探针回归（二期实测）
+node .scratch/assert-drill.mjs              # → 130/130（个人中心改挂两个下钻控件，改按 aria-label 定位）
 node .scratch/assert-shell-toggle.mjs       # → 42/42
-node .scratch/assert-actions-align.mjs      # → ALL PASS
-node .scratch/assert-switch-plain.mjs       # → ALL PASS
+node .scratch/assert-actions-align.mjs      # → 15/15（补一帧后；见下）
+node .scratch/assert-switch-plain.mjs       # → 14/14
+node .scratch/diag-category-align-state.mjs # 证据：分类表格对齐与侧边栏折叠态无关
 ```
+
+- **二期实测的一条探针坑**：`assert-actions-align` 曾报 `分类表格 操作列右对齐` 失败（`delRight=847` vs `tableRight=1256`）。**不是产品缺陷**——切页签后 EP 要重算表格列宽，而后台标签 rAF 暂停，不补一帧就会量到中间态；补 `Page.captureScreenshot` 一帧后同一页面量到 1243 vs 1256（通过），已把补帧写进探针。
+- 另有两处**探针自身**的坑（都不是产品问题）：① `Emulation.setDeviceMetricsOverride({mobile:true})` 与 `setEmulatedMedia(features)` 都**不能**让 `@media (hover:none)` 命中，只能用 `setTouchEmulationEnabled`；② `DrilldownCascader` 的 popover 关闭后**面板仍在 DOM**，同页有两个选择器时按 `.dd-panel` 全局查询会串到另一个面板（年级列表里混进「东校区/西校区」）→ 改用触发器的 `aria-controls` 定位。
 
 - 探针都需要 **Edge 已开 9222**（本机 `/json/*` HTTP 端点全 404，直连 `ws://127.0.0.1:9222/devtools/browser`），且需要后端 8080 + 前端 3000 在跑。
 - `assert-profile.mjs` 的**头像上传用例会真的调 `POST /common/upload` 与 `PUT /users/me/avatar`**（改 student02 的头像）：local profile 是 H2 内存库，重启后端即回滚；上传的图片落在 `server/uploads/{yyyyMMdd}/`（运行时产物，不入库）。
@@ -99,12 +126,15 @@ node .scratch/assert-switch-plain.mjs       # → ALL PASS
 
 ## 5. 环境与运行现状
 
-| 服务 | 地址 | 状态（本文件写作时实测） |
+| 服务 | 地址 | 状态（**2026-09-13 08:53 重新现测**） |
 | :--- | :--- | :--- |
-| 后端 | `http://localhost:8080` | 在跑，**本会话重启过**（旧 JVM 已 `Stop-Process` 后 `mvn spring-boot:run`），`student02` 登录 200、`/users/me` 返回完整资料 |
-| 前端 | `http://localhost:3000` | 在跑（`Invoke-WebRequest http://localhost:3000/` → 200；**别用 `127.0.0.1` 判活**） |
-| CDP 代理 | `http://localhost:3456` | 未在本会话使用（探针都直连 9222） |
-| Edge 调试口 | `127.0.0.1:9222` | 在跑（浏览器里有用户个人标签，**别关**） |
+| 后端 | `http://localhost:8080` | 在跑（本次启动 PID **21384**，job `pwsh-1`，`mvn spring-boot:run` / profile `local`，08:52:36 started）。现测：`admin` 登录 200、`/users/me` 返回**完整** `UserProfileVO`（含 `id`/`userType`/`createdAt`）、`student02` 的 `/users/me/repair-summary` 200、`worker01` 的 `/users/me/worker-profile` 200（种子中文 `李同学` 正常，验证 §4 UTF-8 修复生效） |
+| 前端 | `http://localhost:3000` | 在跑（本次启动 job `pwsh-3`，`cd apps/admin-web && node node_modules/vite/bin/vite.js`，**需 `danger-full-access`**，否则 `spawn EPERM`）。现测 200、`<title>` = 校园设施报修运维综合管理平台 |
+| CDP 代理 | `http://localhost:3456` | **未启动**（本次现测 CLOSED；探针都直连 9222，不需要它） |
+| Edge 调试口 | `127.0.0.1:9222` | 在跑（现测 TCP 可达；浏览器里有用户个人标签，**别关**） |
+
+> 说明：上一会话结束时三端曾短时全部掉线（本次接手时 8080/3000 均 CLOSED、`Get-Process java` 为空、无残留 JVM），因此**上表以 08:53 现测为准**，勿再引用旧行。任务管理器里的 `node.exe`（PID 6776/16076/22168，08:4x 启动）**不是**本项目的前端，接手时未动它们。
+> 后端 `/actuator/health` 返回 **HTTP 401 + `R` 包装体**（受安全链保护）——这不是服务故障，判活请用 `/api/v1/auth/login`。
 
 启动/重启配方与坑（`spawn EPERM` 需 `danger-full-access`、pnpm v11 会清 `node_modules`、`spring-boot:run` 的 JVM 不被 job 带走）见 `AGENTS.md` §2.1，不在此重复。**动手做真机验证前先现测一次端口**。
 

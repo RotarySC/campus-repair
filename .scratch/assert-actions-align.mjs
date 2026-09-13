@@ -88,6 +88,10 @@ await shot('spatial-1272-tree');
 // ---------- 分类页宽档表格 ----------
 await evalJs(`(()=>{const tabs=[...document.querySelectorAll('.el-tabs__item')];const t=tabs.find(x=>x.textContent.includes('故障分类'));if(t)t.click();return !!t})()`);
 await sleep(1500);
+// ⚠️ 必须补一帧再量：切页签后 EP 要重算表格列宽（rAF），而后台标签的 rAF 是暂停的，
+// 不补帧会量到「操作列还没被拉伸」的中间态（实测 delRight=847 vs tableRight=1256 假失败）。
+await cdp('Page.captureScreenshot', { format: 'png' });
+await sleep(400);
 const TABLE = `(() => {
   // ⚠️ 两个陷阱：① .el-table__body-wrapper tr 会连带命中「配置」页签的表（EP 保留非活动 pane 在 DOM 里）；
   // ② .el-table 作用域还会命中 .hidden-columns 幻影副本。这里按「可见行 + 末列确有删除按钮」过滤。
