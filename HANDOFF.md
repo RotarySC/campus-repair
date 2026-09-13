@@ -21,9 +21,10 @@
 | 项 | 值 |
 | :--- | :--- |
 | 当前分支 | `feat/personal-center-org-tree`（二期；一期在 `master`） |
-| 本会话提交 | 一期 5 个（提交前 HEAD 为 `2372ce3`）；**二期 1 个（见 §2.1）**，二期基线 `master@76bdba1` |
-| 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期 `git diff master HEAD` |
-| 未跟踪噪声 | `.scratch/` 下探针与截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）、`.zcode/`；**已入库 5 个探针**（`assert-profile` / `assert-drill` / `assert-shell-toggle` / `assert-actions-align` / `assert-switch-plain`，二期均已更新并入库），其余 20+ 未跟踪（含二期新增的 `diag-hover-media.mjs`、`diag-category-align*.mjs`——AGENTS.md 引用它们作为可复现证据，**尚未入库**） |
+| 本会话提交 | **4 个（把批次 1+2 从工作区固化，见 §2.4）**：`bdfead4` 后端与数据 / `177cfd4` 前端 / `a954ff0` 文档与 ADR / `cd93c71` AGENTS+HANDOFF+探针。分支上此前的二期提交为 `f6fc6ee`、`d0026c1`（二期基线 `master@76bdba1`） |
+| 工作区 | **已无未提交改动**（固化后现测 `git status -uno` 输出为空）；仅剩 `.scratch/` 与 `.zcode/` 下的未跟踪产物 |
+| 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期 `git diff master HEAD`；本次固化 `git diff d0026c1 HEAD` |
+| 未跟踪噪声 | `.scratch/` 下探针与截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）、`.zcode/`；**已入库 7 个探针**（`assert-profile` / `assert-drill` / `assert-shell-toggle` / `assert-actions-align` / `assert-switch-plain` + 本次入库的 `assert-identity-batch1` 与其依赖 `cdp-raw`），其余 20+ 未跟踪（含 `diag-hover-media.mjs`、`diag-category-align*.mjs`、`diag-identity-timeline.mjs`——AGENTS.md 引用它们作为可复现证据，**仍未入库**） |
 | 遗留悬空文件 | `.scratch/commit-msg3.txt`（历史遗留的临时提交信息文件，可删） |
 
 ## 2. 本会话改动清单
@@ -126,6 +127,23 @@
 
 **批次 2 之后的遗留**：批次 3（职能分配 + 师傅档案 CRUD + 台账 UI）、批次 4（审计词表）仍未做；`注册页/Excel 导入` 的条线已能选，但**导入的「职能」列与建档不变式**在批次 1 已实现，故批次 3 只需补「改职能」与「档案维护」两个入口。
 
+## 2.4 固化提交（2026-09-13，本会话：把批次 1+2 从工作区落成 4 个提交）
+
+**背景**：批次 1（身份/职能语义改名）与批次 2（单位字典按条线剪枝）此前**只存在于工作区**，一个 commit 都没有——`HEAD` 停在 `d0026c1`（批次 2 之前的 2 值 `audience` 版本）。本会话先复现基线、再固化，之后才谈新批次。
+
+**切分轴用「层」而不是「批次」，因为实测二者不可分**：批次 1 与批次 2 在同一条种子 SQL 上交织（`data-test.sql` 里 `sys_role` 改名与 `org_node.audience` 4 值在同两段 INSERT 内、`schema-test.sql` 的注释同段改写），`PersonalCenterView.vue` 的**同一个 hunk** 里既有批次 1 的 `useIdentity`/`hasReporter`、又有批次 2 的 `orgAudience` 直取。按批次切必须人为回退批次 2 并手写一个「从未跑过的中间态」种子+服务+页面；故按层切成 4 个各自自洽、可独立回滚的提交：
+
+| 提交 | 内容 | 该提交的自洽判据 |
+| :--- | :--- | :--- |
+| `bdfead4` | 后端与数据层（39 文件）：`IdentityCodes`、注册白名单、44 处 `@PreAuthorize`、`OrgNodeService` 4 值剪枝、`NoLegacyRoleCodeTest`/`RegisterWhitelistIntegrationTest`、`schema-test.sql`/`data-test.sql`/`data-demo.sql`/`sql/*.sql`、生产迁移脚本 | `mvn test` 94/94（后端不依赖前端） |
+| `177cfd4` | 前端（14 文件）：`useIdentity.ts`、路由 `meta.functions`、shared 职能/条线词表与三分占位文案、个人中心按条线取数、注册页条线、用户台账条线 | `tsc`(shared) + `vue-tsc`(admin) exit 0 |
+| `a954ff0` | 口径与设计：`CONTEXT.md`、身份系统专项分析报告、身份与职能模型设计文档、`docs/adr/0001` | 文档 |
+| `cd93c71` | `AGENTS.md`/`HANDOFF.md` 同步 + `assert-profile.mjs` 按新语汇重写 + 入库 `assert-identity-batch1.mjs` 及其依赖 `cdp-raw.mjs` | 探针可跑（AGENTS §2.2 把它列为改动后必跑项，不入库则无法复现） |
+
+**验收（固化前在工作区复跑，内容与提交逐字节相同）**：`mvn test -f server/pom.xml` → **`Tests run: 94, Failures: 0, Errors: 0` / BUILD SUCCESS**；`tsc`(shared) exit 0、`vue-tsc`(admin) exit 0。提交后在 `HEAD` 再次复跑 `mvn test` 全绿（见 §5 现测）。
+
+**仍未跟踪**：`diag-hover-media.mjs`、`diag-category-align*.mjs`、`diag-identity-timeline.mjs` 等诊断脚本与 20+ 截图产物（入库策略见 §3「可选」行）；`.scratch/commit-msg3.txt` 仍悬空（可删）。
+
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
@@ -137,7 +155,7 @@
 | P3 | `sys_user.phone/username` 唯一索引缺失（唯一性仅 Service 层校验，存在竞态） | 设计文档 §7.5 |
 | P3 | `UserService` 与 `LoginResponseVO` 的资料装配虽已去重，但 `AuthService` 仍直接注入 `SysUserMapper`（历史遗留越界，见 §1 模块边界条） | `AGENTS.md` §1 |
 | 观察 | `WorkerService.getWorkerBoardList` 里 `avgHours ?? 1.5` 与 `rating_avg` 默认 5.00 属「看起来正常」的兜底值，与 §3「不虚增好评」精神相悖（本轮**未动**调度中心，只在个人中心按"零完工显示 `—`"处理） | `AGENTS.md` §4 仪表盘假值条 |
-| 可选 | `.scratch/` 入库策略（当前 2 个探针已入库、其余 20+ 未跟踪，另有合并历史遗留的 `commit-msg3.txt`） | §1 |
+| 可选 | `.scratch/` 入库策略：**已入库 7 个探针**（5 个既有 + `assert-identity-batch1.mjs` + 其依赖 `cdp-raw.mjs`）；`diag-*.mjs`（`diag-hover-media` / `diag-category-align*` / `diag-identity-timeline`，AGENTS.md 引为可复现证据）与 20+ 截图产物仍未跟踪，另有历史遗留的 `commit-msg3.txt`（可删） | §1、§2.4 |
 | P2 | **二期遗留**：注册页（`RegisterView.vue`）与 Excel 导入（`UserImportRow`）的「学院/部门」仍是自由文本 → 新用户的单位可能不在字典里，个人中心只能显示「不在字典中」提示（用户本轮明确只改个人中心） | 二期设计文档 §5 |
 | P2 | **二期遗留**：`org_node` 没有维护界面（「空间字典」页只覆盖空间树与故障分类），改字典目前只能改 SQL 种子 | 二期设计文档 §5 |
 | P3 | **二期遗留**：生产 `sql/schema.sql` 未同步 `org_node`（该文件本身只有 11 张表、连 `spatial_node` 都没有）——上线前应统一补齐生产 DDL | 二期设计文档 §5 |
@@ -195,15 +213,14 @@ node .scratch/diag-category-align-state.mjs # 证据：分类表格对齐与侧�
 
 ## 5. 环境与运行现状
 
-| 服务 | 地址 | 状态（**2026-09-13 08:53 重新现测**） |
+| 服务 | 地址 | 状态（**2026-09-13 固化后现测**） |
 | :--- | :--- | :--- |
-| 后端 | `http://localhost:8080` | 在跑（本次启动 PID **21384**，job `pwsh-1`，`mvn spring-boot:run` / profile `local`，08:52:36 started）。现测：`admin` 登录 200、`/users/me` 返回**完整** `UserProfileVO`（含 `id`/`userType`/`createdAt`）、`student02` 的 `/users/me/repair-summary` 200、`worker01` 的 `/users/me/worker-profile` 200（种子中文 `李同学` 正常，验证 §4 UTF-8 修复生效） |
-| 前端 | `http://localhost:3000` | 在跑（本次启动 job `pwsh-3`，`cd apps/admin-web && node node_modules/vite/bin/vite.js`，**需 `danger-full-access`**，否则 `spawn EPERM`）。现测 200、`<title>` = 校园设施报修运维综合管理平台 |
-| CDP 代理 | `http://localhost:3456` | **未启动**（本次现测 CLOSED；探针都直连 9222，不需要它） |
+| 后端 | `http://localhost:8080` | 在跑（PID **15116 / 21464**，12:49 启动，**非本会话 job**）。现测 `admin`/`password` 登录 `code=200` 且 `roleCodes=PLATFORM_ADMIN`、`userType=ADMIN`；`GET /org/tree?audience=` **四值全部 `code=200`**：`FACULTY`→计算机/土木/外国语/经济管理学院、`LOGISTICS`→后勤保障处·调度中心/后勤维修中心(+班组)、`ADMIN`→信息中心、`STUDENT`→2023/2024/2025 级；非法值 `PARENT` → `code=400 未知的单位字典身份范围`。**即 8080 上跑的已是批次 2 的新代码**（不是旧实例），真机探针可直接跑 |
+| 前端 | `http://localhost:3000` | 在跑。现测 `Invoke-WebRequest http://localhost:3000/` → **HTTP 200**、`<title>` = 校园设施报修运维综合管理平台（判活别用 `127.0.0.1`，见 AGENTS §2.1） |
+| CDP 代理 | `http://localhost:3456` | **未启动**（现测 CLOSED；探针都直连 9222，不需要它） |
 | Edge 调试口 | `127.0.0.1:9222` | 在跑（现测 TCP 可达；浏览器里有用户个人标签，**别关**） |
 
-> 说明：上一会话结束时三端曾短时全部掉线（本次接手时 8080/3000 均 CLOSED、`Get-Process java` 为空、无残留 JVM），因此**上表以 08:53 现测为准**，勿再引用旧行。任务管理器里的 `node.exe`（PID 6776/16076/22168，08:4x 启动）**不是**本项目的前端，接手时未动它们。
-> 后端 `/actuator/health` 返回 **HTTP 401 + `R` 包装体**（受安全链保护）——这不是服务故障，判活请用 `/api/v1/auth/login`。
+> 后端 `/actuator/health` 返回 **HTTP 401 + `R` 包装体**（受安全链保护）——这不是服务故障，判活请用 `/api/v1/auth/login`。本会话未重启任何服务，只做了端口/接口现测与提交固化。
 
 启动/重启配方与坑（`spawn EPERM` 需 `danger-full-access`、pnpm v11 会清 `node_modules`、`spring-boot:run` 的 JVM 不被 job 带走）见 `AGENTS.md` §2.1，不在此重复。**动手做真机验证前先现测一次端口**。
 
