@@ -31,11 +31,12 @@ export interface OrgNodeVO {
   id: number;
   parentId: number;
   name: string;
-  /** 1-年级/教职工, 2-学院/处室, 3-班级/班组 */
+  /** 1-年级/所属单位, 2-学院/处室, 3-班级/班组 */
   levelType: number;
   /**
-   * 分支归属：`'STUDENT'` 年级分支 / `'STAFF'` 教职工分支 / `null` 不限。
-   * 只在顶层分支上有值（子节点为 null、继承父分支）；个人中心按身份取对应分支。
+   * 组织条线：`'STUDENT'` / `'FACULTY'` / `'LOGISTICS'` / `'ADMIN'`（= `UserInfo.userType`，
+   * 同一个值、不做二次映射）或 `null`（不限，子节点继承父级）。
+   * 可在任意层级声明：当前种子把教职工侧的条线打在**二级单位**上，年级分支打在年级节点上。
    */
   audience: string | null;
   fullPathName: string;

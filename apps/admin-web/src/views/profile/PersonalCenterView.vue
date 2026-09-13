@@ -34,7 +34,7 @@
 
             <div class="account-meta">
               <div class="account-name">{{ userInfo?.realName || '—' }}</div>
-              <el-tag class="account-role" size="small" effect="light">{{ roleText }}</el-tag>
+              <el-tag class="account-role" size="small" effect="light">{{ identityText }}</el-tag>
               <div class="account-line">账号：{{ userInfo?.username || '—' }}</div>
               <div class="account-line">单位：{{ userInfo?.department || '—' }}</div>
               <div class="account-line">注册时间：{{ formatDateTime(userInfo?.createdAt) }}</div>
@@ -178,8 +178,8 @@
           </ResponsiveTable>
         </el-card>
 
-        <!-- ④ 师傅：我的作业概览 -->
-        <el-card v-else-if="isWorker" shadow="never" class="pc-card">
+        <!-- ④ 师傅：我的作业概览（与上方报修概览是**并列**关系：多职能账号两块都要渲染） -->
+        <el-card v-if="isWorker" shadow="never" class="pc-card">
           <template #header><span class="block-title">我的作业概览</span></template>
 
           <div v-loading="workerLoading">
@@ -277,16 +277,19 @@ const userInfo = computed<UserInfo | null>(() => authStore.userInfo);
 const identity = useIdentity();
 const hasReporter = computed(() => identity.isReporter.value);
 const isWorker = computed(() => identity.isWorker.value);
-const roleText = computed(() => identityLabelOf(userInfo.value?.userType));
+const identityText = computed(() => identityLabelOf(userInfo.value?.userType));
 const initial = computed(() => (userInfo.value?.realName || userInfo.value?.username || '—').slice(0, 1));
 
-/** 行政信息化条线没有「学院/部门」词条（整行不渲染）；其余条线各自只见自己那条线下的单位 */
-const isAdmin = computed(() => userInfo.value?.userType === 'ADMIN');
+/**
+ * 行政信息化条线没有「学院/部门」词条（整行不渲染）；其余条线各自只见自己那条线下的单位。
+ * 条线取自 `useIdentity().branch`（与全局同一判据），不要再直接读 `userInfo.userType`。
+ */
+const isAdmin = computed(() => identity.branch.value === 'ADMIN');
 /**
  * 该条线在字典里的分支键：**直接就是 userType**（同一个值、不做二次映射，见 CONTEXT.md）。
  * 服务端据 org_node.audience 逐层剪枝——教师只见学院、后勤只见处室/班组，互为选项的堆叠现象由此消除。
  */
-const orgAudience = computed<OrgBranch | null>(() => (userInfo.value?.userType as OrgBranch) ?? null);
+const orgAudience = computed<OrgBranch | null>(() => (identity.branch.value as OrgBranch) || null);
 const orgPlaceholder = computed(() => BranchOrgPlaceholders[orgAudience.value ?? ''] ?? '选择所属单位');
 
 const profileFormRef = ref<FormInstance>();
@@ -686,10 +689,14 @@ onMounted(async () => {
   await loadSpaceOptions();
   await loadOrgOptions();
 
+  // 多职能账号（演示数据里 worker02 兼「维修作业」+「报修人」）**两块概览都要出数**：
+  // 这里刻意用两个并列 if —— 原先写成 if/else if，报修概览会把它吞掉，
+  // 结果是兼职师傅永远看不到「我的作业概览」、也不调 /users/me/worker-profile。
   if (hasReporter.value) {
     loadRepairSummary();
     loadRecentOrders();
-  } else if (isWorker.value) {
+  }
+  if (isWorker.value) {
     loadWorkerProfile();
   }
 });

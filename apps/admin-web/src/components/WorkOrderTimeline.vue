@@ -102,40 +102,46 @@ async function fetchTimeline() {
   }
 }
 
-function getNodeType(role: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
-  switch (role) {
-    case 'STUDENT':
-    case 'TEACHER':
-      return 'primary';
-    case 'REPAIR_WORKER':
-    case 'WORKER':
-      return 'success';
-    case 'LOGISTICS_ADMIN':
-    case 'SUPER_ADMIN':
-    case 'ADMIN':
-      return 'warning';
-    case 'SYSTEM':
-    default:
-      return 'info';
-  }
+type NodeType = 'primary' | 'success' | 'warning' | 'info' | 'danger';
+type TagType = '' | 'success' | 'warning' | 'info' | 'danger';
+
+/**
+ * `operator_role` 词表 → 时间轴配色。**一张表同时驱动节点类型与标签类型**：
+ * 原先 `getNodeType` 与 `getRoleTagType` 是两份逐字重复的 switch，新增一种码要改两处，
+ * 漏改一处就会出现「节点一种颜色、标签另一种颜色」。
+ *
+ * 表里同时收录**历史词表**（改名前的角色码，只出现在旧数据里）与**现行条线码**
+ * （运行时按操作人的 sys_user.user_type 写入，见 WorkOrderService）：两者都必须在这里有值，
+ * 否则新增的派单/改派行会掉进 default 分支、丢掉配色提示。
+ */
+const ROLE_STYLES: Record<string, { node: NodeType; tag: TagType }> = {
+  // 报修侧：学生 / 教工（旧码 TEACHER 与新条线码 FACULTY 同色）
+  STUDENT: { node: 'primary', tag: '' },
+  TEACHER: { node: 'primary', tag: '' },
+  FACULTY: { node: 'primary', tag: '' },
+  // 作业侧
+  REPAIR_WORKER: { node: 'success', tag: 'success' },
+  WORKER: { node: 'success', tag: 'success' },
+  // 管理/后勤侧
+  LOGISTICS_ADMIN: { node: 'warning', tag: 'warning' },
+  SUPER_ADMIN: { node: 'warning', tag: 'warning' },
+  ADMIN: { node: 'warning', tag: 'warning' },
+  LOGISTICS: { node: 'warning', tag: 'warning' },
+  // 系统自动流转
+  SYSTEM: { node: 'info', tag: 'info' }
+};
+const DEFAULT_ROLE_STYLE: { node: NodeType; tag: TagType } = { node: 'info', tag: 'info' };
+
+function roleStyle(role: string) {
+  return ROLE_STYLES[role] ?? DEFAULT_ROLE_STYLE;
 }
 
-function getRoleTagType(role: string): '' | 'success' | 'warning' | 'info' | 'danger' {
-  switch (role) {
-    case 'STUDENT':
-    case 'TEACHER':
-      return '';
-    case 'REPAIR_WORKER':
-    case 'WORKER':
-      return 'success';
-    case 'LOGISTICS_ADMIN':
-    case 'SUPER_ADMIN':
-    case 'ADMIN':
-      return 'warning';
-    case 'SYSTEM':
-    default:
-      return 'info';
-  }
+function getNodeType(role: string): NodeType {
+  return roleStyle(role).node;
+}
+
+function getRoleTagType(role: string): TagType {
+  return roleStyle(role).tag;
 }
 
 function getRoleLabel(role: string): string {
@@ -166,13 +172,13 @@ function parseImages(imagesJson?: string): string[] {
   border: 1px solid #E5E7EB;
   border-left-width: 4px;
 }
-.role-border-STUDENT, .role-border-TEACHER {
+.role-border-STUDENT, .role-border-TEACHER, .role-border-FACULTY {
   border-left-color: #1677FF;
 }
 .role-border-REPAIR_WORKER, .role-border-WORKER {
   border-left-color: #52C41A;
 }
-.role-border-LOGISTICS_ADMIN, .role-border-SUPER_ADMIN, .role-border-ADMIN {
+.role-border-LOGISTICS_ADMIN, .role-border-SUPER_ADMIN, .role-border-ADMIN, .role-border-LOGISTICS {
   border-left-color: #FA8C16;
 }
 .role-border-SYSTEM {
@@ -191,7 +197,7 @@ function parseImages(imagesJson?: string): string[] {
   padding: 2px 8px;
   border-radius: 4px;
 }
-.badge-STUDENT, .badge-TEACHER {
+.badge-STUDENT, .badge-TEACHER, .badge-FACULTY {
   background: #E6F4FF;
   color: #1677FF;
 }
@@ -199,7 +205,7 @@ function parseImages(imagesJson?: string): string[] {
   background: #F6FFED;
   color: #52C41A;
 }
-.badge-LOGISTICS_ADMIN, .badge-SUPER_ADMIN, .badge-ADMIN {
+.badge-LOGISTICS_ADMIN, .badge-SUPER_ADMIN, .badge-ADMIN, .badge-LOGISTICS {
   background: #FFF7E6;
   color: #FA8C16;
 }

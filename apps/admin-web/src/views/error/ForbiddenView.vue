@@ -8,7 +8,7 @@
               当前登录账号：<strong>{{ authStore.userInfo?.realName || authStore.userInfo?.username }}</strong>
             </p>
             <p>
-              账号职能：<el-tag type="warning" size="small">{{ roleLabel }}</el-tag>
+              账号职能：<el-tag type="warning" size="small">{{ functionText }}</el-tag>
             </p>
           </div>
 
@@ -39,7 +39,7 @@ import { useAuthStore } from '../../stores/auth';
 const router = useRouter();
 const authStore = useAuthStore();
 
-const roleLabel = computed(() => {
+const functionText = computed(() => {
   const codes: string[] = authStore.userInfo?.roleCodes ?? [];
   return codes.map((c: string) => functionLabel(c)).join('、') || '未分配职能';
 });

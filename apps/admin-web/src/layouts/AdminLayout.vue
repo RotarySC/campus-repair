@@ -82,7 +82,7 @@
               </el-avatar>
               <span class="user-meta">
                 <span class="user-name">{{ authStore.userInfo?.realName || authStore.userInfo?.username }}</span>
-                <span class="user-role">{{ roleLabel }}</span>
+                <span class="user-role">{{ functionText }}</span>
               </span>
               <el-icon :size="12"><ArrowDown /></el-icon>
             </button>
@@ -134,18 +134,22 @@ interface NavItem {
   path: string;
   label: string;
   icon: string;
-  /** 需要哪一个**职能**才可见（口径见仓库根 CONTEXT.md；不再按 userType 判定） */
-  requires: FunctionCode;
+  /**
+   * 需要哪一个**职能**才可见（口径见仓库根 CONTEXT.md；不再按 userType 判定）。
+   * `'ADMIN_SIDE'` 是「调度 **或** 平台管理」这一组，用命名常量而不是拿 `'DISPATCHER'`
+   * 当哨兵值——后者会让字段名与它实际表达的含义不符。
+   */
+  requires: FunctionCode | 'ADMIN_SIDE';
 }
 
 /** 管理员导航：顺序按使用频次与重要性排列，日常入口在上，只读看板在下 */
 const ADMIN_NAV_ITEMS: NavItem[] = [
-  { path: '/', label: '控制台概览', icon: 'Odometer', requires: 'DISPATCHER' },
-  { path: '/dispatch', label: '后勤调度中心', icon: 'Headset', requires: 'DISPATCHER' },
-  { path: '/reports/orders', label: '工单检索报表', icon: 'Document', requires: 'DISPATCHER' },
-  { path: '/inventory', label: '耗材进销存台账', icon: 'Box', requires: 'DISPATCHER' },
-  { path: '/spatial', label: '空间与分类字典', icon: 'Grid', requires: 'DISPATCHER' },
-  { path: '/system/users', label: '用户台账管理', icon: 'User', requires: 'DISPATCHER' }
+  { path: '/', label: '控制台概览', icon: 'Odometer', requires: 'ADMIN_SIDE' },
+  { path: '/dispatch', label: '后勤调度中心', icon: 'Headset', requires: 'ADMIN_SIDE' },
+  { path: '/reports/orders', label: '工单检索报表', icon: 'Document', requires: 'ADMIN_SIDE' },
+  { path: '/inventory', label: '耗材进销存台账', icon: 'Box', requires: 'ADMIN_SIDE' },
+  { path: '/spatial', label: '空间与分类字典', icon: 'Grid', requires: 'ADMIN_SIDE' },
+  { path: '/system/users', label: '用户台账管理', icon: 'User', requires: 'ADMIN_SIDE' }
 ];
 
 /** 师生导航（Q8）：提单与跟单两个高频入口 */
@@ -172,7 +176,7 @@ const navItems = computed<NavItem[]>(() => {
   const seen = new Set<string>();
   return items.filter((item) => {
     const allowed =
-      item.requires === 'DISPATCHER' ? identity.isAdminSide.value : identity.has(item.requires);
+      item.requires === 'ADMIN_SIDE' ? identity.isAdminSide.value : identity.has(item.requires);
     if (!allowed || seen.has(item.path)) return false;
     seen.add(item.path);
     return true;
@@ -263,7 +267,7 @@ const pageTitle = computed(() => {
   return (title as string) || '控制台概览';
 });
 /** 顶栏称号显示**职能**（可多值，用「·」连接），例如「维修作业 · 报修人」 */
-const roleLabel = computed(() => {
+const functionText = computed(() => {
   const codes = authStore.userInfo?.roleCodes ?? [];
   return codes.map((code) => functionLabel(code)).join(' · ') || '未分配职能';
 });

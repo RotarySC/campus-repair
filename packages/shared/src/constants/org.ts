@@ -7,12 +7,6 @@
 export type OrgBranch = 'STUDENT' | 'FACULTY' | 'LOGISTICS' | 'ADMIN';
 
 /**
- * 开放自助注册的条线，与后端 `IdentityCodes.SELF_REGISTRABLE_BRANCHES` 一致：
- * 行政信息化（ADMIN）不开放自助注册，维修作业/调度/平台管理账号一律由管理员建档。
- */
-export const SELF_REGISTRABLE_BRANCHES: OrgBranch[] = ['STUDENT', 'FACULTY', 'LOGISTICS'];
-
-/**
  * 各条线在「所属单位」选择器里的占位文案。
  * （行政信息化条线不渲染该词条，故不在此表内。）
  */

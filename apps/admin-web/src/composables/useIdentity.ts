@@ -18,7 +18,7 @@ export type FunctionCode = (typeof FUNCTION_CODES)[number];
 export function useIdentity() {
   const authStore = useAuthStore();
 
-  /** 职能码集合（多值） */
+  /** 职能码集合（多值）；只在本组合式内部使用，页面请用 `has('职能')` */
   const functions = computed<string[]>(() => authStore.userInfo?.roleCodes ?? []);
 
   const has = (code: FunctionCode | string) => functions.value.includes(code);
@@ -32,9 +32,8 @@ export function useIdentity() {
   /** 仅报修人：首页与顶栏标题按「我的工单」呈现 */
   const isReporterOnly = computed(() => isReporter.value && !isWorker.value && !isAdminSide.value);
 
-  /** 组织条线（单值） */
+  /** 组织条线（单值）：决定单位字典取哪棵子树；**不要**拿它判权限 */
   const branch = computed(() => authStore.userInfo?.userType ?? '');
-  const isStudent = computed(() => branch.value === 'STUDENT');
 
-  return { functions, has, isReporter, isWorker, isAdminSide, isReporterOnly, branch, isStudent };
+  return { has, isReporter, isWorker, isAdminSide, isReporterOnly, branch };
 }

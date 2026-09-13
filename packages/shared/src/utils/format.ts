@@ -16,7 +16,11 @@ export function parseImageUrls(images?: string | null): string[] {
 }
 
 /**
- * 角色枚举对应的语义文案
+ * `repair_order_log.operator_role` 的展示文案。
+ *
+ * 这一列是**历史词表与现行条线码混装**的：改名前的行存旧角色码（SUPER_ADMIN/LOGISTICS_ADMIN/
+ * REPAIR_WORKER/USER_STUDENT…），改名后运行时写的是操作人的**组织条线**（见 WorkOrderService）。
+ * 因此两张码表的值都必须在这里有文案，否则时间轴会直接显示裸码（`OperatorRoleLabels[role] || role`）。
  */
 export const OperatorRoleLabels: Record<string, string> = {
   STUDENT: '报修学生',
@@ -25,6 +29,8 @@ export const OperatorRoleLabels: Record<string, string> = {
   WORKER: '维修师傅',
   LOGISTICS_ADMIN: '后勤主管',
   SUPER_ADMIN: '系统管理员',
-  ADMIN: '后勤调度',
+  ADMIN: '行政信息化',
+  LOGISTICS: '后勤保障',
+  FACULTY: '教学科研',
   SYSTEM: '系统调度器'
 };
