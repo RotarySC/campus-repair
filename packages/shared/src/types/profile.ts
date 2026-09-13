@@ -33,6 +33,11 @@ export interface OrgNodeVO {
   name: string;
   /** 1-年级/教职工, 2-学院/处室, 3-班级/班组 */
   levelType: number;
+  /**
+   * 分支归属：`'STUDENT'` 年级分支 / `'STAFF'` 教职工分支 / `null` 不限。
+   * 只在顶层分支上有值（子节点为 null、继承父分支）；个人中心按身份取对应分支。
+   */
+  audience: string | null;
   fullPathName: string;
   sortOrder: number;
   /** 1-正常, 0-停用（前端取数一律带 onlyEnabled=true） */

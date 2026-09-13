@@ -15,6 +15,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -129,5 +130,73 @@ class OrgTreeIntegrationTest {
                         .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$..fullPathName", hasItem("2024级 计算机学院")));
+    }
+
+    @Test
+    @DisplayName("种子只在顶层分支标注 audience：年级=STUDENT、教职工=STAFF（子节点为 null）")
+    void testSeedDeclaresAudienceOnRootBranchesOnly() throws Exception {
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").value("2024级"))
+                .andExpect(jsonPath("$.data[0].audience").value("STUDENT"))
+                .andExpect(jsonPath("$.data[0].children[0].audience").value(nullValue()))
+                .andExpect(jsonPath("$.data[1].name").value("教职工"))
+                .andExpect(jsonPath("$.data[1].audience").value("STAFF"))
+                .andExpect(jsonPath("$.data[1].children[0].audience").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("audience=STUDENT 只留年级分支（学生看不到「教职工」），audience=STAFF 反之")
+    void testAudiencePruning() throws Exception {
+        // 学生：只有年级分支，且树里不应再出现「教职工」这个词
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "STUDENT")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("2024级"))
+                .andExpect(jsonPath("$..name", not(hasItem("教职工"))))
+                .andExpect(jsonPath("$..fullPathName", hasItem("2024级 计算机学院")));
+
+        // 教工/师傅：只有教职工分支，且树里不应再出现任何年级
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "STAFF")
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "REPAIR_WORKER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("教职工"))
+                .andExpect(jsonPath("$..name", not(hasItem("2024级"))))
+                .andExpect(jsonPath("$..fullPathName", hasItem("教职工 后勤维修中心 电工班")));
+
+        // 不传 audience 时返回全量树（管理员/字典维护用），且大小写不敏感
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                .andExpect(jsonPath("$.data.length()").value(2));
+
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "staff")
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "REPAIR_WORKER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("教职工"));
+    }
+
+    @Test
+    @DisplayName("未知 audience 报参数错误（400），空串按不限制处理")
+    void testUnknownAudienceRejected() throws Exception {
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "PARENT")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "USER_STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.length()").value(2));
     }
 }

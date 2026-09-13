@@ -75,6 +75,12 @@
 
 **文档**：新增二期设计文档；`AGENTS.md` 补 §1 组织字典模块与个人中心二期、§2.1 基线 85 与「个人中心的四条约定」、§2.2 两条新探针陷阱、§4 第三处常驻 DOM 污染。
 
+**二期追加需求（同日，用户第二轮）**：「学院列表应根据身份区分——学生不该出现『教职工』、教职工不该出现年级；管理员可以没有这个词条。」
+- **后端**：`org_node` 增 `audience VARCHAR(16)`（`STUDENT` 年级分支 / `STAFF` 教职工分支 / `NULL` 不限），只在顶层分支声明、子节点继承；`GET /org/tree?audience=` 逐层剪枝，非法值报 `PARAM_INVALID`（HTTP 200 + `code=400`）。骨架/演示种子分别标注（年级=`STUDENT`、教职工=`STAFF`）。
+- **前端**：`packages/shared/src/constants/org.ts` 新增 `orgAudienceOf(userType)`（学生→STUDENT、教工/师傅→STAFF、管理员→null）；个人中心按身份带 `audience` 取数，**管理员整行不渲染「学院/部门」且不取数（但已存 department 仍原样提交，隐藏字段不能顺手清值）**；占位文案也按身份变化（「选择年级 / 学院」vs「选择所属处室 / 班组」）。
+- **测试**：`OrgTreeIntegrationTest` 加 3 例（8 例总计）→ `mvn test` **88/88**；探针 `assert-profile` 加角色化断言 → **78 条 ALL PASS**（连跑三轮幂等），`assert-drill` 仍 **130/130**。
+- 设计文档 §3.4 记录口径表（三行：学生/教工师傅/管理员）。
+
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
@@ -95,7 +101,7 @@
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（**二期基线：Tests run: 85, Failures: 0, Errors: 0 / BUILD SUCCESS**；一期为 80）
+# 后端全量（**二期最终基线：Tests run: 88, Failures: 0, Errors: 0 / BUILD SUCCESS**；一期为 80，二期主体 85，身份分支 +3 → 88）
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml
@@ -104,8 +110,8 @@ mvn test -f server/pom.xml
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json          # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json   # exit 0
 
-# 个人中心页面级断言（五角色/多档；含真实头像上传链路；二期加到 69 条）
-node .scratch/assert-profile.mjs            # → 69 条 ALL PASS（连跑两轮均绿 = 幂等）
+# 个人中心页面级断言（五角色/多档；含真实头像上传链路；二期加到 78 条）
+node .scratch/assert-profile.mjs            # → 78 条 ALL PASS（连跑三轮均绿 = 幂等；含按身份分支可见性）
 node .scratch/diag-hover-media.mjs          # 证据：hover:none 只能用 setTouchEmulationEnabled 模拟
 
 # 既有探针回归（二期实测）

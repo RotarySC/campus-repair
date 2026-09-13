@@ -77,12 +77,16 @@ CREATE TABLE spatial_node (
 
 -- 单位/组织层级字典（年级 -> 学院 -> 班级；教职工 -> 处室 -> 班组）
 -- full_path_name 用**空格**分隔并与 sys_user.department 存同一串，前端据此精确回显级联路径
+-- audience：该分支面向哪类身份（'STUDENT' 年级分支 / 'STAFF' 教职工分支 / NULL 表示不限）。
+--   只在**顶层分支**上声明，子节点继承父分支语义；/org/tree?audience= 按它剪枝，
+--   个人中心据此让学生只看到年级、教工与师傅只看到教职工（管理员不渲染该词条）。
 -- sort_order 刻意留出空档（10/20/30…），data-demo.sql 会往里追加 2023/2025 级与更多处室
 CREATE TABLE org_node (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   parent_id BIGINT NOT NULL DEFAULT 0,
   name VARCHAR(64) NOT NULL,
   level_type TINYINT NOT NULL,
+  audience VARCHAR(16),
   full_path_name VARCHAR(255) NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   status TINYINT NOT NULL DEFAULT 1,

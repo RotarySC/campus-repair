@@ -204,11 +204,14 @@ check('管理员 页标题为「个人中心」', (await evalJs(`document.queryS
 check('管理员 三张核心卡渲染', ADMIN_CARDS.every((t) => adminState.cards.includes(t)), adminState.cards.join(' / '));
 check('管理员 不渲染师生/师傅统计区', !adminState.cards.includes('我的报修概览') && !adminState.cards.includes('我的作业概览'));
 check('管理员 快照已由 /users/me 刷新（createdAt 落库）', !!adminState.storedCreatedAt, `createdAt=${adminState.storedCreatedAt}`);
+check('管理员 「基本联系资料」不含「学院/部门」词条（管理员没有这个概念）',
+  !adminState.contactLabels.includes('学院/部门'),
+  adminState.contactLabels.join(' / '));
 check('管理员 「基本联系资料」不再重复账号/身份行',
   !adminState.contactLabels.includes('账号') && !adminState.contactLabels.includes('身份'),
   adminState.contactLabels.join(' / '));
-check('管理员 「基本联系资料」保留 姓名/手机/学院部门/默认空间',
-  ['姓名', '手机号码', '学院/部门', '默认报修空间'].every((l) => adminState.contactLabels.includes(l)),
+check('管理员 「基本联系资料」保留 姓名/手机/默认空间',
+  ['姓名', '手机号码', '默认报修空间'].every((l) => adminState.contactLabels.includes(l)),
   adminState.contactLabels.join(' / '));
 check('管理员 概览里的身份标签收缩到文字宽度',
   !!adminState.roleTagBox && adminState.roleTagBox.tag > 0 && adminState.roleTagBox.tag < adminState.roleTagBox.meta * 0.6,
@@ -402,9 +405,10 @@ check('学院部门 打开即定位到已选年级的学院层',
 
 const toRoot = await evalJs(PANEL_ROOT('学院/部门'));
 check('学院部门 点面包屑根级回退', toRoot === 'clicked', toRoot);
-const level1 = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('教职工'), 8000);
-check('学院部门 根层「年级在前、教职工在后」',
-  JSON.stringify(level1) === JSON.stringify(['2023级', '2024级', '2025级', '教职工']), JSON.stringify(level1));
+const level1 = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('2024级'), 8000);
+check('学院部门 根层为年级（学生看不到「教职工」分支）',
+  JSON.stringify(level1) === JSON.stringify(['2023级', '2024级', '2025级']), JSON.stringify(level1));
+check('学院部门 学生根的层不含「教职工」', Array.isArray(level1) && !level1.includes('教职工'), JSON.stringify(level1));
 // 同一时刻另一个选择器（默认报修空间）的面板不得被算进来（它也在 DOM 里）
 check('学院部门 选项查询不会串到「默认报修空间」面板',
   Array.isArray(level1) && !level1.includes('东校区') && !level1.includes('西校区'), JSON.stringify(level1));
@@ -450,6 +454,48 @@ check('三级单位 账户概览「单位」同步三级文案',
   state7.unitLine === '单位：教职工 后勤维修中心 电工班', state7.unitLine);
 collectErrors('三级单位');
 
+// ================== 用例 7.1：单位字典按身份区分（学生=年级分支、教工/师傅=教职工分支） ==================
+events.length = 0;
+// 教工：先把单位写回种子值，让断言与执行顺序无关（用例 8 会把它改成历史自由文本）
+const authStaff = await login('teacher01');
+const meStaff = (await (await fetch(`${BACKEND}/users/me`, { headers: { Authorization: `Bearer ${authStaff.token}` } })).json()).data;
+await fetch(`${BACKEND}/users/profile`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStaff.token}` },
+  body: JSON.stringify({
+    realName: meStaff.realName,
+    phone: meStaff.phone,
+    department: '教职工 土木工程学院',
+    defaultSpaceId: meStaff.defaultSpaceId ?? null
+  })
+});
+await gotoProfile(1272);
+const staffState = await evalJs(PROFILE_STATE);
+check('教工 单位回显为「教职工 土木工程学院」',
+  staffState.deptTriggerText === '教职工 土木工程学院', `trigger=${staffState.deptTriggerText}`);
+
+await evalJs(`(() => {
+  const t = document.querySelector('.dd-trigger[aria-label="学院/部门"]');
+  if (!t) return 'missing';
+  t.click();
+  return 'clicked';
+})()`);
+check('教工 打开单位下钻面板', (await evalJs(PANEL_ROOT('学院/部门'))) === 'clicked');
+const staffRoot = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('教职工'), 8000);
+check('教工 根层只有「教职工」（看不到任何年级）',
+  JSON.stringify(staffRoot) === JSON.stringify(['教职工']), JSON.stringify(staffRoot));
+check('教工 根层不含年级分支',
+  Array.isArray(staffRoot) && !staffRoot.some((n) => /级$/.test(n)), JSON.stringify(staffRoot));
+collectErrors('教工单位字典');
+
+// 占位文案也按身份区分：未设单位的教职工看到的是「处室 / 班组」而不是「年级 / 学院」
+await login('worker01'); // 测试种子里 department 为空
+await gotoProfile(1272);
+const workerState71 = await evalJs(PROFILE_STATE);
+check('教工/师傅 未设单位时占位文案为「选择所属处室 / 班组」',
+  workerState71.deptTriggerText === '选择所属处室 / 班组', `trigger=${workerState71.deptTriggerText}`);
+collectErrors('教工占位文案');
+
 // ================== 用例 8：历史自由文本回显不到字典时不得被误清 ==================
 // 用 teacher01 而不是 student01：后者 isFirstLogin=1，App.vue 会弹强制改密弹窗遮住表单
 events.length = 0;
@@ -464,8 +510,9 @@ check('历史自由文本 已通过接口写入', putRes.code === 200, `code=${p
 
 await gotoProfile(1272);
 const state8 = await evalJs(PROFILE_STATE);
+// teacher01 是教职工 → 占位文案是 STAFF 版（占位符本身也按身份区分，见用例 7.1）
 check('历史自由文本 选择器为空（回显不到）',
-  state8.deptTriggerText === '选择年级 / 学院', `trigger=${state8.deptTriggerText}`);
+  state8.deptTriggerText === '选择所属处室 / 班组', `trigger=${state8.deptTriggerText}`);
 check('历史自由文本 页面提示「不在字典中」', state8.legacyNote.includes(LEGACY), state8.legacyNote);
 
 // 什么都不改直接保存：PUT /users/profile 是全量覆盖，历史值必须原样保留

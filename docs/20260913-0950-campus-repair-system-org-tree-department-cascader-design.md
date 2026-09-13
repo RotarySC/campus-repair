@@ -25,11 +25,13 @@
 ## 2. 后端：单位组织字典（新模块 `modules/org`）
 
 ```
-org_node(id, parent_id, name, level_type, full_path_name, sort_order, status, created_at, updated_at, deleted)
-GET /api/v1/org/tree?onlyEnabled=false → R<List<OrgNodeVO>>
+org_node(id, parent_id, name, level_type, audience, full_path_name, sort_order, status, created_at, updated_at, deleted)
+GET /api/v1/org/tree?onlyEnabled=false&audience=STUDENT|STAFF
 ```
 
 - `level_type`：1-年级/教职工，2-学院/处室，3-班级/班组。**顺序即「年级在前、学院在后」**，`sort_order` 升序 + `id` 升序。
+- **`audience` 声明分支归属**（`STUDENT` 年级分支 / `STAFF` 教职工分支 / `NULL` 不限）：由**数据**说明「这个分支是给谁看的」，而不是让前后端去认「教职工」这个字符串。按需求，学生只看得到年级、教工与师傅只看得到教职工，管理员没有该词条（见 §3.4）。该列**只在顶层分支上声明**，子节点留 `NULL` 继承父分支语义；`/org/tree` 做逐层剪枝（任何一层显式声明了不匹配的 `audience` 都会被剪掉），这样将来若往子节点加标注，语义也不会悄悄失效。
+- 非法 `audience`（如 `PARENT`）直接报 `PARAM_INVALID`（HTTP 200 + `code=400`）而不是静默返回全量树——静默忽略会让调用方以为过滤生效了。空串按「不限制」处理；大小写不敏感。
 - **`full_path_name` 是对外契约**：用**空格**把各级名称连起来，与 `sys_user.department` 存的是**同一个字符串**。前端靠「整串精确匹配」把已存文案回显成级联路径，因此**不需要解析分隔符**，也不允许改成 `/`（改了回显会静默失效）。名称里可以出现 `·`（如「后勤保障处·调度中心」）但不能有空格。
 - 只有读能力（`OrgNodeService` 不提供写接口）：字典维护不在本轮范围，开放写路径就得一并处理 `fullPathName` 级联、停用校验与引用完整性。
 - `onlyEnabled=true` 过滤 `status=0`。接口**不加 `@PreAuthorize`**（所有登录角色都要选自己的单位，与 `/spatial/tree` 同档可见性）；匿名仍被 `SecurityConfig.anyRequest().authenticated()` 拦成 401。
@@ -67,15 +69,30 @@ GET /api/v1/org/tree?onlyEnabled=false → R<List<OrgNodeVO>>
   - 探针实测：把 `teacher01` 的单位改成 `老式自由文本单位` 后进页面直接保存，服务端仍是原值（未被清空）。
 - 顺序依赖沿用上一期的约定：`refreshProfile()` → `applyUserInfoToForm()` → `loadSpaceOptions()` → `loadOrgOptions()`（取数后再回显），否则会出现「表单有值但选择器为空」。
 
-## 4. 验收（实测）
+### 3.4 按身份区分分支可见性（后续追加需求）
 
+需求原文：「个人中心里的学院列表，应该根据身份进行区分，学生不应该出现『教职工』选项，教职工也不该出现年级选项。至于管理员可以没有这个词条。」
+
+| 身份 | 可见分支 | 「学院/部门」词条 |
+| :--- | :--- | :--- |
+| `USER_STUDENT` | 仅年级（2023/2024/2025 级） | 渲染，占位「选择年级 / 学院」 |
+| `USER_TEACHER` / `REPAIR_WORKER` | 仅教职工（处室 → 班组） | 渲染，占位「选择所属处室 / 班组」 |
+| `SUPER_ADMIN` / `LOGISTICS_ADMIN` | —（不取数） | **整行不渲染** |
+
+- **判定口径放在 `packages/shared/src/constants/org.ts` 的 `orgAudienceOf(userType)`**（前端唯一一处映射，将来加端不用重写）；页面据此带 `audience` 参数取数。
+- 服务端按 `audience` 剪枝（§2），所以过滤是**数据 + 服务端**决定的，不靠前端认名字。
+- **管理员隐藏词条但不清值**：`applyUserInfoToForm()` 仍把他的 `department` 读进表单并原样提交——隐藏一个字段不能顺手把它的值抹掉（生产库 admin 的 `department` 是「信息中心」）。
+- 连带影响：占位文案也随身份变化，探针里断言占位符时必须按角色取（曾因此假失败一次）。
+- 未做：注册页与 Excel 导入仍是自由文本（用户本轮明确只改个人中心），因此新注册用户的单位可能落在对应分支之外 → 个人中心走 §3.3 的「不在字典中」提示并保留原值。
+
+## 4. 验收（实测）
 | 项 | 结果 |
 | :--- | :--- |
-| `mvn test -f server/pom.xml` | **Tests run: 85, Failures: 0, Errors: 0 / BUILD SUCCESS**（80 → 85：新增 `OrgTreeIntegrationTest` 5 例） |
+| `mvn test -f server/pom.xml` | **Tests run: 88, Failures: 0, Errors: 0 / BUILD SUCCESS**（80 → 85 为二期主体，85 → 88 为 §3.4 的 audience 用例） |
 | `tsc --noEmit -p packages/shared` / `vue-tsc --noEmit -p apps/admin-web` | 均 **exit 0** |
-| `.scratch/assert-profile.mjs` | **69 条 ALL PASS**（连续两轮跑均全绿 = 幂等），新增：悬浮遮罩（含 hover:none 触屏档）、账号/身份行已删、标签收缩、年级下钻与保存后概览同步、三级单位回显、历史自由文本防误清 |
-| `.scratch/assert-drill.mjs` | **130/130 PASS**（原 126/126；个人中心改挂两个下钻控件后按 `aria-label` 定位） |
-| 起服务实测 `/org/tree` | 根层顺序 2023级/2024级/2025级/教职工，`onlyEnabled=true` 隐藏停用节点，`fullPathName` 全为空格分隔 |
+| 接口级（`admin` token 直打 8080） | 不传 `audience` → 根层 `2023级/2024级/2025级/教职工`；`audience=STUDENT` → 仅三个年级；`audience=STAFF` → 仅教职工；`audience=PARENT` → `code=400` |
+| `.scratch/assert-profile.mjs` | **78 条 ALL PASS**（连续三轮全绿 = 幂等），新增：管理员无「学院/部门」词条、学生根层不含教职工、教工根层仅教职工且无年级、教工占位文案 |
+| 既有探针 | `assert-drill` **130/130**；`assert-shell-toggle` 42/42；`assert-actions-align` 15/15；`assert-switch-plain` 14/14 |
 
 ## 5. 已知限制 / 后续
 

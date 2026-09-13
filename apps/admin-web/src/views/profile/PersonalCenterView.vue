@@ -59,12 +59,16 @@
               <el-input v-model="profileForm.phone" placeholder="常用联系电话" maxlength="11" />
             </el-form-item>
             <!-- 账号/身份不在表单里重复：它们是只读身份信息，统一由「账户概览」承载 -->
-            <el-form-item label="学院/部门" prop="department">
+            <!--
+              管理员（超管/后勤）没有「学院/部门」这个概念 → 整行不渲染（v-if="!isAdmin"）。
+              注意仍然把已存 department 原样提交，不能在隐藏时把它清掉。
+            -->
+            <el-form-item v-if="!isAdmin" label="学院/部门" prop="department">
               <DrilldownCascader
                 v-model="orgPath"
                 :options="orgOptions"
                 label="学院/部门"
-                placeholder="选择年级 / 学院"
+                :placeholder="orgPlaceholder"
                 separator=" "
                 @change="onOrgChange"
               />
@@ -243,6 +247,7 @@ import {
 import {
   compressImage,
   OrderStatusLabels,
+  orgAudienceOf,
   PASSWORD_PATTERN,
   PASSWORD_RULE_MESSAGE,
   roleLabel as roleLabelOf,
@@ -272,6 +277,16 @@ const isStudentTeacher = computed(() =>
 const isWorker = computed(() => userInfo.value?.userType === 'REPAIR_WORKER');
 const roleText = computed(() => roleLabelOf(userInfo.value?.userType));
 const initial = computed(() => (userInfo.value?.realName || userInfo.value?.username || '—').slice(0, 1));
+
+/** 管理员没有「学院/部门」词条（整行不渲染）；其映射口径见 shared 的 orgAudienceOf() */
+const isAdmin = computed(() =>
+  ['SUPER_ADMIN', 'LOGISTICS_ADMIN'].includes(userInfo.value?.userType || '')
+);
+/** 该身份可选的组织分支：学生→年级、教工/师傅→教职工、管理员→null（不取数也不渲染） */
+const orgAudience = computed(() => orgAudienceOf(userInfo.value?.userType));
+const orgPlaceholder = computed(() =>
+  orgAudience.value === 'STAFF' ? '选择所属处室 / 班组' : '选择年级 / 学院'
+);
 
 const profileFormRef = ref<FormInstance>();
 const passwordFormRef = ref<FormInstance>();
@@ -498,10 +513,14 @@ async function loadSpaceOptions() {
   } catch (_) {}
 }
 
-/** 单位组织字典（年级 → 学院）；取数后立刻回显已存文案 */
+/** 单位组织字典（年级 → 学院 / 教职工 → 处室 → 班组）；**按身份只取所属分支**，取数后立刻回显已存文案 */
 async function loadOrgOptions() {
+  // 管理员不渲染该词条，连取数都省掉
+  if (isAdmin.value) return;
   try {
-    const res = await httpClient.get<OrgNodeVO[]>('/org/tree', { params: { onlyEnabled: true } });
+    const res = await httpClient.get<OrgNodeVO[]>('/org/tree', {
+      params: { onlyEnabled: true, audience: orgAudience.value ?? undefined }
+    });
     if (res.code === 200) {
       orgOptions.value = res.data || [];
     }

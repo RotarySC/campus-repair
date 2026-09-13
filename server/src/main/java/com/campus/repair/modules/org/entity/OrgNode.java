@@ -30,6 +30,12 @@ public class OrgNode implements Serializable {
 
     private Integer levelType; // 1-年级/教职工, 2-学院/处室, 3-班级/班组
 
+    /**
+     * 该分支面向哪类身份：{@code STUDENT}（年级分支）/ {@code STAFF}（教职工分支）/ {@code null} 表示不限。
+     * 只在**顶层分支**上声明，子节点留 null 继承父分支语义。
+     */
+    private String audience;
+
     private String fullPathName;
 
     private Integer sortOrder;
