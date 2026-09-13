@@ -1,6 +1,7 @@
 package com.campus.repair.modules.org.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.modules.org.entity.OrgNode;
@@ -37,13 +38,13 @@ import java.util.Set;
 public class OrgNodeService {
 
     /** 学生（年级 → 学院）分支 */
-    public static final String AUDIENCE_STUDENT = "STUDENT";
+    public static final String AUDIENCE_STUDENT = IdentityCodes.BRANCH_STUDENT;
     /** 教职工·教学科研（各学院）分支 */
-    public static final String AUDIENCE_FACULTY = "FACULTY";
+    public static final String AUDIENCE_FACULTY = IdentityCodes.BRANCH_FACULTY;
     /** 教职工·后勤保障（后勤保障处/后勤维修中心/班组）分支 */
-    public static final String AUDIENCE_LOGISTICS = "LOGISTICS";
+    public static final String AUDIENCE_LOGISTICS = IdentityCodes.BRANCH_LOGISTICS;
     /** 教职工·行政信息化（信息中心等）分支 */
-    public static final String AUDIENCE_ADMIN = "ADMIN";
+    public static final String AUDIENCE_ADMIN = IdentityCodes.BRANCH_ADMIN;
 
     private static final Set<String> SUPPORTED_AUDIENCES = Set.of(
             AUDIENCE_STUDENT, AUDIENCE_FACULTY, AUDIENCE_LOGISTICS, AUDIENCE_ADMIN);

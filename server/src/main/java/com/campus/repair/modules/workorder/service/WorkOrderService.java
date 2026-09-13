@@ -148,7 +148,7 @@ public class WorkOrderService {
                 order,
                 applicant.getId(),
                 applicant.getRealName(),
-                "STUDENT",
+                auditRoleOf(applicant),
                 "SUBMIT",
                 "DRAFT",
                 "PENDING_DISPATCH",
@@ -395,7 +395,7 @@ public class WorkOrderService {
         // 记录流转审计
         SysUser operator = userService.getUserById(operatorUserId);
         String opName = operator != null ? operator.getRealName() : "调度主管";
-        String opRole = operator != null ? operator.getUserType() : "ADMIN";
+        String opRole = auditRoleOf(operator);
 
         String remark = StringUtils.hasText(request.getDispatchRemark()) ? request.getDispatchRemark().trim() : "调度中心人工指派";
         if (oldWorkerId != null && !oldWorkerId.equals(targetWorker.getId())) {
@@ -449,7 +449,7 @@ public class WorkOrderService {
 
         SysUser operator = userService.getUserById(operatorUserId);
         String opName = operator != null ? operator.getRealName() : "调度主管";
-        String opRole = operator != null ? operator.getUserType() : "ADMIN";
+        String opRole = auditRoleOf(operator);
 
         orderLogService.recordLog(
                 order,
@@ -869,7 +869,7 @@ public class WorkOrderService {
                     order,
                     studentUserId,
                     studentName,
-                    "STUDENT",
+                    auditRoleOf(student),
                     "REWORK_TRIGGER",
                     currentStatus.name(),
                     targetStatus.name(),
@@ -886,7 +886,7 @@ public class WorkOrderService {
                     order,
                     studentUserId,
                     studentName,
-                    "STUDENT",
+                    auditRoleOf(student),
                     "MANUAL_ACCEPT",
                     currentStatus.name(),
                     targetStatus.name(),
@@ -1116,5 +1116,24 @@ public class WorkOrderService {
             throw new org.springframework.security.access.AccessDeniedException("越权拦截：您不是该工单当前指派的维修师傅，无法操作");
         }
         return order;
+    }
+
+    /**
+     * 审计日志（{@code repair_order_log.operator_role}）里的操作人角色码。
+     *
+     * <p>这一列目前是**历史词表与现行码混装**的：旧数据里是改名前的角色码
+     * （SUPER_ADMIN / LOGISTICS_ADMIN / REPAIR_WORKER…），运行时写的是操作人的**组织条线**
+     * （{@code sys_user.user_type}，见 {@code IdentityCodes}），词表统一属批次 4。本方法只保证两点：
+     * ① 写进库的值一定在前端 {@code OperatorRoleLabels} 里有文案，不会在时间轴上显示成裸码；
+     * ② 取不到操作人时写 {@code SYSTEM}（系统自动流转）而**不是** {@code ADMIN}——后者现在是
+     * 「行政信息化」条线码，写成它会读起来像某个具体的人。
+     *
+     * <p>同理，师生侧的动作也不能再写死 {@code STUDENT}：教工报修、教工评价都会落成
+     * 「报修学生」，这是审计数据上的错标。
+     */
+    private static String auditRoleOf(SysUser operator) {
+        return operator != null && StringUtils.hasText(operator.getUserType())
+                ? operator.getUserType()
+                : "SYSTEM";
     }
 }

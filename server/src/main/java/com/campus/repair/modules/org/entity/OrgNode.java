@@ -10,7 +10,8 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 单位/组织层级字典节点（年级 → 学院 → 班级/科室，教职工 → 后勤处 → 维修班组）。
+ * 单位/组织层级字典节点（学生：年级 → 学院 → 班级/系；教职工：所属单位 → 单位 → 班组）。
+ * 注意根节点叫「所属单位」而不是「教职工」——后者是**身份**词，两者必须能分开念（见 `CONTEXT.md`）。
  *
  * <p>{@code fullPathName} 是本模块的**对外契约**：用空格把各级名称连起来
  * （如 {@code 2024级 计算机学院}），与 {@code sys_user.department} 存的是同一个字符串，
@@ -28,11 +29,17 @@ public class OrgNode implements Serializable {
 
     private String name;
 
-    private Integer levelType; // 1-年级/教职工, 2-学院/处室, 3-班级/班组
+    private Integer levelType; // 1-年级/所属单位, 2-学院/处室, 3-班级/班组
 
     /**
-     * 该分支面向哪类身份：{@code STUDENT}（年级分支）/ {@code STAFF}（教职工分支）/ {@code null} 表示不限。
-     * 只在**顶层分支**上声明，子节点留 null 继承父分支语义。
+     * 组织条线，取值与 {@code sys_user.user_type} **完全一致**
+     * （{@code STUDENT} / {@code FACULTY} / {@code LOGISTICS} / {@code ADMIN}，见
+     * {@code common.constant.IdentityCodes}），{@code null} 表示不限条线。
+     *
+     * <p>同一个值、**不做二次映射**：{@code /org/tree?audience=} 直接拿用户的 userType 剪枝。
+     * 可在**任意层级**声明，未声明的子节点继承父级语义；当前种子把教职工侧的条线打在
+     * **二级单位**上（后勤维修中心=LOGISTICS、各学院=FACULTY、信息中心=ADMIN），
+     * 年级分支则打在年级节点上。
      */
     private String audience;
 

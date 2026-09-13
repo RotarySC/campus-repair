@@ -43,7 +43,10 @@ CREATE TABLE sys_role (
 CREATE TABLE sys_user_role (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
-  role_id BIGINT NOT NULL
+  role_id BIGINT NOT NULL,
+  -- 与生产 sql/schema.sql 的 uk_user_role 对齐：同一用户不得重复绑定同一职能
+  -- （职能可多值，但多值指的是**不同**职能；重复绑定会让 roleCodes 出现重复项）
+  UNIQUE (user_id, role_id)
 );
 
 CREATE TABLE worker_profile (
