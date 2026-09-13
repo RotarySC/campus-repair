@@ -288,6 +288,22 @@ writeFileSync('.scratch/profile/worker-1272.png', Buffer.from(workerShot.data, '
 console.log('[shot] .scratch/profile/worker-1272.png');
 collectErrors('师傅');
 
+// ================== 用例 3.1：多职能账号（worker02 = WORKER + REPORTER）两块概览都要出数 ==================
+// 回归点（2026-09-13 修复）：两块概览曾经写成 if/else if，报修概览会把作业概览吞掉——
+// 兼职师傅永远看不到作业数据，也根本不调 /users/me/worker-profile。凡“职能可叠加”的页面
+// 都要按并集渲染，别用 else-if 串起来。
+events.length = 0;
+await login('worker02');
+await gotoProfile(1272);
+const dualState = await evalJs(PROFILE_STATE);
+check('多职能师傅 同时渲染「我的报修概览」与「我的作业概览」',
+  dualState.cards.includes('我的报修概览') && dualState.cards.includes('我的作业概览'),
+  dualState.cards.join(' / '));
+check('多职能师傅 作业概览字段来自 /users/me/worker-profile',
+  dualState.workerLabels.includes('维修工种') && dualState.workerText.length > 0,
+  dualState.workerText.slice(0, 140));
+collectErrors('多职能师傅');
+
 // ================== 用例 4：头像上传走真实链路，顶栏随之更新 ==================
 if (!existsSync(AVATAR_FILE)) {
   check(`头像上传（找不到测试图片 ${AVATAR_FILE}）`, false);

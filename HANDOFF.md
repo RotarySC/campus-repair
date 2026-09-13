@@ -21,9 +21,9 @@
 | 项 | 值 |
 | :--- | :--- |
 | 当前分支 | `feat/personal-center-org-tree`（二期；一期在 `master`） |
-| 本会话提交 | **4 个（把批次 1+2 从工作区固化，见 §2.4）**：`bdfead4` 后端与数据 / `177cfd4` 前端 / `a954ff0` 文档与 ADR / `cd93c71` AGENTS+HANDOFF+探针。分支上此前的二期提交为 `f6fc6ee`、`d0026c1`（二期基线 `master@76bdba1`） |
-| 工作区 | **已无未提交改动**（固化后现测 `git status -uno` 输出为空）；仅剩 `.scratch/` 与 `.zcode/` 下的未跟踪产物 |
-| 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期 `git diff master HEAD`；本次固化 `git diff d0026c1 HEAD` |
+| 本会话提交 | **7 个**：固化 `bdfead4` 后端与数据 / `177cfd4` 前端 / `a954ff0` 文档与 ADR / `cd93c71` AGENTS+HANDOFF+探针（见 §2.4）；`9c54821` 固化记录；**评审修复 `9753e0b` 后端与数据 / `337c2e8` 前端**（见 §2.5）。分支上此前的二期提交为 `f6fc6ee`、`d0026c1`（二期基线 `master@76bdba1`） |
+| 工作区 | **已无未提交改动**（每次提交后现测 `git status -uno` 输出为空）；仅剩 `.scratch/` 与 `.zcode/` 下的未跟踪产物 |
+| 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期/评审 `git diff master HEAD`；本次固化 `git diff d0026c1 HEAD` |
 | 未跟踪噪声 | `.scratch/` 下探针与截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）、`.zcode/`；**已入库 7 个探针**（`assert-profile` / `assert-drill` / `assert-shell-toggle` / `assert-actions-align` / `assert-switch-plain` + 本次入库的 `assert-identity-batch1` 与其依赖 `cdp-raw`），其余 20+ 未跟踪（含 `diag-hover-media.mjs`、`diag-category-align*.mjs`、`diag-identity-timeline.mjs`——AGENTS.md 引用它们作为可复现证据，**仍未入库**） |
 | 遗留悬空文件 | `.scratch/commit-msg3.txt`（历史遗留的临时提交信息文件，可删） |
 
@@ -144,6 +144,30 @@
 
 **仍未跟踪**：`diag-hover-media.mjs`、`diag-category-align*.mjs`、`diag-identity-timeline.mjs` 等诊断脚本与 20+ 截图产物（入库策略见 §3「可选」行）；`.scratch/commit-msg3.txt` 仍悬空（可删）。
 
+## 2.5 代码评审修复（2026-09-13，`/code-review` 两轴：Standards + Spec）
+
+评审基线 `git diff master...HEAD`（7 提交 / 72 文件），两轴各派一个子代理并行审，再由主代理**逐条复核**（复核结论见下）。修复拆成两个提交：`9753e0b` 后端与数据、`337c2e8` 前端。
+
+**后端（`9753e0b`）**
+- **审计角色码**（`WorkOrderService`）：新增 `auditRoleOf(SysUser)`，取代两处
+  `operator != null ? operator.getUserType() : "ADMIN"`——`ADMIN` 现在是「行政信息化」条线码，取不到操作人时写它会像某个具体的人，改 `SYSTEM`；并把提单/评价两处写死的 `"STUDENT"` 改为真实条线（教工报修、教工评价过去都落成「报修学生」，是错标）。
+- **`selectRoleCodesByUserId` 补 `ORDER BY r.id`**：设计 §4.2 的要求，本轮 `DashboardView` 改成 roleCodes 拼接后才真正用户可见。
+- **`schema-test.sql` 补 `UNIQUE (user_id, role_id)`**（主/测两份逐字节同步）：对齐生产 `uk_user_role`。
+- **`NoLegacyRoleCodeTest` 扩到前端**（设计 §10）：白名单只列 `components/WorkOrderTimeline.vue`；**已做负向对照**（临时文件 → 用例失败并打印该文件行；删除后恢复绿）。
+- **`org_node.audience` 契约注释改正**（`OrgNode`/`OrgNodeVO`）：原写 `STUDENT`/`STAFF` 两值与「只在顶层分支声明」，与 `CONTEXT.md` 的四值 + 「条线打在二级单位」矛盾；`OrgNodeService` 的 `AUDIENCE_*` 改为引用 `IdentityCodes.BRANCH_*`。
+
+**前端（`337c2e8`）**
+- **多职能账号两块概览并集渲染**（`PersonalCenterView`）：「报修概览」与「作业概览」原为 `v-if`/`v-else-if`，worker02（`WORKER`+`REPORTER`）**永远看不到作业概览、也不调 `/users/me/worker-profile`**；改为两个并列 `v-if`（`onMounted` 同步两个 `if`），条线判定收敛到 `useIdentity().branch`。
+- **审计词表标签补全**：`OperatorRoleLabels` 补 `LOGISTICS`/`FACULTY`、`ADMIN` 由「后勤调度」改为「行政信息化」（否则改名后新写的条线码显示裸码）；时间轴两份重复 switch 合成一张表。
+- **删死代码**：shared 的 `SELF_REGISTRABLE_BRANCHES`（全仓无消费点）、`useIdentity()` 未使用的 `functions`/`isStudent`。
+- **命名**：`AdminLayout` 导航的 `requires: 'DISPATCHER'` 哨兵改为 `FunctionCode | 'ADMIN_SIDE'`；`roleLabel`/`roleText` → `functionText`/`identityText`（对齐 `CONTEXT.md` `_Avoid_: 角色`）。README §4 账号表改用「条线 / 职能」两列。
+
+**验收**：`mvn test` → **95/95 BUILD SUCCESS**（94 + 前端半守卫 1）；`tsc`(shared) + `vue-tsc`(admin) exit 0；`assert-profile.mjs` 新增多职能用例后 **88 条 ALL PASS**（85 → 88，真机）；守卫负向对照实测会失败。
+
+**评审的两条纠错（子代理报错、主代理核验后撤回）**：① Spec 轴称「HEAD 实测 96 个用例、文档的 94 过期」——**不成立**：那是把 `server/target/surefire-reports/*.txt` 求和时算进了**两个已删除探针类**（`DebugProbeTest`/`ReportSqlProbeTest`）的陈旧报告（已删该残留）。② Standards 轴的「`SELF_REGISTRABLE_BRANCHES` 死导出」成立，但「`isStudent` 是 userType 判定」表述不准（它读的是 `branch`）——按「判定一律用职能」的口径它仍该删，已删。
+
+**本轮未修（明确记录，不是遗漏）**：批次 3（`PUT /users/{id}/functions` + 师傅档案 CRUD + 台账 UI）、批次 4 的**词表统一**（本轮只把标签/配色补齐，列内仍是历史码与条线码混装）、设计 §5.2 的 `LoginUserPrincipal` + JWT `userType` claim、`data-test.sql` 补教工账号、以及 §3.1 的 P1 安全项（IDOR / `is_first_login` 后端拦截 / 登出与令牌吊销）。
+
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
@@ -169,7 +193,7 @@
 | :--- | :--- | :--- |
 | ~~**P0**~~ | ~~`POST /api/v1/auth/register` 无 `userType` 白名单 → 任意人可自封 `SUPER_ADMIN` 并调通管理员接口~~ | **✅ 2026-09-13 批次 1 已修**：`userType` 改为组织条线白名单（`STUDENT`/`FACULTY`/`LOGISTICS`），自助注册一律只授 `REPORTER`；回归 `RegisterWhitelistIntegrationTest`（5 例）+ 实测 `PLATFORM_ADMIN`/`WORKER`/`ADMIN` 均 `code=400`。原始证据见分析报告 §3.1 |
 | P1 | 工单读接口 `GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` **无属主校验**（IDOR） | 报告 §3.2（student02 读到 student01 的姓名+手机号，界面照常渲染） |
-| P1 | `repair_order_log.operator_role` 三套词表混用、前端标签/CSS 只覆盖一套 → 27/77 条日志显示裸角色码且丢配色 | 报告 §3.3（另含教工提单被硬编码写成 `STUDENT` 的潜在错标） |
+| P1 | `repair_order_log.operator_role` 三套词表混用、前端标签/CSS 只覆盖一套 → 27/77 条日志显示裸角色码且丢配色 | **2026-09-13 评审修复已缓解**（见 §2.5）：`OperatorRoleLabels`/时间轴配色补齐两代词表（含 `LOGISTICS`/`FACULTY`）、`ADMIN` 文案由「后勤调度」改为「行政信息化」、教工提单与教工评价不再写死 `STUDENT`。**列内仍是历史码与新条线码混装，词表统一仍属批次 4** |
 | P1 | `is_first_login` 只在前端拦，后端不校验 | 报告 §3.4（未改密即可调业务接口） |
 | P1 | 无登出/无令牌吊销；~~且 `roleCodes` 为空时回退 `userType`~~ → **删角色绑定已不再等于升权**（批次 1 删掉了回退，改为登录/刷新报 `USER_NO_FUNCTION(1008)`），但**已签发 Access Token（2h）仍不受影响**，登出/jti 黑名单仍未做 | 报告 §3.5 + 批次 1 |
 | ~~P2~~ | ~~「身份判定双轨」：路由守卫按 `roleCodes`、界面（导航/首页/个人中心/师傅落点）按 `userType`~~ → **✅ 批次 1 已修**：前端统一走 `composables/useIdentity.ts` 的 `has('职能')`，路由用 `meta.functions`，多职能取并集 | 报告 §3.6 + 批次 1 |
@@ -179,7 +203,7 @@
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（**当前基线：Tests run: 94, Failures: 0, Errors: 0 / BUILD SUCCESS**。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 = 88 + RegisterWhitelist 5 + NoLegacyRoleCode 1）
+# 后端全量（**当前基线：Tests run: 95, Failures: 0, Errors: 0 / BUILD SUCCESS**。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 = 88 + RegisterWhitelist 5 + NoLegacyRoleCode 1 → **评审修复 95 = 94 + NoLegacyRoleCode 的前端半守卫 1**）
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml
@@ -192,7 +216,7 @@ node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin
 node .scratch/assert-identity-batch1.mjs    # → ALL PASS（多职能并集导航/首页优先级/403/注册页条线/无旧码残留）
 
 # 个人中心页面级断言（五角色/多档；含真实头像上传链路；批次 2 已按新语汇重写）
-node .scratch/assert-profile.mjs            # → **85 条 ALL PASS**（含「教师看不到后勤单位」「后勤看不到任何学院」两条硬回归）
+node .scratch/assert-profile.mjs            # → **88 条 ALL PASS**（评审修复后 85 → 88，新增「多职能师傅两块概览同时渲染」；含「教师看不到后勤单位」「后勤看不到任何学院」两条硬回归）
 node .scratch/diag-hover-media.mjs          # 证据：hover:none 只能用 setTouchEmulationEnabled 模拟
 
 # 既有探针回归（二期实测）
@@ -221,6 +245,7 @@ node .scratch/diag-category-align-state.mjs # 证据：分类表格对齐与侧�
 | Edge 调试口 | `127.0.0.1:9222` | 在跑（现测 TCP 可达；浏览器里有用户个人标签，**别关**） |
 
 > 后端 `/actuator/health` 返回 **HTTP 401 + `R` 包装体**（受安全链保护）——这不是服务故障，判活请用 `/api/v1/auth/login`。本会话未重启任何服务，只做了端口/接口现测与提交固化。
+> **⚠️ 该 8080 实例早于 §2.5 的评审修复**（12:49 启动，而修复提交是 `9753e0b`/`337c2e8`）：`WorkOrderService` 的审计角色码、`SysUserMapper` 的 `ORDER BY`、`NoLegacyRoleCodeTest` 等**后端改动尚未生效**；前端经 Vite HMR 已是最新（`assert-profile` 88 条即跑在新前端上）。要跑后端真机验证前先重启（`Get-Process java | Stop-Process -Force` → `mvn spring-boot:run`，见 AGENTS §2.1）。
 
 启动/重启配方与坑（`spawn EPERM` 需 `danger-full-access`、pnpm v11 会清 `node_modules`、`spring-boot:run` 的 JVM 不被 job 带走）见 `AGENTS.md` §2.1，不在此重复。**动手做真机验证前先现测一次端口**。
 
