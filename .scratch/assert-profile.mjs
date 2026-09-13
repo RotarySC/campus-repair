@@ -7,7 +7,7 @@
  *  - 【新增】头像悬浮遮罩：默认 opacity:0，真实鼠标移入后压暗并浮现「更换头像」，移开复原
  *  - 【新增】「基本联系资料」不再重复账号/身份；概览里的身份标签收缩到文字宽
  *  - 【新增】「学院/部门」按年级逐级下钻（GET /org/tree），触发器文案 =「年级 学院」（空格），
- *            保存后服务端与「账户概览 · 单位」同步；三级（教职工→处室→班组）也能回显
+ *            保存后服务端与「账户概览 · 单位」同步；三级（所属单位→处室→班组）也能回显
  *  - 【新增】历史自由文本回显不到字典时**不误清**（全量覆盖语义下的防误清）
  *  - 进页面会调 GET /users/me 刷新快照（localStorage.user_info 出现 createdAt）
  *  - 三档 0 横向溢出、0 控制台错误
@@ -406,9 +406,9 @@ check('学院部门 打开即定位到已选年级的学院层',
 const toRoot = await evalJs(PANEL_ROOT('学院/部门'));
 check('学院部门 点面包屑根级回退', toRoot === 'clicked', toRoot);
 const level1 = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('2024级'), 8000);
-check('学院部门 根层为年级（学生看不到「教职工」分支）',
+check('学院部门 根层只有年级（学生看不到「所属单位」分支——它在本条线里被整体剪掉）',
   JSON.stringify(level1) === JSON.stringify(['2023级', '2024级', '2025级']), JSON.stringify(level1));
-check('学院部门 学生根的层不含「教职工」', Array.isArray(level1) && !level1.includes('教职工'), JSON.stringify(level1));
+check('学院部门 学生根层不含「所属单位」', Array.isArray(level1) && !level1.includes('所属单位'), JSON.stringify(level1));
 // 同一时刻另一个选择器（默认报修空间）的面板不得被算进来（它也在 DOM 里）
 check('学院部门 选项查询不会串到「默认报修空间」面板',
   Array.isArray(level1) && !level1.includes('东校区') && !level1.includes('西校区'), JSON.stringify(level1));
@@ -443,18 +443,39 @@ check('学院部门 保存后无横向溢出',
   (await evalJs(`document.documentElement.scrollWidth - document.documentElement.clientWidth`)) === 0);
 collectErrors('学院部门');
 
-// ================== 用例 7：三级单位回显（教职工 → 处室 → 班组） ==================
+// ================== 用例 7：三级单位回显（所属单位 → 处室 → 班组） ==================
 events.length = 0;
-await login('worker02'); // 种子值：教职工 后勤维修中心 电工班
+await login('worker02'); // 种子值：所属单位 后勤维修中心 电工班
 await gotoProfile(1272);
 const state7 = await evalJs(PROFILE_STATE);
-check('三级单位 回显为「教职工 后勤维修中心 电工班」',
-  state7.deptTriggerText === '教职工 后勤维修中心 电工班', `trigger=${state7.deptTriggerText}`);
+check('三级单位 回显为「所属单位 后勤维修中心 电工班」',
+  state7.deptTriggerText === '所属单位 后勤维修中心 电工班', `trigger=${state7.deptTriggerText}`);
 check('三级单位 账户概览「单位」同步三级文案',
-  state7.unitLine === '单位：教职工 后勤维修中心 电工班', state7.unitLine);
+  state7.unitLine === '单位：所属单位 后勤维修中心 电工班', state7.unitLine);
+
+// 批次 2 的直接回归：**后勤条线的选择器里不应出现任何学院**（用户报的堆叠现象）
+// ⚠️ 已选叶子时面板会定位在**选中项所在层级**（worker02 选中三级路径 → 打开即停在「班组」层），
+//    因此先点面包屑根级回退，再断言根层与下钻结果。
+await evalJs(`(() => {
+  const t = document.querySelector('.dd-trigger[aria-label="学院/部门"]');
+  if (t) t.click();
+  return !!t;
+})()`);
+await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.length > 0, 8000);
+await evalJs(PANEL_ROOT('学院/部门'));
+const logisticsRoot = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('所属单位'), 8000);
+check('后勤条线 根层为「所属单位」', JSON.stringify(logisticsRoot) === JSON.stringify(['所属单位']), JSON.stringify(logisticsRoot));
+const intoUnit = await evalJs(PANEL_PICK('学院/部门', '所属单位'));
+check('后勤条线 下钻「所属单位」', intoUnit === 'clicked', intoUnit);
+const logisticsUnits = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.length >= 2, 8000);
+check('后勤条线 只出后勤单位（含后勤维修中心/后勤保障处）',
+  logisticsUnits.includes('后勤维修中心') && logisticsUnits.includes('后勤保障处·调度中心'), JSON.stringify(logisticsUnits));
+check('后勤条线 **不出现任何学院**（堆叠现象回归）',
+  Array.isArray(logisticsUnits) && !logisticsUnits.some((n) => n.endsWith('学院')), JSON.stringify(logisticsUnits));
+await evalJs(`(() => { const t = document.querySelector('.dd-trigger[aria-label="学院/部门"]'); if (t) t.click(); return 1; })()`);
 collectErrors('三级单位');
 
-// ================== 用例 7.1：单位字典按身份区分（学生=年级分支、教工/师傅=教职工分支） ==================
+// ================== 用例 7.1：单位字典按组织条线剪枝（学生=年级、教学科研=学院、后勤=处室/班组） ==================
 events.length = 0;
 // 教工：先把单位写回种子值，让断言与执行顺序无关（用例 8 会把它改成历史自由文本）
 const authStaff = await login('teacher01');
@@ -465,14 +486,14 @@ await fetch(`${BACKEND}/users/profile`, {
   body: JSON.stringify({
     realName: meStaff.realName,
     phone: meStaff.phone,
-    department: '教职工 土木工程学院',
+    department: '所属单位 土木工程学院',
     defaultSpaceId: meStaff.defaultSpaceId ?? null
   })
 });
 await gotoProfile(1272);
 const staffState = await evalJs(PROFILE_STATE);
-check('教工 单位回显为「教职工 土木工程学院」',
-  staffState.deptTriggerText === '教职工 土木工程学院', `trigger=${staffState.deptTriggerText}`);
+check('教工 单位回显为「所属单位 土木工程学院」',
+  staffState.deptTriggerText === '所属单位 土木工程学院', `trigger=${staffState.deptTriggerText}`);
 
 await evalJs(`(() => {
   const t = document.querySelector('.dd-trigger[aria-label="学院/部门"]');
@@ -481,18 +502,26 @@ await evalJs(`(() => {
   return 'clicked';
 })()`);
 check('教工 打开单位下钻面板', (await evalJs(PANEL_ROOT('学院/部门'))) === 'clicked');
-const staffRoot = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('教职工'), 8000);
-check('教工 根层只有「教职工」（看不到任何年级）',
-  JSON.stringify(staffRoot) === JSON.stringify(['教职工']), JSON.stringify(staffRoot));
+const staffRoot = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.includes('所属单位'), 8000);
+check('教工 根层只有「所属单位」（看不到任何年级）',
+  JSON.stringify(staffRoot) === JSON.stringify(['所属单位']), JSON.stringify(staffRoot));
 check('教工 根层不含年级分支',
   Array.isArray(staffRoot) && !staffRoot.some((n) => /级$/.test(n)), JSON.stringify(staffRoot));
+const intoStaffUnit = await evalJs(PANEL_PICK('学院/部门', '所属单位'));
+check('教工 下钻「所属单位」', intoStaffUnit === 'clicked', intoStaffUnit);
+const facultyUnits = await waitFor(PANEL_OPTS('学院/部门'), (v) => Array.isArray(v) && v.some((n) => n.endsWith('学院')), 8000);
+check('教工 只出教学科研单位（含计算机/土木工程学院）',
+  facultyUnits.includes('土木工程学院'), JSON.stringify(facultyUnits));
+check('教工 **不出现后勤单位**（堆叠现象回归：教师看不到维修处室/班组）',
+  Array.isArray(facultyUnits) && !facultyUnits.some((n) => n.includes('后勤') || n.endsWith('班组')), JSON.stringify(facultyUnits));
+await evalJs(`(() => { const t = document.querySelector('.dd-trigger[aria-label="学院/部门"]'); if (t) t.click(); return 1; })()`);
 collectErrors('教工单位字典');
 
-// 占位文案也按身份区分：未设单位的教职工看到的是「处室 / 班组」而不是「年级 / 学院」
+// 占位文案也按组织条线区分：后勤看到「处室 / 班组」、教学科研看到「学院 / 系」
 await login('worker01'); // 测试种子里 department 为空
 await gotoProfile(1272);
 const workerState71 = await evalJs(PROFILE_STATE);
-check('教工/师傅 未设单位时占位文案为「选择所属处室 / 班组」',
+check('后勤条线 未设单位时占位文案为「选择所属处室 / 班组」',
   workerState71.deptTriggerText === '选择所属处室 / 班组', `trigger=${workerState71.deptTriggerText}`);
 collectErrors('教工占位文案');
 
@@ -510,9 +539,9 @@ check('历史自由文本 已通过接口写入', putRes.code === 200, `code=${p
 
 await gotoProfile(1272);
 const state8 = await evalJs(PROFILE_STATE);
-// teacher01 是教职工 → 占位文案是 STAFF 版（占位符本身也按身份区分，见用例 7.1）
+// teacher01 是教学科研条线 → 占位文案是 FACULTY 版（占位符按组织条线区分，见用例 7.1）
 check('历史自由文本 选择器为空（回显不到）',
-  state8.deptTriggerText === '选择所属处室 / 班组', `trigger=${state8.deptTriggerText}`);
+  state8.deptTriggerText === '选择所属学院 / 系', `trigger=${state8.deptTriggerText}`);
 check('历史自由文本 页面提示「不在字典中」', state8.legacyNote.includes(LEGACY), state8.legacyNote);
 
 // 什么都不改直接保存：PUT /users/profile 是全量覆盖，历史值必须原样保留

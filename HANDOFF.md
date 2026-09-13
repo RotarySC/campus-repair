@@ -81,6 +81,51 @@
 - **测试**：`OrgTreeIntegrationTest` 加 3 例（8 例总计）→ `mvn test` **88/88**；探针 `assert-profile` 加角色化断言 → **78 条 ALL PASS**（连跑三轮幂等），`assert-drill` 仍 **130/130**。
 - 设计文档 §3.4 记录口径表（三行：学生/教工师傅/管理员）。
 
+## 2.2 身份与职能模型重构 —— 批次 1「语义改名」（2026-09-13，**已落地**）
+
+用户裁决：**身份唯一 + 职能可多值**；字典走 D1；根节点名改「所属单位」；一步到位做 B；三个后台接口纳入本轮；演示数据加兼职样例；老令牌自然过期。设计与批次见 `docs/20260913-1118-campus-repair-system-identity-role-model-design.md`，术语见 `CONTEXT.md`，决策见 `docs/adr/0001-…md`。
+
+**本批次改了什么（行为对现有账号基本零变化）**
+- **语义改名**：`sys_role` 4 职能码（`PLATFORM_ADMIN`/`DISPATCHER`/`WORKER`/`REPORTER`，其中 `USER_STUDENT`+`USER_TEACHER` 合并为 `REPORTER`，id 保留故 `sys_user_role` 无需重绑）；`sys_user.user_type` 4 条线（`STUDENT`/`FACULTY`/`LOGISTICS`/`ADMIN`）。44 处 `@PreAuthorize` 按等价表改名，14 处全限定写法归一。
+- **新增** `common/constant/IdentityCodes.java`（条线/职能常量 + 自助注册白名单）、`composables/useIdentity.ts`（前端唯一判据）、`ErrorCode.USER_NO_FUNCTION(1008)`。
+- **P0 修复**：注册的 `userType` 改为条线白名单，**自助注册只授 `REPORTER`**。
+- **删除** `roleCodes` 空集回退 `userType`（原来"删绑定反而升权"）。前端 5 处 `userType` 判定 → `has('职能')`；路由 `meta.roles` → `meta.functions`；**导航按职能取并集**；`RoleLabels` → `FunctionLabels`/`BranchLabels`/`identityLabelOf`；`RegisterView` 教工增选条线（教学科研/后勤保障）；`UserManageView` 筛选与标签改条线；删掉 `stores/auth.ts` 两个死 getter。
+- **导入**（`UserExcelImportListener`）：列语义改为「所属条线 + 职能(逗号分隔) + 工种/校区」，**含 `WORKER` 必须给工种与校区并同步建 `worker_profile`**（不变式的第一个执行点）。
+- **种子/生产 SQL**：`data-test.sql`（+测试资源副本，逐字节同步）、`data-demo.sql`（含**兼职样例** `sys_user_role (22, 11, 4)` = worker02 兼 REPORTER）、`sql/data.sql`、`sql/schema.sql` 注释；新增**生产迁移脚本** `sql/migration-20260913-identity.sql`（含迁移后自检与不变式查询）。
+- **测试**：6 个既有类按新语汇改造；新增 `RegisterWhitelistIntegrationTest`（5）+ `NoLegacyRoleCodeTest`（1，反漏改守卫，带 `文件:行号` 报告，**已用负向对照验证过会失败**）。
+
+**验收证据（本会话实测）**
+- `mvn test -f server/pom.xml` → **`Tests run: 94, Failures: 0, Errors: 0` / BUILD SUCCESS**（批次前 88）。
+- `tsc`（shared）+ `vue-tsc`（admin）均 **exit 0**。
+- 真机探针 `.scratch/assert-identity-batch1.mjs` → **22 条 ALL PASS**（多职能并集导航、首页优先级、顶栏中文称号、越权落 403、注册页身份+条线、页面无旧角色码残留）。
+- 接口级：`admin/logistics01/worker01/worker02/student02/teacher01` 登录返回新语汇；注册 `PLATFORM_ADMIN`/`WORKER`/`ADMIN` 均 `code=400`，`FACULTY` 成功且 `roleCodes=REPORTER`。
+
+**⚠️ 批次 1 留下的三件事（批次 2 已处理第 1 条）**
+1. ~~**堆叠现象仍在**~~ → **✅ 批次 2 已修**（见 §2.3）：教师条线只出学院、后勤条线只出后勤单位、学生只出年级、行政信息化只出信息中心，实测四棵树互不重叠。
+2. **批次 3 未做**：`PUT /users/{id}/functions`（职能分配，含不变式校验）与师傅档案 CRUD、用户台账 UI——**今天仍没有任何入口能改职能或建 `worker_profile`**（只有导入能建）。
+3. **批次 4 未做**：`repair_order_log.operator_role` 仍是混装词表，时间轴 27 条日志仍显示裸码。
+
+## 2.3 身份与职能模型重构 —— 批次 2「单位字典按组织条线剪枝」（2026-09-13，**已落地**）
+
+**这一步修掉的正是用户最初报的现象**：「教师能选维修班组、师傅能选学院」。走的是设计文档的 **D1**（条线只做单位节点上的标注，不做层级节点）。
+
+**改了什么**
+- **`audience` 从 2 值扩到 4 值**，取值与 `sys_user.user_type` **完全一致**（`STUDENT`/`FACULTY`/`LOGISTICS`/`ADMIN`）；`OrgNodeService` 的 `SUPPORTED_AUDIENCES` 与四个常量同步，`pruneByAudience` 的**剪枝位置**改到二级单位。
+- **剪枝语义补了一条**：*剪枝后没有任何子节点的中间节点会被整体剪掉*。「所属单位」根节点本身不限条线，否则它会作为空壳出现在**每一条**条线的树里（学生视角也会看到「所属单位」）——这条是实现时才暴露的（测试先失败），已写进 `AGENTS.md` §1 与设计文档。
+- **根节点改名**：`教职工` → **`所属单位`**，连带 `full_path_name` 与 8 个演示账号的 `sys_user.department` 前缀（`所属单位 后勤维修中心 电工班` 等）。新增 `所属单位 信息中心`（`ADMIN` 条线）。
+- **前端**：删掉 `orgAudienceOf()`（四条线收敛成两条的过渡实现），个人中心**直接把 `userType` 当 `audience` 传**；占位文案按条线三分（`BranchOrgPlaceholders`：学生「选择年级 / 学院」、教学科研「选择所属学院 / 系」、后勤保障「选择所属处室 / 班组」）。
+- **生产 SQL 补齐**：`sql/schema.sql` 补 `org_node` 建表（此前 11 张表里根本没有它）、`sql/data.sql` 补字典骨架种子；`sql/migration-20260913-identity.sql` 追加**批次 2 迁移段**（根改名 + 前缀替换 + 按命名规则打条线标注 + 三段自检：无 `STAFF` 残留 / 三条线各有可见单位 / `department` 能在字典整串命中）。
+
+**验收证据（本会话实测）**
+- `mvn test -f server/pom.xml` → **`Tests run: 94, Failures: 0, Errors: 0` / BUILD SUCCESS**（批次 2 无新增用例，`OrgTreeIntegrationTest` 由「顶层声明」改为「二级单位声明 + 4 值剪枝」两条改写，仍 8 例）。
+- `tsc`（shared）+ `vue-tsc`（admin）→ **exit 0**。
+- 接口级四棵树（同一个 token，只换 `audience`）：`FACULTY` → 计算机/土木/外国语/经济管理学院；`LOGISTICS` → 后勤保障处·调度中心 + 后勤维修中心(+5 班组)；`STUDENT` → 2023/2024/2025 级；`ADMIN` → 信息中心。全量树根层 = `2023级 | 2024级 | 2025级 | 所属单位`。
+- 真机探针：`assert-profile.mjs` → **85 条 ALL PASS**（78 → 85，新增的就是「教师看不到后勤单位」「后勤看不到任何学院」两条硬回归）；`assert-identity-batch1.mjs` → **22 条 ALL PASS**；`assert-drill.mjs` → **130/130** 无回归。
+
+**踩到的坑（产品无缺陷，已写进 AGENTS §2.2）**：`DrilldownCascader` 已选值时打开面板会**定位在「选中项所在那一层」而不是根层**（worker02 是三级路径 → 一开就是五个班组），我第一版条线断言漏了先点面包屑回根级，导致 3 条假失败。
+
+**批次 2 之后的遗留**：批次 3（职能分配 + 师傅档案 CRUD + 台账 UI）、批次 4（审计词表）仍未做；`注册页/Excel 导入` 的条线已能选，但**导入的「职能」列与建档不变式**在批次 1 已实现，故批次 3 只需补「改职能」与「档案维护」两个入口。
+
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
@@ -98,10 +143,25 @@
 | P3 | **二期遗留**：生产 `sql/schema.sql` 未同步 `org_node`（该文件本身只有 11 张表、连 `spatial_node` 都没有）——上线前应统一补齐生产 DDL | 二期设计文档 §5 |
 | 观察 | 二期把探针计数写进文档时又发现两处过期值：`assert-actions-align` 实为 **15 条**（文档原写 16/16）、`assert-drill` 改后为 **130 条**；计数请现跑现数，不要沿用文档 | `AGENTS.md` §2.2/§4 |
 
+### 3.1 身份系统专项分析发现（2026-09-13，**均已实测、一律未修**）
+
+报告：`docs/20260913-1045-campus-repair-system-identity-analysis.md`（含行号证据与复现命令）。用户指示：**先记录、后处理**。
+
+| 优先级 | 事项 | 证据 |
+| :--- | :--- | :--- |
+| ~~**P0**~~ | ~~`POST /api/v1/auth/register` 无 `userType` 白名单 → 任意人可自封 `SUPER_ADMIN` 并调通管理员接口~~ | **✅ 2026-09-13 批次 1 已修**：`userType` 改为组织条线白名单（`STUDENT`/`FACULTY`/`LOGISTICS`），自助注册一律只授 `REPORTER`；回归 `RegisterWhitelistIntegrationTest`（5 例）+ 实测 `PLATFORM_ADMIN`/`WORKER`/`ADMIN` 均 `code=400`。原始证据见分析报告 §3.1 |
+| P1 | 工单读接口 `GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` **无属主校验**（IDOR） | 报告 §3.2（student02 读到 student01 的姓名+手机号，界面照常渲染） |
+| P1 | `repair_order_log.operator_role` 三套词表混用、前端标签/CSS 只覆盖一套 → 27/77 条日志显示裸角色码且丢配色 | 报告 §3.3（另含教工提单被硬编码写成 `STUDENT` 的潜在错标） |
+| P1 | `is_first_login` 只在前端拦，后端不校验 | 报告 §3.4（未改密即可调业务接口） |
+| P1 | 无登出/无令牌吊销；~~且 `roleCodes` 为空时回退 `userType`~~ → **删角色绑定已不再等于升权**（批次 1 删掉了回退，改为登录/刷新报 `USER_NO_FUNCTION(1008)`），但**已签发 Access Token（2h）仍不受影响**，登出/jti 黑名单仍未做 | 报告 §3.5 + 批次 1 |
+| ~~P2~~ | ~~「身份判定双轨」：路由守卫按 `roleCodes`、界面（导航/首页/个人中心/师傅落点）按 `userType`~~ → **✅ 批次 1 已修**：前端统一走 `composables/useIdentity.ts` 的 `has('职能')`，路由用 `meta.functions`，多职能取并集 | 报告 §3.6 + 批次 1 |
+| P2 | 测试/生产不一致：`data-test.sql` 缺 `USER_TEACHER`（测试 profile 下教工注册必失败）；H2 测试 DDL 缺生产库的 `uk_username/uk_phone/uk_role_code/uk_user_role`；`sys_permission`/`sys_role_permission` 是代码零引用的死表 | 报告 §3.7 |
+| P3 | `/inventory/parts`（含指导价）、`/inventory/consumptions/{orderId}` 对所有登录用户开放 | 报告 §3.8 |
+
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（**二期最终基线：Tests run: 88, Failures: 0, Errors: 0 / BUILD SUCCESS**；一期为 80，二期主体 85，身份分支 +3 → 88）
+# 后端全量（**当前基线：Tests run: 94, Failures: 0, Errors: 0 / BUILD SUCCESS**。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 = 88 + RegisterWhitelist 5 + NoLegacyRoleCode 1）
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml
@@ -110,8 +170,11 @@ mvn test -f server/pom.xml
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json          # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json   # exit 0
 
-# 个人中心页面级断言（五角色/多档；含真实头像上传链路；二期加到 78 条）
-node .scratch/assert-profile.mjs            # → 78 条 ALL PASS（连跑三轮均绿 = 幂等；含按身份分支可见性）
+# 身份/职能批次 1 真机验收（22 条 ALL PASS；改 useIdentity/navItems/meta.functions 后必跑）
+node .scratch/assert-identity-batch1.mjs    # → ALL PASS（多职能并集导航/首页优先级/403/注册页条线/无旧码残留）
+
+# 个人中心页面级断言（五角色/多档；含真实头像上传链路；批次 2 已按新语汇重写）
+node .scratch/assert-profile.mjs            # → **85 条 ALL PASS**（含「教师看不到后勤单位」「后勤看不到任何学院」两条硬回归）
 node .scratch/diag-hover-media.mjs          # 证据：hover:none 只能用 setTouchEmulationEnabled 模拟
 
 # 既有探针回归（二期实测）
