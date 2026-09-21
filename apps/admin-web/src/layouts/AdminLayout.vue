@@ -116,6 +116,9 @@
     >
       <NotificationCenterDrawer @unread-updated="fetchUnreadCount" @select-order="handleSelectOrder" />
     </el-drawer>
+
+    <!-- 智能助手：悬浮气泡 + 抽屉（全角色可见，内容按职能裁剪） -->
+    <AssistantWidget @open-notifications="showNotificationDrawer = true" />
   </div>
 </template>
 
@@ -128,7 +131,9 @@ import { useAuthStore, httpClient } from '../stores/auth';
 import { useIdentity } from '../composables/useIdentity';
 import type { FunctionCode } from '../composables/useIdentity';
 import { BREAKPOINTS, useViewport } from '../composables/useViewport';
+import { visibleNavItems } from '../constants/navItems';
 import NotificationCenterDrawer from '../components/NotificationCenterDrawer.vue';
+import AssistantWidget from '../components/AssistantWidget.vue';
 
 interface NavItem {
   path: string;
@@ -142,46 +147,22 @@ interface NavItem {
   requires: FunctionCode | 'ADMIN_SIDE';
 }
 
-/** 管理员导航：顺序按使用频次与重要性排列，日常入口在上，只读看板在下 */
-const ADMIN_NAV_ITEMS: NavItem[] = [
-  { path: '/', label: '控制台概览', icon: 'Odometer', requires: 'ADMIN_SIDE' },
-  { path: '/dispatch', label: '后勤调度中心', icon: 'Headset', requires: 'ADMIN_SIDE' },
-  { path: '/reports/orders', label: '工单检索报表', icon: 'Document', requires: 'ADMIN_SIDE' },
-  { path: '/inventory', label: '耗材进销存台账', icon: 'Box', requires: 'ADMIN_SIDE' },
-  { path: '/spatial', label: '空间与分类字典', icon: 'Grid', requires: 'ADMIN_SIDE' },
-  { path: '/system/users', label: '用户台账管理', icon: 'User', requires: 'ADMIN_SIDE' }
-];
-
-/** 师生导航（Q8）：提单与跟单两个高频入口 */
-const STUDENT_NAV_ITEMS: NavItem[] = [
-  { path: '/student/submit', label: '提交报修', icon: 'EditPen', requires: 'REPORTER' },
-  { path: '/', label: '我的工单', icon: 'Tickets', requires: 'REPORTER' }
-];
-
-/** 师傅导航：作业台与个人中心（单树重构后师傅首次拥有全宽度可用导航） */
-const WORKER_NAV_ITEMS: NavItem[] = [
-  { path: '/worker/workbench', label: '我的工作台', icon: 'Suitcase', requires: 'WORKER' },
-  { path: '/profile', label: '个人中心', icon: 'User', requires: 'WORKER' }
-];
-
 const identity = useIdentity();
 
 /**
  * 导航 = **有职能的项的并集**。多职能账号（例如演示数据里同时持「维修作业」与「报修人」的
  * worker02）会同时看到两类入口——这正是「职能可叠加」的应有表现；
  * 管理端条目以 DISPATCHER/PLATFORM_ADMIN 判定（任一即可）。
+ *
+ * 清单本身已抽到 `src/constants/navItems.ts`：智能助手的「快捷入口」用的是**同一份**，
+ * 避免两处清单各自漂移。
  */
-const navItems = computed<NavItem[]>(() => {
-  const items = [...ADMIN_NAV_ITEMS, ...STUDENT_NAV_ITEMS, ...WORKER_NAV_ITEMS];
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const allowed =
-      item.requires === 'ADMIN_SIDE' ? identity.isAdminSide.value : identity.has(item.requires);
-    if (!allowed || seen.has(item.path)) return false;
-    seen.add(item.path);
-    return true;
-  });
-});
+const navItems = computed<NavItem[]>(() =>
+  visibleNavItems({
+    has: identity.has,
+    isAdminSide: identity.isAdminSide.value
+  })
+);
 
 const COLLAPSE_STORAGE_KEY = 'admin_sidebar_collapsed';
 

@@ -52,6 +52,22 @@
           <span v-if="categoryFullPathName" class="path-hint">{{ categoryFullPathName }}</span>
         </el-form-item>
 
+        <!-- 助手内联推荐：只提示、只建议，用户不点「采用」就不动表单 -->
+        <el-form-item v-if="assistantCandidates.length || assistantHint" label=" ">
+          <div class="assistant-inline">
+            <div class="assistant-inline-head">
+              <span class="assistant-inline-title">智能助手建议</span>
+              <el-button link size="small" @click="dismissAssistant">收起</el-button>
+            </div>
+            <p v-if="assistantHint" class="assistant-inline-hint">{{ assistantHint }}</p>
+            <SuggestionCardList
+              v-if="assistantCandidates.length"
+              :candidates="assistantCandidates"
+              @apply="applyAssistantCandidate"
+            />
+          </div>
+        </el-form-item>
+
         <el-divider content-position="left">现场详情与凭证</el-divider>
         <el-form-item label="现场情况" prop="description">
           <el-input
@@ -62,7 +78,7 @@
             show-word-limit
             placeholder="请详细描述故障现象（如爆水管、断闸跳闸、插座松动等）"
             style="width: 100%; max-width: 560px"
-            @input="saveDraft"
+            @input="onDescriptionInput"
           />
         </el-form-item>
 
@@ -112,17 +128,24 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { reactive, ref, onMounted, onBeforeUnmount } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, UploadRequestOptions, UploadUserFile } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
-import { compressImage } from '@campus/shared';
+import SuggestionCardList from '../../components/assistant/SuggestionCardList.vue';
+import {
+  ASSISTANT_DEGRADED_LABELS,
+  compressImage,
+  type AssistantCandidate,
+  type AssistantSuggestion
+} from '@campus/shared';
 
 const { isNarrowPhone } = useViewport();
 
+const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 
@@ -260,6 +283,122 @@ async function triggerDuplicateCheck() {
   } catch (_) {}
 }
 
+// ---------------------------------------------------------------------------
+// 智能助手内联推荐
+//   · 只建议、不自动改表单——必须用户点「采用」
+//   · 助手不可用时静默清空，绝不打断提单
+//   · 用户手动选了分类、或已对同一段描述点过「收起」，就不再打扰
+// ---------------------------------------------------------------------------
+
+const ASSISTANT_DEBOUNCE_MS = 600;
+
+const assistantCandidates = ref<AssistantCandidate[]>([]);
+const assistantHint = ref('');
+/** 已被用户收起的描述文本：同一段描述不再自动弹建议 */
+const dismissedDescription = ref('');
+let suggestTimer: number | undefined;
+
+function onDescriptionInput() {
+  saveDraft();
+  if (suggestTimer) window.clearTimeout(suggestTimer);
+  suggestTimer = window.setTimeout(() => {
+    void fetchAssistantSuggestion();
+  }, ASSISTANT_DEBOUNCE_MS);
+}
+
+function clearAssistant() {
+  assistantCandidates.value = [];
+  assistantHint.value = '';
+}
+
+function dismissAssistant() {
+  dismissedDescription.value = form.description.trim();
+  clearAssistant();
+}
+
+async function fetchAssistantSuggestion() {
+  const text = form.description.trim();
+  if (form.categoryId) {
+    clearAssistant();
+    return;
+  }
+  if (text.length < 2 || dismissedDescription.value === text) {
+    return;
+  }
+  try {
+    const res = await httpClient.post<AssistantSuggestion>('/assistant/suggest', { description: text });
+    if (res.code !== 200 || !res.data) {
+      clearAssistant();
+      return;
+    }
+    // 请求期间用户可能已经自己选了分类、或又改了描述——两种情况都不该再覆盖界面
+    if (form.categoryId || form.description.trim() !== text) {
+      return;
+    }
+    assistantCandidates.value = res.data.candidates || [];
+    if (res.data.noMatch) {
+      assistantHint.value =
+        '没能判断出具体细类，请手动选择；补充「哪个房间、什么声音、什么时候开始的」会更准。';
+    } else if (res.data.degradedReason) {
+      assistantHint.value = ASSISTANT_DEGRADED_LABELS[res.data.degradedReason];
+    } else {
+      assistantHint.value = '';
+    }
+  } catch (_) {
+    clearAssistant();
+  }
+}
+
+function applyAssistantCandidate(candidate: AssistantCandidate) {
+  const path = findIdPath(categoryOptions.value, candidate.categoryId);
+  if (!path) {
+    ElMessage.warning('该分类已停用，请手动选择其它细类');
+    return;
+  }
+  categoryPath.value = path;
+  onCategoryChange();
+  clearAssistant();
+  ElMessage.success(`已采用「${candidate.categoryName}」`);
+}
+
+/**
+ * URL 预填（助手「采用并提单」跳过来时带 categoryId / spaceId）。
+ *
+ * 两条语义刻意不同：
+ * · `categoryId` **覆盖**草稿——用户是从助手显式点过来的，意图比旧草稿新；
+ * · `spaceId` **只在本页为空时**填——不覆盖草稿里已选的位置，也不覆盖个人中心的默认位置。
+ * 应用完就 `router.replace` 摘掉 query，避免刷新时重复应用一次。
+ */
+function applyQueryPrefill() {
+  const rawCategoryId = route.query.categoryId;
+  const rawSpaceId = route.query.spaceId;
+  if (!rawCategoryId && !rawSpaceId) return;
+
+  const categoryId = Number(rawCategoryId);
+  if (Number.isFinite(categoryId) && categoryId > 0) {
+    const path = findIdPath(categoryOptions.value, categoryId);
+    if (path) {
+      categoryPath.value = path;
+      onCategoryChange();
+    }
+  }
+
+  const spaceId = Number(rawSpaceId);
+  if (!form.spaceId && Number.isFinite(spaceId) && spaceId > 0) {
+    const path = findIdPath(spaceOptions.value, spaceId);
+    if (path) {
+      spacePath.value = path;
+      onSpaceChange();
+    }
+  }
+
+  router.replace({ path: route.path });
+}
+
+onBeforeUnmount(() => {
+  if (suggestTimer) window.clearTimeout(suggestTimer);
+});
+
 /**
  * el-upload 自定义上传：resolve 即成功（file.response = { url }），reject 即失败。
  * 实际提交的图片 URL 在 onSubmit 时从 fileList 中已成功的条目派生。
@@ -327,6 +466,9 @@ onMounted(async () => {
   await Promise.all([loadSpaceOptions(), loadCategoryOptions()]);
   restoreDraft();
 
+  // 助手「采用并提单」带过来的预填（必须在选项加载完与草稿恢复之后，才能回显 id 路径）
+  applyQueryPrefill();
+
   // 若无草稿且用户绑定了默认空间，自动带出默认空间
   if (!form.spaceId && authStore.userInfo?.defaultSpaceId) {
     const defaultId = authStore.userInfo.defaultSpaceId;
@@ -363,5 +505,30 @@ onMounted(async () => {
   margin-left: 12px;
   color: #6b7280;
   font-size: 12px;
+}
+.assistant-inline {
+  width: 100%;
+  max-width: 560px;
+  padding: 10px 12px;
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 8px;
+  background: var(--el-color-primary-light-9);
+}
+.assistant-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.assistant-inline-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+.assistant-inline-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
 }
 </style>

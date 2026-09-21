@@ -5,6 +5,7 @@ export * from './types/evaluation';
 export * from './types/notification';
 export * from './types/analytics';
 export * from './types/profile';
+export * from './types/assistant';
 export * from './constants/status';
 export * from './constants/policy';
 export * from './constants/org';

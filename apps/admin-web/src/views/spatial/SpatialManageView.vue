@@ -69,7 +69,20 @@
           border
           style="width: 100%; margin-top: 16px;"
         >
-          <el-table-column prop="name" label="分类名称" width="260" />
+          <el-table-column prop="name" label="分类名称" width="260">
+            <template #default="{ row }">
+              <div class="category-name-cell">
+                <span>{{ row.name }}</span>
+                <!-- 助手知识：不单开一列（1272px 下会把「操作」列挤到换行），挂在名称下面 -->
+                <span v-if="row.keywords" class="category-assist-line">
+                  助手同义词：{{ row.keywords }}
+                </span>
+                <span v-if="row.selfHelpTip" class="category-assist-line">
+                  自助提示：{{ row.selfHelpTip }}
+                </span>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column prop="level" label="层级" width="100" align="center">
             <template #default="{ row }">
               <el-tag :type="row.level === 1 ? 'primary' : 'success'" size="small">
@@ -97,6 +110,7 @@
               >
                 添加细类
               </el-button>
+              <el-button link type="primary" size="small" @click="openEditCategoryDialog(row)">编辑</el-button>
               <el-button link type="danger" size="small" @click="handleDeleteCategory(row)">删除</el-button>
             </template>
           </el-table-column>
@@ -127,6 +141,14 @@
                 <span class="category-card__label">承诺SLA解决时限</span>
                 <span>{{ data.slaHours ? `${data.slaHours} 小时` : '—' }}</span>
               </div>
+              <div v-if="data.keywords" class="category-card__row">
+                <span class="category-card__label">助手同义词</span>
+                <span class="category-card__text">{{ data.keywords }}</span>
+              </div>
+              <div v-if="data.selfHelpTip" class="category-card__row">
+                <span class="category-card__label">自助提示</span>
+                <span class="category-card__text">{{ data.selfHelpTip }}</span>
+              </div>
               <div class="category-card__foot">
                 <el-button
                   link
@@ -138,6 +160,7 @@
                 >
                   添加细类
                 </el-button>
+                <el-button link type="primary" size="small" @click="openEditCategoryDialog(data)">编辑</el-button>
                 <el-button link type="danger" size="small" @click="handleDeleteCategory(data)">删除</el-button>
               </div>
             </div>
@@ -195,8 +218,12 @@
       </template>
     </el-dialog>
 
-    <!-- 分类创建弹窗 -->
-    <el-dialog v-model="categoryDialogVisible" title="创建故障分类" width="480px">
+    <!-- 分类创建/编辑弹窗 -->
+    <el-dialog
+      v-model="categoryDialogVisible"
+      :title="editingCategoryId ? '编辑故障分类' : '创建故障分类'"
+      width="520px"
+    >
       <el-form label-width="120px">
         <el-form-item label="分类名称">
           <el-input v-model="categoryForm.name" placeholder="如：水暖设施 / 水龙头破裂" />
@@ -213,10 +240,35 @@
         <el-form-item label="SLA时效(小时)">
           <el-input-number v-model="categoryForm.slaHours" :min="1" :max="168" />
         </el-form-item>
+        <el-form-item label="助手同义词">
+          <el-input
+            v-model="categoryForm.keywords"
+            type="textarea"
+            :rows="2"
+            maxlength="255"
+            show-word-limit
+            placeholder="逗号分隔，如：水龙头,龙头,滴水,关不紧"
+          />
+          <div class="form-tip">
+            供智能助手判断故障类别：用户描述里出现这些词就会推荐本分类。**单个词请写 2 个字以上**
+            （「水」「灯」这类单字会被忽略，只会制造噪声）。
+          </div>
+        </el-form-item>
+        <el-form-item v-if="categoryForm.level === 2" label="自助排查提示">
+          <el-input
+            v-model="categoryForm.selfHelpTip"
+            type="textarea"
+            :rows="3"
+            maxlength="255"
+            show-word-limit
+            placeholder="多个步骤用 | 分隔，如：先关闭角阀|用盆桶接水|拍照留存现场"
+          />
+          <div class="form-tip">提交报修前展示给师生「可以先自己试试」的步骤，只提示、不阻断提单。</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="categoryDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitCreateCategory">确定</el-button>
+        <el-button type="primary" @click="submitCategoryForm">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -257,12 +309,16 @@ async function loadAdminUsers() {
 }
 
 const categoryDialogVisible = ref(false);
+/** 非空表示当前弹窗处于「编辑」态（否则是新建） */
+const editingCategoryId = ref<number | null>(null);
 const categoryForm = reactive({
   parentId: 0,
   level: 1,
   name: '',
   workerSkillCode: 'PLUMBER',
-  slaHours: 24
+  slaHours: 24,
+  keywords: '',
+  selfHelpTip: ''
 });
 
 function getLevelLabel(level: number) {
@@ -370,26 +426,61 @@ function handleDeleteNode(node: any) {
 }
 
 function openCreateCategoryDialog(parentId: number, level: number) {
+  editingCategoryId.value = null;
   categoryForm.parentId = parentId;
   categoryForm.level = level;
   categoryForm.name = '';
+  categoryForm.workerSkillCode = 'PLUMBER';
+  categoryForm.slaHours = 24;
+  categoryForm.keywords = '';
+  categoryForm.selfHelpTip = '';
   categoryDialogVisible.value = true;
 }
 
-async function submitCreateCategory() {
+/** 编辑：把行上的值填进同一个弹窗（后端 `PUT /categories` 支持部分字段，null 表示不改） */
+function openEditCategoryDialog(row: any) {
+  editingCategoryId.value = row.id;
+  categoryForm.parentId = row.parentId ?? 0;
+  categoryForm.level = row.level;
+  categoryForm.name = row.name || '';
+  categoryForm.workerSkillCode = row.workerSkillCode || 'PLUMBER';
+  categoryForm.slaHours = row.slaHours ?? 24;
+  categoryForm.keywords = row.keywords || '';
+  categoryForm.selfHelpTip = row.selfHelpTip || '';
+  categoryDialogVisible.value = true;
+}
+
+async function submitCategoryForm() {
   if (!categoryForm.name.trim()) {
     ElMessage.warning('请输入分类名称');
     return;
   }
+  // 两列助手知识一律传字符串（含空串）：空串才是"清空"，不传则后端视为"本次不修改"
+  const payload: Record<string, unknown> = {
+    name: categoryForm.name.trim(),
+    workerSkillCode: categoryForm.workerSkillCode,
+    slaHours: categoryForm.slaHours,
+    keywords: categoryForm.keywords.trim(),
+    selfHelpTip: categoryForm.level === 2 ? categoryForm.selfHelpTip.trim() : categoryForm.selfHelpTip
+  };
   try {
-    const res = await httpClient.post<any>('/categories', categoryForm);
+    let res;
+    if (editingCategoryId.value) {
+      res = await httpClient.put<any>('/categories', { id: editingCategoryId.value, ...payload });
+    } else {
+      res = await httpClient.post<any>('/categories', {
+        parentId: categoryForm.parentId,
+        level: categoryForm.level,
+        ...payload
+      });
+    }
     if (res.code === 200) {
-      ElMessage.success('创建分类成功');
+      ElMessage.success(editingCategoryId.value ? '分类已更新' : '创建分类成功');
       categoryDialogVisible.value = false;
       loadCategoryTree();
     }
   } catch (err: any) {
-    ElMessage.error(err.message || '创建分类失败');
+    ElMessage.error(err.message || (editingCategoryId.value ? '更新分类失败' : '创建分类失败'));
   }
 }
 
@@ -546,6 +637,29 @@ onMounted(() => {
 .category-card__label {
   flex: 0 0 108px;
   color: #909399;
+}
+.category-card__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-all;
+}
+/* 分类名称下的助手知识（不单开一列，避免把「操作」列挤到换行） */
+.category-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.5;
+}
+.category-assist-line {
+  font-size: 12px;
+  color: #909399;
+  word-break: break-all;
+}
+.form-tip {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
 }
 .category-card__foot {
   display: flex;
