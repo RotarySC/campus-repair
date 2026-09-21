@@ -93,6 +93,7 @@ public class InventoryAndFinishIntegrationTest {
     private Long testCampusId;
     private Long testRoomId;
     private Long testCategoryId;
+    private SysUser testStudent;
     private SysUser worker1;
     private SysUser worker2;
     private SparePart partValve;
@@ -121,8 +122,9 @@ public class InventoryAndFinishIntegrationTest {
         cat = categoryService.createCategory(cat);
         testCategoryId = cat.getId();
 
-        worker1 = createWorker("inv_worker_01", "水暖张师傅", "13812340001");
-        WorkerProfile p1 = new WorkerProfile();
+        testStudent = createStudent("inv_student_01", "耗材测试同学", "13812340099");
+
+        worker1 = createWorker("inv_worker_01", "水暖张师傅", "13812340001");        WorkerProfile p1 = new WorkerProfile();
         p1.setUserId(worker1.getId());
         p1.setSkillCode("GENERAL");
         p1.setCampusId(testCampusId);
@@ -182,6 +184,33 @@ public class InventoryAndFinishIntegrationTest {
         return u;
     }
 
+    /**
+     * 本类**自带**一个报修人，而不是复用种子里的 student01。
+     *
+     * <p>原因（实测踩到的跨类污染）：本类没有 {@code @Transactional}（要验异步派单与
+     * 真实事务提交），提交的工单会**留在库里**。此前它写死 {@code submitOrder(3L, …)}，
+     * 于是 student01 名下多出 2 张 IN_PROGRESS + 1 张 PENDING_ACCEPTANCE 的残留单；
+     * 而 {@code PersonalCenterIntegrationTest#testRepairSummaryBuckets} 对 student01 的
+     * 分桶是**精确计数**，一旦 surefire 的文件枚举顺序/耗时变化（例如新增测试类）就会
+     * 报 {@code processingCount expected 2 but was 4}。
+     *
+     * <p>同一个约定在 `AnalyticsCockpitIntegrationTest`（自建大屏测试师生）与
+     * `PersonalCenterIntegrationTest`（`OTHER_STUDENT_ID = 99L`）里已经用过：
+     * **会提交数据的测试类不要借用别人在断言的账号**。
+     */
+    private SysUser createStudent(String username, String realName, String phone) {
+        SysUser u = new SysUser();
+        u.setUsername(username);
+        u.setRealName(realName);
+        u.setPhone(phone);
+        u.setPassword(passwordEncoder.encode("password"));
+        u.setUserType("STUDENT");
+        u.setStatus(1);
+        u.setIsFirstLogin(0);
+        userMapper.insert(u);
+        return u;
+    }
+
     private RepairOrder createAssignedAndAcceptedOrder(SysUser worker) {
         WorkOrderSubmitRequest sub = new WorkOrderSubmitRequest();
         sub.setSpaceId(testRoomId);
@@ -189,9 +218,9 @@ public class InventoryAndFinishIntegrationTest {
         sub.setDescription("洗手池水管角阀漏水测试" + System.currentTimeMillis());
         sub.setUrgencyLevel(1);
         sub.setAppointmentPeriod("工作日上午08:30-11:30");
-        sub.setApplicantPhone("13800000003");
+        sub.setApplicantPhone(testStudent.getPhone());
 
-        WorkOrderSubmitResultVO subRes = workOrderService.submitOrder(3L, sub);
+        WorkOrderSubmitResultVO subRes = workOrderService.submitOrder(testStudent.getId(), sub);
         Long orderId = subRes.getOrderId();
 
         // 稍微休眠 100ms 确保异步事件已降级入池

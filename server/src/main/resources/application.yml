@@ -29,3 +29,16 @@ app:
   file:
     upload-dir: ./uploads/
     max-size-mb: 10
+  assistant:
+    # 智能助手的大模型增强（**双层开关的第一层**：能力是否就绪）。
+    # 必须同时满足：本层 enabled+三项配置齐全 **且** sys_config.assistant_llm_enabled=1。
+    # 默认全关 ⇒ 助手用本地规则引擎，零外部依赖、离线可用。
+    # 密钥只从环境变量注入，不落库、不进日志。
+    llm:
+      enabled: ${ASSISTANT_LLM_ENABLED:false}
+      base-url: ${ASSISTANT_LLM_BASE_URL:}
+      api-key: ${ASSISTANT_LLM_API_KEY:}
+      model: ${ASSISTANT_LLM_MODEL:}
+      # 连接与读取超时：超时即降级为纯规则，绝不拖住提单页
+      timeout-ms: ${ASSISTANT_LLM_TIMEOUT_MS:3000}
+      max-tokens: 64

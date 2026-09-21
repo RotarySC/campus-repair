@@ -14,6 +14,10 @@ public class RepairCategoryVO implements Serializable {
     private Integer level;
     private String workerSkillCode;
     private Integer slaHours;
+    /** 智能助手同义词（分隔符见 RepairCategory#keywords）；字典页可编辑 */
+    private String keywords;
+    /** 提交前自助排查提示，多步用 `|` 分隔；字典页可编辑 */
+    private String selfHelpTip;
     private Integer sortOrder;
     private Integer status;
     private List<RepairCategoryVO> children = new ArrayList<>();

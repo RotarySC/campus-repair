@@ -107,6 +107,8 @@ CREATE TABLE repair_category (
   level TINYINT NOT NULL DEFAULT 1,
   worker_skill_code VARCHAR(32),
   sla_hours INT NOT NULL DEFAULT 24,
+  keywords VARCHAR(255) DEFAULT NULL,
+  self_help_tip VARCHAR(255) DEFAULT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   status TINYINT NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

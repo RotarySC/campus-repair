@@ -1,0 +1,39 @@
+package com.campus.repair.modules.assistant.vo;
+
+import lombok.Data;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+
+/** 助手推荐结果。 */
+@Data
+public class AssistantSuggestionVO implements Serializable {
+
+    /** 实际使用的引擎：{@code RULE} 或 {@code RULE+LLM} */
+    private String engine;
+
+    /**
+     * 降级原因（仅在"本可以用大模型但没成功"时非空）：
+     * {@code LLM_TIMEOUT} / {@code LLM_ERROR} / {@code LLM_INVALID_RESPONSE}。
+     * 大模型**本就没开启**时为 {@code null}——那是正常模式，不是降级。
+     */
+    private String degradedReason;
+
+    /** 一条都没命中：此时前端应展示 {@link #fallbackCategories} 而不是硬猜 */
+    private boolean noMatch;
+
+    private List<AssistantCandidateVO> candidates = new ArrayList<>();
+
+    /** 首候选自带的自助排查步骤（可能为空） */
+    private List<String> selfHelpTips = new ArrayList<>();
+
+    /** {@code noMatch=true} 时回退给出的前几个大类，让用户自己去挑 */
+    private List<FallbackCategory> fallbackCategories = new ArrayList<>();
+
+    @Data
+    public static class FallbackCategory implements Serializable {
+        private Long id;
+        private String name;
+    }
+}
