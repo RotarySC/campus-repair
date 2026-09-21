@@ -86,6 +86,18 @@
    - 结合分布式锁与双重负载校验（`incrementCurrentLoadAtomic`），杜绝极端并发下师傅负载突破 `max_load` 上限；
    - 无可用师傅或瞬时全员满载时平滑降级为待人工调度（`MANUAL_DISPATCH`）。
 
+4.1 **智能助手（报修人辅助入口，2026-09-21 新增）**
+   - 右下悬浮气泡 + 抽屉，**全角色可见、内容按职能裁剪**（非报修职能只保留快捷入口与制度问答）；
+   - **判断故障类别**：用大白话描述现象 → 给出候选细类（含大类路径、对应工种、承诺 SLA、置信度分档、命中的词），可「采用并提单」一键带参跳到提单页并预填；
+   - **本地规则引擎为默认**（零外部依赖、离线可用）：叶子名命中 > 关键词命中 > 大类名命中，同分按 `sortOrder`/`id` 保证确定性；一条都没命中就如实说"判断不了"并回退列出大类，**不硬猜**；
+   - **大模型增强是可选且默认关**（`app.assistant.llm.*` **且** `sys_config.assistant_llm_enabled=1` 才生效）：只能追加/重排候选、不得淘汰规则命中；超时/报错/格式异常一律降级为纯规则且接口仍成功；只发描述与封闭分类清单，不发姓名/手机号/单位；
+   - **提交前自助排查**：按细类给出 2~3 步自救建议（如"先断开该插座上所有电器再复位空开"），若已解决就不必报修；
+   - **快捷入口**与侧边栏导航**同源**（同一份 `navItems`），不会出现"导航里没有、助手还推荐"的漂移；
+   - **我的工单进度速查**：最近一张单的当前状态 + 「下一步该做什么」（状态机全 10 态各有专属文案）；
+   - **制度问答**：上门时效、预约时段、加急规则、防重单、72 小时超时自动核销、返工阈值等，数值全部取自系统参数；
+   - **铁律：助手只出建议**——不自动提单、不自动改表单；助手整体不可用时提单页照常工作。
+   - 助手知识（同义词 + 自助排查提示）落在 `repair_category` 的 `keywords`/`self_help_tip` 两列，在「空间与分类字典」页可编辑；生产库升级用 `sql/migration-20260921-assistant.sql`。
+
 5. **后勤调度中心双栏分屏工作台 (`Issue 06`)**
    - 左栏 55% 待办调度池：分类过滤派单失败、师傅转派、加急单与返工单，支持关键字检索；
    - 右栏 45% 师傅负荷看板：实时彩色进度条展示在修负荷（绿色安全、橙色临界、红色已满）及今日完工战绩；
@@ -194,14 +206,22 @@ pnpm run dev:admin
 | :--- | :--- | :--- |
 | `JWT_SECRET` | JWT 双令牌签名密钥，**生产必填**。不设置时启动打 WARN 并沿用内置默认密钥——任何拿到源码的人都能离线伪造令牌 | 内置开发密钥（启动告警） |
 | `APP_CORS_ALLOWED_ORIGINS` | 跨域精确来源白名单（逗号分隔，非通配符）。白名单外来源的预检与实际请求一律 403 | `http://localhost:3000` |
+| `ASSISTANT_LLM_*` | **智能助手的大模型增强，默认全关**。需同时满足：`ASSISTANT_LLM_ENABLED=true` + `ASSISTANT_LLM_BASE_URL`/`ASSISTANT_LLM_API_KEY`/`ASSISTANT_LLM_MODEL` 三项齐全（OpenAI 兼容的 `/chat/completions`），**且** `sys_config.assistant_llm_enabled=1`。密钥只从环境变量注入，不落库、不进日志；缺任一即退回本地规则引擎 | 关闭（纯规则） |
 
 ```powershell
 # 生产启动示例（密钥长度至少 32 字节，否则 JJWT HS256 拒绝签名）
 $env:SPRING_PROFILES_ACTIVE = "dev"
 $env:JWT_SECRET = "<独立的随机长密钥>"
 $env:APP_CORS_ALLOWED_ORIGINS = "https://repair.example.edu.cn"
+# 可选：打开智能助手的大模型增强（不设置则纯本地规则，功能完整可用）
+$env:ASSISTANT_LLM_ENABLED = "true"
+$env:ASSISTANT_LLM_BASE_URL = "https://<openai-compatible-gateway>/v1"
+$env:ASSISTANT_LLM_API_KEY  = "<密钥>"
+$env:ASSISTANT_LLM_MODEL    = "<模型名>"
 mvn spring-boot:run
 ```
+
+> **智能助手的两个运行期开关**（改 `sys_config` 即可，不必重启）：`assistant_enabled=0` 让前端整块不渲染入口（回滚用）；`assistant_llm_enabled=0/1` 控制大模型增强。
 
 > 前端以同源相对路径 `/api/v1` 访问后端，推荐生产采用**同源反向代理**同时转发 `/api` 与 `/uploads`（见 AGENTS.md 部署约束）；跨域白名单只服务于前后端分域部署的场景。
 
@@ -262,15 +282,16 @@ mvn spring-boot:run
 系统全流程坚持测试先行与代码审查闭环，所有状态机流转、并发锁与数据一致性均具备完整的单元与集成测试套件防护：
 
 ```powershell
-# 1. 运行后端 112 项单元与高并发集成测试套件
+# 1. 运行后端 147 项单元与高并发集成测试套件
 mvn test -f server/pom.xml
 
-# 2. 运行前端 Monorepo 全量静态类型检查（两包）
+# 2. 运行前端 Monorepo 全量静态类型检查（两包；.vue 单文件组件需用 vue-tsc，见 AGENTS.md §2）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json
 ./node_modules/.bin/tsc.CMD --noEmit -p apps/admin-web/tsconfig.json
 ```
 
 ### 核心测试套件分布
+- `AssistantRuleEngineTest` / `AssistantApiIntegrationTest` / `AssistantLlmClientTest` / `OrderStatusNarrativeTest`：智能助手的规则打分与确定性排序（叶子名 +10 > 关键词 +5 > 大类名 +3、<2 字的词忽略、同分按 `sortOrder`/`id`）、无命中不硬猜、按职能分档鉴权（推荐与进度仅报修人，`WORKER`/`PLATFORM_ADMIN` 落 403）、总开关关闭时返回空结果、FAQ 数值取自系统参数、大模型降级矩阵（超时/报错/非法 JSON 一律回退纯规则且 HTTP 仍 200）与封闭集过滤；
 - `AuthIntegrationTest`：双 Token 鉴权、密码错输 3 次图形验证码、Token 静默刷新拦截、Redis 不可用时的内存降级兜底（登录成功 + 失败计数兜底）；
 - `FirstLoginEnforcementIntegrationTest`：首登未改密时业务端点被拦成 `1009`、改密端点/本人资料/换票仍放行、改密后新票放行而旧票仍被拦；
 - `LogoutRevocationIntegrationTest`：登出吊销双令牌（Access 立即 401、Refresh 换票报 1005）、吊销只作用于被出示的令牌、登出幂等不抛错、Refresh Token 走查询参数兜底；
