@@ -1,6 +1,7 @@
 # 交接文档 (HANDOFF) — 个人中心 / 身份模型批次 1+2 / P1 安全项 / 批次 4 审计词表
 
-> **日期**：2026-09-13（P1 + 批次 4 为同日第三轮追加）　**分支**：`feat/personal-center-org-tree`（未合回 `master`；一期已提交在 `master`）
+> **记录日期**：2026-09-13（P1 + 批次 4 为同日第三轮追加）　**状态同步**：2026-09-21（只核对提交与运行现状，未复跑测试）
+> **分支**：`feat/personal-center-org-tree`（未合回 `master`；一期已提交在 `master`）。相对 `master` 共 16 个提交（末位是本次 2026-09-21 文档同步，只动本文件与 `AGENTS.md` §2.1），工作区干净
 > **机制与陷阱已沉淀在 `AGENTS.md`**：本文件只写「状态 + 待办 + 证据 + 环境」。相关条目：§1「个人中心（`/profile`）」「单位组织字典 `modules/org`」「身份与授权模型」、§2.1「✅ 当前后端测试基线」、§2.2 四条 CDP 探针陷阱、§4「审计词表只有一个词表」「工单读接口有属主校验」「首登改密是服务端强制的」「登出与令牌吊销」「非 JSON 的 Content-Type 曾经是 500」等。
 > **本次未传参数**，未针对后续主题做定向裁剪。设计文档：一期 `docs/20260913-0140-campus-repair-system-personal-center-design.md`、二期 `docs/20260913-0950-campus-repair-system-org-tree-department-cascader-design.md`、身份模型 `docs/20260913-1118-campus-repair-system-identity-role-model-design.md`（§5.4 是批次 4 的实现补充）。
 
@@ -12,19 +13,20 @@
 2. **范围（用户选定）**：基础重整（账户概览 + 资料维护 + 安全改密 + 顶栏入口）＋ 师生「我的报修概览」＋ 师傅「我的作业概览」＋ 头像上传；**不做**师傅在岗/休息自助开关、管理员调度统计；**入口只放顶栏用户菜单**。
 3. **后端**：`GET /users/me` 由薄 principal 改为完整 `UserProfileVO`（登录响应用同一类型/同一 builder，删掉两份重复 builder）；`PUT /users/profile` 改全量覆盖；新增 `PUT /users/me/avatar`、`GET /users/me/repair-summary`（师生）、`GET /users/me/worker-profile`（师傅）；改密新增强度规则。跨模块一律走既有 Service 接口（`WorkOrderStatisticsService` / `SpatialNodeService`），**零新增跨模块 VO 引用**。
 4. **前端**：`PersonalCenterView.vue` 重构为「左栏 账户概览＋资料维护 / 右栏 安全改密＋角色化统计区」；顶栏用户菜单加「个人中心」；顶栏头像改 `:src`；进页面/外壳挂载用 `/users/me` 刷新登录快照；`ROLE_LABELS` 三处重复收敛到 shared。
-5. **验证**：`mvn test` **80/80 BUILD SUCCESS**；`tsc` + `vue-tsc` exit 0；新增 `.scratch/assert-profile.mjs` **32 条断言 ALL PASS**（用 `Select-String "^PASS"` 数过，别凭印象写数字）；四条既有探针零回归（126/126、42/42、16/16、14/14）。
+5. **验证（截至 2026-09-13 全部四轮的现行基线；1~4 条是一期目标，逐轮明细见 §2.1~§2.7）**：`mvn test -f server/pom.xml` → **`Tests run: 112, Failures: 0, Errors: 0` / BUILD SUCCESS**（一期 80 → 二期 85 → 身份批次 1/2 的 94 → 评审 95 → P1+批次 4 的 112）；`tsc`(shared) + `vue-tsc`(admin) exit 0；入库探针 **9 个文件**（7 个 `assert-*` + `cdp-raw.mjs` + `verify-p1-batch4.ps1`），计数见 §4（**均为 2026-09-13 记录值，2026-09-21 同步未复跑**）。
 6. **顺带修掉 3 个既有问题**（都不是本轮引入）：① `updateById` 跳 null 导致「清空字段」写不进库；② `AnalyticsAggregationEquivalenceTest#testLiteralAggregateValues` **在 00:00~03:00 跑必失败**（旧基线"绿"是假象，真实基线是 70 用例带 1 必失败）；③ `application-test.yml` 缺 `encoding: UTF-8` 导致测试库种子中文乱码。
-7. **服务现状**：后端 8080（本会话重启过，跑的是新代码）、前端 3000（本会话以 `danger-full-access` 启动）、Edge 9222 均在跑。
+7. **提交与运行现状（2026-09-21 现测）**：分支相对 `master` **16 个提交**（含本文件的同步提交）、工作区干净（§1）；后端 8080（PID 9680/13544，11:28 启动 = **含 P1 + 批次 4 的最新后端**）、前端 3000、Edge 9222 均在跑，CDP 代理 3456 未启动（§5）。
 
 ## 1. 仓库与分支状态
 
 | 项 | 值 |
 | :--- | :--- |
 | 当前分支 | `feat/personal-center-org-tree`（二期；一期在 `master`） |
-| 本会话提交 | **7 个**：固化 `bdfead4` 后端与数据 / `177cfd4` 前端 / `a954ff0` 文档与 ADR / `cd93c71` AGENTS+HANDOFF+探针（见 §2.4）；`9c54821` 固化记录；**评审修复 `9753e0b` 后端与数据 / `337c2e8` 前端**（见 §2.5）。分支上此前的二期提交为 `f6fc6ee`、`d0026c1`（二期基线 `master@76bdba1`） |
-| 工作区 | **已无未提交改动**（每次提交后现测 `git status -uno` 输出为空）；仅剩 `.scratch/` 与 `.zcode/` 下的未跟踪产物 |
-| 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期/评审 `git diff master HEAD`；本次固化 `git diff d0026c1 HEAD` |
-| 未跟踪噪声 | `.scratch/` 下探针与截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）、`.zcode/`；**已入库 7 个探针**（`assert-profile` / `assert-drill` / `assert-shell-toggle` / `assert-actions-align` / `assert-switch-plain` + 本次入库的 `assert-identity-batch1` 与其依赖 `cdp-raw`），其余 20+ 未跟踪（含 `diag-hover-media.mjs`、`diag-category-align*.mjs`、`diag-identity-timeline.mjs`——AGENTS.md 引用它们作为可复现证据，**仍未入库**） |
+| 提交总数 | 相对 `master` 共 **16 个**：`f6fc6ee`/`d0026c1`（二期基线）+ **13 个**由本交接覆盖的三轮会话产生（见下行）+ **1 个本次文档同步**（2026-09-21，`git log -1` 即它；刻意不写死哈希，否则每次 `--amend` 都会让本行过期） |
+| 本交接覆盖的提交（13 个，**均已入库**） | 批次 1+2 按层固化 **4 个**：`bdfead4` 后端与数据 / `177cfd4` 前端 / `a954ff0` 文档与 ADR / `cd93c71` AGENTS+HANDOFF+探针（见 §2.4）；`9c54821` 固化记录；评审修复 **2 个**：`9753e0b` 后端与数据 / `337c2e8` 前端（见 §2.5）；`d607c6d` 评审文档；P1+批次 4 **2 个**：`e5d5af3` 后端（安全项 + 词表）/ `137ff5c` 前端（登出吊销 + 换票）（见 §2.6）；文档回填 **3 个**：`f0b262d` AGENTS/HANDOFF+探针入库 / `d8c5ff5` README+分析报告+ADR 0002 / `68c2941` README §3.2 补黑名单（见 §2.7） |
+| 工作区 | **已无未提交改动**（2026-09-21 现测 `git status -uno` 输出为空）；仅剩 `.scratch/`（26 项）与 `.zcode/` 下的未跟踪产物 |
+| 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期/评审 `git diff master HEAD`；批次 1+2 固化 `git diff d0026c1 HEAD`；P1+批次 4 `git diff 9c54821 HEAD`（`f0b262d` 之前） |
+| 未跟踪噪声 | `.scratch/` 下截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）与诊断脚本、`.zcode/`；**已入库 9 个文件**＝7 个 `assert-*` 探针（`assert-profile` / `assert-drill` / `assert-shell-toggle` / `assert-actions-align` / `assert-switch-plain` / `assert-identity-batch1` / `assert-audit-vocab`）+ 依赖 `cdp-raw.mjs` + `verify-p1-batch4.ps1`；仍未跟踪 20+（含 `assert-dual.mjs`、`assert-cards-interact.mjs`、`assert-cockpit-merged.mjs`、`narrow-walkthrough.mjs` 等探针，以及 `diag-hover-media.mjs`、`diag-category-align*.mjs`、`diag-identity-timeline.mjs`——AGENTS.md 引用它们作为可复现证据，**仍未入库**） |
 | 遗留悬空文件 | `.scratch/commit-msg3.txt`（历史遗留的临时提交信息文件，可删） |
 
 ## 2. 本会话改动清单
@@ -168,7 +170,7 @@
 
 **本轮未修（明确记录，不是遗漏）**：批次 3（`PUT /users/{id}/functions` + 师傅档案 CRUD + 台账 UI）、批次 4 的**词表统一**（本轮只把标签/配色补齐，列内仍是历史码与条线码混装）、设计 §5.2 的 `LoginUserPrincipal` + JWT `userType` claim、`data-test.sql` 补教工账号、以及 §3.1 的 P1 安全项（IDOR / `is_first_login` 后端拦截 / 登出与令牌吊销）。
 
-## 2.6 P1 安全项 + 批次 4 审计词表（2026-09-13 第三轮，**工作区已落地，尚未提交**）
+## 2.6 P1 安全项 + 批次 4 审计词表（2026-09-13 第三轮，**已提交 `e5d5af3` 后端 + `137ff5c` 前端**）
 
 **用户指示**：「先进行 P1，然后批次 4」。两个 either/or 由用户裁决：① 会话吊销走 **A 方案**（`POST /auth/logout` + jti 黑名单，而非"缩短 TTL + 文档声明"）；② 批次 4 的演示种子**改写成新职能码**（而非"保留旧码只修展示层"）。
 
@@ -209,7 +211,7 @@
 
 **本轮未修（明确记录）**：批次 3（职能分配 + 师傅档案 CRUD + 台账 UI）；`repair_order_log.operator_role` 的**生产历史行不 backfill**（审计表不可篡改，只做展示层兼容）；`is_first_login` 的拦截是"令牌内标记"而非每次查库，故**已签发且未改密的旧票在 2h 内仍可用**（与"老令牌自然过期"同一口径）；§3.1 的其余 P1/P2（`/inventory/parts` 暴露面、测试/生产 DDL 不一致、`sys_permission` 死表等）仍未动。
 
-## 2.7 文档回填（2026-09-13，P1 + 批次 4 之后的文档同步）
+## 2.7 文档回填（2026-09-13，P1 + 批次 4 之后的文档同步；**已提交 `f0b262d` / `d8c5ff5` / `68c2941`**）
 
 **背景**：§2.6 的改动落在代码与测试上，文档只更新了 `AGENTS.md`/`HANDOFF.md`/`CONTEXT.md`/身份设计文档四处。本轮回填其余文档，并处理"历史文档是否要改"的判断。
 
@@ -242,7 +244,7 @@
 | P3 | `sys_user.phone/username` 唯一索引缺失（唯一性仅 Service 层校验，存在竞态） | 设计文档 §7.5 |
 | P3 | `UserService` 与 `LoginResponseVO` 的资料装配虽已去重，但 `AuthService` 仍直接注入 `SysUserMapper`（历史遗留越界，见 §1 模块边界条） | `AGENTS.md` §1 |
 | 观察 | `WorkerService.getWorkerBoardList` 里 `avgHours ?? 1.5` 与 `rating_avg` 默认 5.00 属「看起来正常」的兜底值，与 §3「不虚增好评」精神相悖（本轮**未动**调度中心，只在个人中心按"零完工显示 `—`"处理） | `AGENTS.md` §4 仪表盘假值条 |
-| 可选 | `.scratch/` 入库策略：**已入库 7 个探针**（5 个既有 + `assert-identity-batch1.mjs` + 其依赖 `cdp-raw.mjs`）；`diag-*.mjs`（`diag-hover-media` / `diag-category-align*` / `diag-identity-timeline`，AGENTS.md 引为可复现证据）与 20+ 截图产物仍未跟踪，另有历史遗留的 `commit-msg3.txt`（可删） | §1、§2.4 |
+| 可选 | `.scratch/` 入库策略：**已入库 9 个文件**（7 个 `assert-*` 探针 + `cdp-raw.mjs` + `verify-p1-batch4.ps1`）；仍为未跟踪的有 18 个探针/诊断脚本（`assert-dual` / `assert-cards-interact` / `assert-cockpit-merged` / `narrow-walkthrough` / `measure` / `probe-el` / `verify-tabs` / `table-dom` / `shot-after` 等，以及 AGENTS.md 引为可复现证据的 `diag-hover-media` / `diag-category-align*` / `diag-identity-timeline`）与 7 个截图目录、`commit-msg3.txt`（可删） | §1、§2.4 |
 | P2 | **二期遗留**：注册页（`RegisterView.vue`）与 Excel 导入（`UserImportRow`）的「学院/部门」仍是自由文本 → 新用户的单位可能不在字典里，个人中心只能显示「不在字典中」提示（用户本轮明确只改个人中心） | 二期设计文档 §5 |
 | P2 | **二期遗留**：`org_node` 没有维护界面（「空间字典」页只覆盖空间树与故障分类），改字典目前只能改 SQL 种子 | 二期设计文档 §5 |
 | P3 | **二期遗留**：生产 `sql/schema.sql` 未同步 `org_node`（该文件本身只有 11 张表、连 `spatial_node` 都没有）——上线前应统一补齐生产 DDL | 二期设计文档 §5 |
@@ -266,7 +268,7 @@
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（**当前基线：Tests run: 112, Failures: 0, Errors: 0 / BUILD SUCCESS**。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 → 评审修复 95 → **P1 + 批次 4 的 112 = 95 + IDOR 6 + 首登 3 + 登出 4 + 词表 1 + 415/400 2 + shared 守卫 1**）
+# 后端全量（**基线：Tests run: 112, Failures: 0, Errors: 0 / BUILD SUCCESS**——2026-09-13 落 `e5d5af3` 时实测；演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 → 评审修复 95 → **P1 + 批次 4 的 112 = 95 + IDOR 6 + 首登 3 + 登出 4 + 词表 1 + 415/400 2 + shared 守卫 1**）
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml
@@ -296,6 +298,7 @@ node .scratch/assert-switch-plain.mjs       # → 14/14
 node .scratch/diag-category-align-state.mjs # 证据：分类表格对齐与侧边栏折叠态无关
 ```
 
+- **本节所有计数（112 / 30 / 11 / 22 / 88 / 130 / 42 / 15 / 14）都是 2026-09-13 各轮实测的记录值**；2026-09-21 的本次文档同步**只做状态核对、未复跑任何测试或探针**（现测仅限 `git` 状态、端口存活与 §5 那三条只读接口）。要判定改动是否引入回归，仍请现跑现数，不要沿用本节数字。
 - **二期实测的一条探针坑**：`assert-actions-align` 曾报 `分类表格 操作列右对齐` 失败（`delRight=847` vs `tableRight=1256`）。**不是产品缺陷**——切页签后 EP 要重算表格列宽，而后台标签 rAF 暂停，不补一帧就会量到中间态；补 `Page.captureScreenshot` 一帧后同一页面量到 1243 vs 1256（通过），已把补帧写进探针。
 - 另有两处**探针自身**的坑（都不是产品问题）：① `Emulation.setDeviceMetricsOverride({mobile:true})` 与 `setEmulatedMedia(features)` 都**不能**让 `@media (hover:none)` 命中，只能用 `setTouchEmulationEnabled`；② `DrilldownCascader` 的 popover 关闭后**面板仍在 DOM**，同页有两个选择器时按 `.dd-panel` 全局查询会串到另一个面板（年级列表里混进「东校区/西校区」）→ 改用触发器的 `aria-controls` 定位。
 
@@ -306,20 +309,21 @@ node .scratch/diag-category-align-state.mjs # 证据：分类表格对齐与侧�
 
 ## 5. 环境与运行现状
 
-| 服务 | 地址 | 状态（**2026-09-13 固化后现测**） |
+| 服务 | 地址 | 状态（**2026-09-21 文档同步时现测**） |
 | :--- | :--- | :--- |
-| 后端 | `http://localhost:8080` | 在跑（PID **15116 / 21464**，12:49 启动，**非本会话 job**）。现测 `admin`/`password` 登录 `code=200` 且 `roleCodes=PLATFORM_ADMIN`、`userType=ADMIN`；`GET /org/tree?audience=` **四值全部 `code=200`**：`FACULTY`→计算机/土木/外国语/经济管理学院、`LOGISTICS`→后勤保障处·调度中心/后勤维修中心(+班组)、`ADMIN`→信息中心、`STUDENT`→2023/2024/2025 级；非法值 `PARENT` → `code=400 未知的单位字典身份范围`。**即 8080 上跑的已是批次 2 的新代码**（不是旧实例），真机探针可直接跑 |
+| 后端 | `http://localhost:8080` | 在跑（PID **9680 / 13544**，**11:28:08 / 11:28:14 启动**，非本会话 job）。现测 `admin`/`password` 登录 `code=200` 且 `roleCodes=PLATFORM_ADMIN`、`userType=ADMIN`；`GET /org/tree?audience=` **四值全部 `code=200`**：`FACULTY`→所属单位(4) 计算机学院/土木工程学院/外国语学院/经济管理学院、`LOGISTICS`→所属单位(3) 后勤保障处·调度中心/后勤维修中心(电工班·暖通班·五金班·弱电班·综合班)/已停用单位、`ADMIN`→所属单位(1) 信息中心、`STUDENT`→2023级(3)/2024级(4)/2025级(2)；全量根层 = `2023级 | 2024级 | 2025级 | 所属单位`；非法值 `PARENT` → `code=400 未知的单位字典身份范围: PARENT`。**✅ 该实例晚于 `e5d5af3`（11:26 提交）——即 8080 上跑的已是含 P1 + 批次 4 的新代码**（已实证：`POST /auth/logout` 无 body 返回 `code=200 已安全退出`，且同一 Access Token 随后访问 `GET /users/me` 立刻 **401**，说明 jti 黑名单在生效），真机探针可直接跑 |
 | 前端 | `http://localhost:3000` | 在跑。现测 `Invoke-WebRequest http://localhost:3000/` → **HTTP 200**、`<title>` = 校园设施报修运维综合管理平台（判活别用 `127.0.0.1`，见 AGENTS §2.1） |
 | CDP 代理 | `http://localhost:3456` | **未启动**（现测 CLOSED；探针都直连 9222，不需要它） |
 | Edge 调试口 | `127.0.0.1:9222` | 在跑（现测 TCP 可达；浏览器里有用户个人标签，**别关**） |
 
-> 后端 `/actuator/health` 返回 **HTTP 401 + `R` 包装体**（受安全链保护）——这不是服务故障，判活请用 `/api/v1/auth/login`。本会话未重启任何服务，只做了端口/接口现测与提交固化。
-> **⚠️ 该 8080 实例早于 §2.5 的评审修复**（12:49 启动，而修复提交是 `9753e0b`/`337c2e8`）：`WorkOrderService` 的审计角色码、`SysUserMapper` 的 `ORDER BY`、`NoLegacyRoleCodeTest` 等**后端改动尚未生效**；前端经 Vite HMR 已是最新（`assert-profile` 88 条即跑在新前端上）。要跑后端真机验证前先重启（`Get-Process java | Stop-Process -Force` → `mvn spring-boot:run`，见 AGENTS §2.1）。
+> 后端 `/actuator/health` 返回 **HTTP 401 + `R` 包装体**（受安全链保护）——这不是服务故障，判活请用 `/api/v1/auth/login`。
+> **本环境条目每轮都会过期**（AGENTS §2.1「『三端在跑』的交接记录会过期」）：判「跑的代码是不是最新」不能只看端口，要比 **JVM 启动时间 vs `git log -1 --format=%ci`**（`Get-Process java | Select Id,StartTime`）。2026-09-13 那版记的「实例早于 §2.5 评审修复、需先重启」**已失效**——现在的实例是 2026-09-21 11:28 起的，晚于全部后端提交，无需重启即可跑探针。
 
 启动/重启配方与坑（`spawn EPERM` 需 `danger-full-access`、pnpm v11 会清 `node_modules`、`spring-boot:run` 的 JVM 不被 job 带走）见 `AGENTS.md` §2.1，不在此重复。**动手做真机验证前先现测一次端口**。
 
 ## 6. 环境卫生
 
 - 本会话新增探针仅 `assert-profile.mjs`；其余为复用/回归。未新增一次性诊断脚本（探针调试过程中的两处误判都直接改在探针里：卡片标题带按钮文案、头像轮询被上一轮遗留 URL 提前满足）。
+- 2026-09-21 的状态同步**只读**：`git log` / `git status` / `git ls-files` + 端口探活 + 三条只读接口（`/auth/login`、`/org/tree`、一次 `POST /auth/logout` 以取证 P1 生效——吊销的是本次现签的一次性令牌，不影响任何人的登录态）。未改代码、未跑测试、未重启服务。
 - 复用的两个探针级前提（`AGENTS.md` §2.2）：切档后必须轮询 DOM 断点信号并补帧；量宽度/transform 终态前注入 `transition:none !important`；截图前强制渲染一帧。
 - 本文件与探针产物不含口令/令牌；演示账号见 `README.md` §4（口令略）。
