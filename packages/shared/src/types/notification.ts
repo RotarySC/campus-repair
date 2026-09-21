@@ -45,7 +45,12 @@ export interface OrderTimelineLogVO {
   orderNo: string;
   operatorId: number;
   operatorName: string;
-  operatorRole: 'STUDENT' | 'TEACHER' | 'REPAIR_WORKER' | 'LOGISTICS_ADMIN' | 'SUPER_ADMIN' | 'SYSTEM' | string;
+  /**
+   * 审计操作者角色码。批次 4 起运行时只写**职能码**
+   * （`REPORTER` / `WORKER` / `DISPATCHER` / `PLATFORM_ADMIN`）与系统自动流转的 `SYSTEM`；
+   * 改名前的历史行仍是旧角色码/组织条线码，由 `OperatorRoleLabels` 兼容翻译，故此处放开为 string。
+   */
+  operatorRole: string;
   actionType: string;
   fromStatus: string;
   toStatus: string;

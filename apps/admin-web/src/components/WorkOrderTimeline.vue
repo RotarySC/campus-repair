@@ -110,19 +110,27 @@ type TagType = '' | 'success' | 'warning' | 'info' | 'danger';
  * 原先 `getNodeType` 与 `getRoleTagType` 是两份逐字重复的 switch，新增一种码要改两处，
  * 漏改一处就会出现「节点一种颜色、标签另一种颜色」。
  *
- * 表里同时收录**历史词表**（改名前的角色码，只出现在旧数据里）与**现行条线码**
- * （运行时按操作人的 sys_user.user_type 写入，见 WorkOrderService）：两者都必须在这里有值，
- * 否则新增的派单/改派行会掉进 default 分支、丢掉配色提示。
+ * 表里收录**两代词表**，缺一不可：
+ * · **现行职能码**（批次 4 起运行时写的）：`REPORTER` / `WORKER` / `DISPATCHER` / `PLATFORM_ADMIN`
+ *   + 系统自动流转的 `SYSTEM`；
+ * · **历史码**（改名前的角色码与中间一代的组织条线码，只出现在旧数据里）：删掉任何一个，
+ *   历史日志都会掉进 default 分支、丢掉配色提示。
+ *
+ * 本文件与 `packages/shared/src/utils/format.ts` 是 `NoLegacyRoleCodeTest` 里仅有的两处
+ * 允许保留旧码的展示层文件——它们只把历史数据翻译成人话，不参与任何身份/权限判定。
  */
 const ROLE_STYLES: Record<string, { node: NodeType; tag: TagType }> = {
-  // 报修侧：学生 / 教工（旧码 TEACHER 与新条线码 FACULTY 同色）
+  // 报修侧：报修人（现行）与学生/教工（历史）
+  REPORTER: { node: 'primary', tag: '' },
   STUDENT: { node: 'primary', tag: '' },
   TEACHER: { node: 'primary', tag: '' },
   FACULTY: { node: 'primary', tag: '' },
   // 作业侧
-  REPAIR_WORKER: { node: 'success', tag: 'success' },
   WORKER: { node: 'success', tag: 'success' },
+  REPAIR_WORKER: { node: 'success', tag: 'success' },
   // 管理/后勤侧
+  DISPATCHER: { node: 'warning', tag: 'warning' },
+  PLATFORM_ADMIN: { node: 'warning', tag: 'warning' },
   LOGISTICS_ADMIN: { node: 'warning', tag: 'warning' },
   SUPER_ADMIN: { node: 'warning', tag: 'warning' },
   ADMIN: { node: 'warning', tag: 'warning' },
@@ -172,12 +180,13 @@ function parseImages(imagesJson?: string): string[] {
   border: 1px solid #E5E7EB;
   border-left-width: 4px;
 }
-.role-border-STUDENT, .role-border-TEACHER, .role-border-FACULTY {
+.role-border-REPORTER, .role-border-STUDENT, .role-border-TEACHER, .role-border-FACULTY {
   border-left-color: #1677FF;
 }
-.role-border-REPAIR_WORKER, .role-border-WORKER {
+.role-border-WORKER, .role-border-REPAIR_WORKER {
   border-left-color: #52C41A;
 }
+.role-border-DISPATCHER, .role-border-PLATFORM_ADMIN,
 .role-border-LOGISTICS_ADMIN, .role-border-SUPER_ADMIN, .role-border-ADMIN, .role-border-LOGISTICS {
   border-left-color: #FA8C16;
 }
@@ -197,14 +206,15 @@ function parseImages(imagesJson?: string): string[] {
   padding: 2px 8px;
   border-radius: 4px;
 }
-.badge-STUDENT, .badge-TEACHER, .badge-FACULTY {
+.badge-REPORTER, .badge-STUDENT, .badge-TEACHER, .badge-FACULTY {
   background: #E6F4FF;
   color: #1677FF;
 }
-.badge-REPAIR_WORKER, .badge-WORKER {
+.badge-WORKER, .badge-REPAIR_WORKER {
   background: #F6FFED;
   color: #52C41A;
 }
+.badge-DISPATCHER, .badge-PLATFORM_ADMIN,
 .badge-LOGISTICS_ADMIN, .badge-SUPER_ADMIN, .badge-ADMIN, .badge-LOGISTICS {
   background: #FFF7E6;
   color: #FA8C16;

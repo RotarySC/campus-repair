@@ -39,7 +39,7 @@
 import { ref, reactive, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { PASSWORD_PATTERN, PASSWORD_RULE_MESSAGE } from '@campus/shared';
+import { PASSWORD_PATTERN, PASSWORD_RULE_MESSAGE, LoginResult } from '@campus/shared';
 import { useAuthStore, httpClient } from './stores/auth';
 
 const route = useRoute();
@@ -81,13 +81,13 @@ async function handleForceChange() {
 
   changing.value = true;
   try {
-    const res = await httpClient.put<null>('/users/password/change', pwdForm);
-    if (res.code === 200) {
+    const res = await httpClient.put<LoginResult>('/users/password/change', pwdForm);
+    if (res.code === 200 && res.data) {
       ElMessage.success('密码修改成功，欢迎进入系统');
-      if (authStore.userInfo) {
-        authStore.userInfo.isFirstLogin = 0;
-        localStorage.setItem('user_info', JSON.stringify(authStore.userInfo));
-      }
+      // 必须换上服务端重新签发的令牌：旧 Access Token 里烙着「必须改密」标记，
+      // 服务端会继续把业务请求拦成 1009（见 JwtAuthenticationFilter），
+      // 只改本地 isFirstLogin 是掩耳盗铃。
+      authStore.setAuth(res.data);
       forcePasswordVisible.value = false;
     } else {
       ElMessage.error(res.message || '密码修改失败');

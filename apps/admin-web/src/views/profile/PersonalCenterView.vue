@@ -257,6 +257,7 @@ import {
 import type { OrgBranch } from '@campus/shared';
 import type {
   DispatchOrderItemVO,
+  LoginResult,
   MyWorkerProfileVO,
   OrgNodeVO,
   RepairSummaryVO,
@@ -616,7 +617,9 @@ async function onChangePassword() {
 
   passwordLoading.value = true;
   try {
-    const res = await httpClient.put<null>('/users/password/change', {
+    // 改密端点会连带返回重新签发的令牌（首登强制改密时旧票带着 pwdChange 标记），
+    // 但个人中心刻意走「改密后重新登录」，因此这里只需要成功/失败，不消费 data。
+    const res = await httpClient.put<LoginResult>('/users/password/change', {
       oldPassword: passwordForm.oldPassword,
       newPassword: passwordForm.newPassword
     });
