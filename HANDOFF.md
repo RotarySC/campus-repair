@@ -1,8 +1,8 @@
-# 交接文档 (HANDOFF) — 个人中心升级为全角色账户中心 / 二期：学院·部门年级下钻
+# 交接文档 (HANDOFF) — 个人中心 / 身份模型批次 1+2 / P1 安全项 / 批次 4 审计词表
 
-> **日期**：2026-09-13（二期同日追加）　**分支**：`feat/personal-center-org-tree`（二期在**新分支**上开发，未合回 `master`；一期已提交在 `master`）
-> **机制与陷阱已沉淀在 `AGENTS.md`**：本文件只写「状态 + 待办 + 证据 + 环境」。相关条目：§1「个人中心（`/profile`，2026-09-13 升级为全角色账户中心）」「单位组织字典 `modules/org`」、§2.1「✅ 当前后端测试基线」「个人中心的四条实现约定」「DrilldownCascader」、§2.2 四条 CDP 探针陷阱、§4「MyBatis-Plus `updateById` 跳过 null 字段」「测试用例不要用 `now.minusHours(N)` 造『今日』数据」「H2 种子中文乱码」「`el-table`/`el-tabs`/`DrilldownCascader` 常驻 DOM 污染」。
-> **本次未传参数**，未针对后续主题做定向裁剪。设计文档：一期 `docs/20260913-0140-campus-repair-system-personal-center-design.md`、二期 `docs/20260913-0950-campus-repair-system-org-tree-department-cascader-design.md`。
+> **日期**：2026-09-13（P1 + 批次 4 为同日第三轮追加）　**分支**：`feat/personal-center-org-tree`（未合回 `master`；一期已提交在 `master`）
+> **机制与陷阱已沉淀在 `AGENTS.md`**：本文件只写「状态 + 待办 + 证据 + 环境」。相关条目：§1「个人中心（`/profile`）」「单位组织字典 `modules/org`」「身份与授权模型」、§2.1「✅ 当前后端测试基线」、§2.2 四条 CDP 探针陷阱、§4「审计词表只有一个词表」「工单读接口有属主校验」「首登改密是服务端强制的」「登出与令牌吊销」「非 JSON 的 Content-Type 曾经是 500」等。
+> **本次未传参数**，未针对后续主题做定向裁剪。设计文档：一期 `docs/20260913-0140-campus-repair-system-personal-center-design.md`、二期 `docs/20260913-0950-campus-repair-system-org-tree-department-cascader-design.md`、身份模型 `docs/20260913-1118-campus-repair-system-identity-role-model-design.md`（§5.4 是批次 4 的实现补充）。
 
 ---
 
@@ -168,6 +168,47 @@
 
 **本轮未修（明确记录，不是遗漏）**：批次 3（`PUT /users/{id}/functions` + 师傅档案 CRUD + 台账 UI）、批次 4 的**词表统一**（本轮只把标签/配色补齐，列内仍是历史码与条线码混装）、设计 §5.2 的 `LoginUserPrincipal` + JWT `userType` claim、`data-test.sql` 补教工账号、以及 §3.1 的 P1 安全项（IDOR / `is_first_login` 后端拦截 / 登出与令牌吊销）。
 
+## 2.6 P1 安全项 + 批次 4 审计词表（2026-09-13 第三轮，**工作区已落地，尚未提交**）
+
+**用户指示**：「先进行 P1，然后批次 4」。两个 either/or 由用户裁决：① 会话吊销走 **A 方案**（`POST /auth/logout` + jti 黑名单，而非"缩短 TTL + 文档声明"）；② 批次 4 的演示种子**改写成新职能码**（而非"保留旧码只修展示层"）。
+
+**P1 · 工单读接口属主校验（IDOR，分析报告 §3.2）**
+- 三个端点收口为「报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理」，判定在新增的 `WorkOrderService.assertReadable`；签名改为 `getOrderDetail/getTimeline/getOrderEvaluationDetail(id, viewerUserId, dispatchSide)`，控制器传 `user.getUserId()` + `user.isDispatchSide()`（`LoginUserPrincipal` 新增 `hasFunction`/`isDispatchSide`）。越权抛 `AccessDeniedException` → HTTP 403。
+- `POST /work-orders/check-duplicate` 顺带收紧为 `hasRole('REPORTER')`（此前任意登录用户可探测）。
+- 连带改测试调用方：`EvaluationAndReworkIntegrationTest`（2 处）、`NotificationIntegrationTest`（1 处）。
+
+**P1 · 服务端强制首登改密（分析报告 §3.4）**
+- 新增 `ErrorCode.PASSWORD_CHANGE_REQUIRED(1009)`；`JwtUtils` 的 Access Token 增 `pwdChange` claim（`generateAccessToken` 新增 4 参重载，3 参旧签名保留=false，故直接签票的测试不受影响）。
+- `JwtAuthenticationFilter` 在放行名单（`/api/v1/auth/**`、`PUT /users/password/change`、`GET /users/me`）之外拦成 **HTTP 200 + code 1009**。
+- **`PUT /users/password/change` 改为返回 `R<LoginResponseVO>`**（重新签发双令牌）——旧票里的标记不会因改密消失，不换票就会"改完密码处处报错"；前端 `App.vue` 改用 `authStore.setAuth(res.data)`。
+- `AuthService` 抽出 `issueTokens(user)` 供登录/换票/改密后换票三处共用，`expiresIn` 不再硬编码 7200（改读 `JwtUtils.getAccessTokenExpirationSeconds()`）。
+- 连带改测试：`WorkOrderAccessControlIntegrationTest`、`BroadcastApiIntegrationTest` 的 `@BeforeEach` 改为同时重置密码与 `is_first_login`。
+
+**P1 · 登出与令牌吊销（分析报告 §3.5）**
+- `POST /api/v1/auth/logout`（`LogoutRequest` 可省略 body，另有 `?refreshToken=` 兜底）→ 把 Access + Refresh **双令牌**的 jti 写入 `AuthStateStore`（TTL=剩余有效期）；`JwtAuthenticationFilter` 与 `AuthService.refreshToken` 各自校验，登出后 Access 立刻 401、Refresh 换票报 1005。
+- 新增 `framework/security/TokenBlacklist`；`AuthStateStore` 从 `modules/auth/service/` **移到 `framework/security/`**（它现在被框架层过滤器与业务层同时使用，留在业务模块会让框架层反向依赖业务模块）。
+- `JwtUtils` 为两种令牌加 `jti`；新增 `getJti`/`isPasswordChangeRequired`/`remainingValidity`。
+- 前端 `stores/auth.ts` 的 `logout()` 改为**先通知服务端再清本地**（fire-and-forget；**显式带 Authorization 头**——axios 请求拦截器是异步跑的，等它执行时 localStorage 已被清空）。
+
+**P1 顺带修 · 非 JSON Content-Type 曾经是 500（本轮实测发现）**
+- `HttpMediaTypeNotSupportedException` → **415**（新增 `ErrorCode.UNSUPPORTED_MEDIA_TYPE`）、`HttpMessageNotReadableException` → **400**；此前两者都落 `Exception` 兜底变成「系统处理异常」并打 ERROR 日志。触发路径：用 `Invoke-WebRequest -Method POST` 打无 body 的登出请求时它自动塞了 `application/x-www-form-urlencoded`。
+
+**批次 4 · 审计词表统一**
+- 运行时 12 处写入点全部改为职能码常量（`REPORTER`/`WORKER`/`DISPATCHER`/`AUDIT_SYSTEM`），删掉 `auditRoleOf(SysUser)`（它读的正是 `sys_user.user_type`）；`DispatchEngine` 两处 `"SYSTEM"` 也改用常量。新增 `IdentityCodes.AUDIT_SYSTEM` 与 `ALL_AUDIT_ROLES`（4 职能码 + SYSTEM）。
+- 语义定为「**该动作以哪种职能身份执行**」，与 `@PreAuthorize` 一一对应；操作人由 `operator_id`/`operator_name` 标识。
+- `data-demo.sql`：59 处旧码改写（`USER_STUDENT`/`USER_TEACHER`→`REPORTER` 27、`REPAIR_WORKER`→`WORKER` 27、`LOGISTICS_ADMIN`→`DISPATCHER` 5）；**顺带修掉一处同类不一致**——种子写 `REWORK_ARBITRATE` 而运行时写 `REWORK_ASSIGN`，`ActionTypeLabels` 只收录后者（该行此前显示裸动作码）。
+- 前端：`OperatorRoleLabels` 补齐新旧两代词表（`REPORTER`/`DISPATCHER`/`PLATFORM_ADMIN` + 旧键保留）；`WorkOrderTimeline.vue` 的配色表与 CSS 类补 `REPORTER`/`DISPATCHER`/`PLATFORM_ADMIN`；`types/notification.ts` 的 `operatorRole` 联合类型收敛为 `string` 并把现行词表写进注释。
+- `NoLegacyRoleCodeTest` **补扫 `packages/shared/src`**（原先只扫 java 与 admin-web，而旧码兼容表恰好住在 shared，等于留了个扫不到的后门）；豁免文件从 1 个变 2 个（+ `utils/format.ts`）。
+- `schema-test.sql`（主/测两份逐字节同步）补 `operator_role` 列注释；生产 `sql/schema.sql` 该列注释早已是新词表口径。
+
+**验收证据（本会话实测）**
+- `mvn test -f server/pom.xml` → **`Tests run: 112, Failures: 0, Errors: 0` / BUILD SUCCESS**（95 → 112：IDOR 6 + 首登 3 + 登出 4 + 词表 1 + 415/400 2 + shared 守卫 1）。`tsc`(shared) + `vue-tsc`(admin) 均 **exit 0**。
+- 接口级真机（`.scratch/verify-p1-batch4.ps1`，**30 条断言**，起真实后端跑）：IDOR 四方向 11 条、登出/吊销 6 条、审计词表 4 条（含"真实提单写 REPORTER""真实人工指派写 DISPATCHER"）、首登改密 7 条、415 行为 1 条，**全绿**。
+- 真机探针：新增 `.scratch/assert-audit-vocab.mjs` → **11 条 ALL PASS**（时间轴四色齐全、逐卡片标签/边框映射一致、无裸码、他人单不渲染且不泄漏姓名手机号）；回归 `assert-identity-batch1` **22 条 ALL PASS**。
+- **两条失败曾被我误判成产品缺陷，实为探针自身问题**（已写进 AGENTS §4）：① `Invoke-WebRequest -Method POST` 无 body 时自动带 `form-urlencoded` → 415（该端点本就要求 JSON body 或干脆不带 body）；② 我用 `/spatial/categories` 取分类，而真实路由是 `/categories/tree`，取到 null 导致提单 400、后续 URL 变成 `/work-orders//dispatch` 而 401。
+
+**本轮未修（明确记录）**：批次 3（职能分配 + 师傅档案 CRUD + 台账 UI）；`repair_order_log.operator_role` 的**生产历史行不 backfill**（审计表不可篡改，只做展示层兼容）；`is_first_login` 的拦截是"令牌内标记"而非每次查库，故**已签发且未改密的旧票在 2h 内仍可用**（与"老令牌自然过期"同一口径）；§3.1 的其余 P1/P2（`/inventory/parts` 暴露面、测试/生产 DDL 不一致、`sys_permission` 死表等）仍未动。
+
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |
@@ -192,10 +233,10 @@
 | 优先级 | 事项 | 证据 |
 | :--- | :--- | :--- |
 | ~~**P0**~~ | ~~`POST /api/v1/auth/register` 无 `userType` 白名单 → 任意人可自封 `SUPER_ADMIN` 并调通管理员接口~~ | **✅ 2026-09-13 批次 1 已修**：`userType` 改为组织条线白名单（`STUDENT`/`FACULTY`/`LOGISTICS`），自助注册一律只授 `REPORTER`；回归 `RegisterWhitelistIntegrationTest`（5 例）+ 实测 `PLATFORM_ADMIN`/`WORKER`/`ADMIN` 均 `code=400`。原始证据见分析报告 §3.1 |
-| P1 | 工单读接口 `GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` **无属主校验**（IDOR） | 报告 §3.2（student02 读到 student01 的姓名+手机号，界面照常渲染） |
-| P1 | `repair_order_log.operator_role` 三套词表混用、前端标签/CSS 只覆盖一套 → 27/77 条日志显示裸角色码且丢配色 | **2026-09-13 评审修复已缓解**（见 §2.5）：`OperatorRoleLabels`/时间轴配色补齐两代词表（含 `LOGISTICS`/`FACULTY`）、`ADMIN` 文案由「后勤调度」改为「行政信息化」、教工提单与教工评价不再写死 `STUDENT`。**列内仍是历史码与新条线码混装，词表统一仍属批次 4** |
-| P1 | `is_first_login` 只在前端拦，后端不校验 | 报告 §3.4（未改密即可调业务接口） |
-| P1 | 无登出/无令牌吊销；~~且 `roleCodes` 为空时回退 `userType`~~ → **删角色绑定已不再等于升权**（批次 1 删掉了回退，改为登录/刷新报 `USER_NO_FUNCTION(1008)`），但**已签发 Access Token（2h）仍不受影响**，登出/jti 黑名单仍未做 | 报告 §3.5 + 批次 1 |
+| ~~P1~~ | ~~工单读接口 `GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` **无属主校验**（IDOR）~~ | **✅ 2026-09-13 P1 批次已修**（见 §2.6）：三端点收口为「本人 ∨ 指派师傅 ∨ 调度/平台管理」，越权 403；回归 `WorkOrderReadOwnershipIntegrationTest`（6 例，覆盖四个方向 + 不存在工单仍报 2003）。原始证据：报告 §3.2（student02 读到 student01 的姓名+手机号，界面照常渲染） |
+| ~~P1~~ | ~~`repair_order_log.operator_role` 三套词表混用、前端标签/CSS 只覆盖一套 → 27/77 条日志显示裸角色码且丢配色~~ | **✅ 2026-09-13 批次 4 已修**（见 §2.6）：运行时只写 4 职能码 + `SYSTEM`，演示种子 59 处旧码改写，前端两处兼容表保留旧键；回归 `AuditRoleVocabularyIntegrationTest` + `.scratch/assert-audit-vocab.mjs`（11 条）。**生产历史行不 backfill** |
+| ~~P1~~ | ~~`is_first_login` 只在前端拦，后端不校验~~ | **✅ 2026-09-13 P1 批次已修**（见 §2.6）：标记烙进 Access Token，过滤器放行名单外一律 `code=1009`；回归 `FirstLoginEnforcementIntegrationTest`（3 例） |
+| ~~P1~~ | ~~无登出/无令牌吊销~~ → 批次 1 已删掉"空角色回退 userType"的反向提权 | **✅ 2026-09-13 P1 批次已修**（见 §2.6）：`POST /auth/logout` + jti 黑名单（双令牌都吊销）；回归 `LogoutRevocationIntegrationTest`（4 例）。**残留**：未登出的已签发 Access Token（2h）仍可用——无状态 JWT 的固有窗口，与"老令牌自然过期"同一口径 |
 | ~~P2~~ | ~~「身份判定双轨」：路由守卫按 `roleCodes`、界面（导航/首页/个人中心/师傅落点）按 `userType`~~ → **✅ 批次 1 已修**：前端统一走 `composables/useIdentity.ts` 的 `has('职能')`，路由用 `meta.functions`，多职能取并集 | 报告 §3.6 + 批次 1 |
 | P2 | 测试/生产不一致：`data-test.sql` 缺 `USER_TEACHER`（测试 profile 下教工注册必失败）；H2 测试 DDL 缺生产库的 `uk_username/uk_phone/uk_role_code/uk_user_role`；`sys_permission`/`sys_role_permission` 是代码零引用的死表 | 报告 §3.7 |
 | P3 | `/inventory/parts`（含指导价）、`/inventory/consumptions/{orderId}` 对所有登录用户开放 | 报告 §3.8 |
@@ -203,7 +244,7 @@
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（**当前基线：Tests run: 95, Failures: 0, Errors: 0 / BUILD SUCCESS**。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 = 88 + RegisterWhitelist 5 + NoLegacyRoleCode 1 → **评审修复 95 = 94 + NoLegacyRoleCode 的前端半守卫 1**）
+# 后端全量（**当前基线：Tests run: 112, Failures: 0, Errors: 0 / BUILD SUCCESS**。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 → 评审修复 95 → **P1 + 批次 4 的 112 = 95 + IDOR 6 + 首登 3 + 登出 4 + 词表 1 + 415/400 2 + shared 守卫 1**）
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml
@@ -211,6 +252,12 @@ mvn test -f server/pom.xml
 # 类型检查（SFC 真检查用 vue-tsc；tsc 不解析 .vue）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json          # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json   # exit 0
+
+# P1 + 批次 4 的接口级真机验收（30 条断言；需后端 8080 在跑，会改 student01 密码，重启后端即回滚）
+pwsh -File .scratch/verify-p1-batch4.ps1    # → PASS=30 FAIL=0
+
+# 批次 4 的界面级断言（11 条；需 Edge 9222 + 后端 8080 + 前端 3000）
+node .scratch/assert-audit-vocab.mjs        # → 时间轴四色齐全/逐卡片映射一致/无裸码/他人单不渲染且不泄漏姓名手机号
 
 # 身份/职能批次 1 真机验收（22 条 ALL PASS；改 useIdentity/navItems/meta.functions 后必跑）
 node .scratch/assert-identity-batch1.mjs    # → ALL PASS（多职能并集导航/首页优先级/403/注册页条线/无旧码残留）

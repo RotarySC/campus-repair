@@ -26,7 +26,9 @@
 - 不做细粒度权限表落地（`sys_permission` 仍是死表，见分析报告 §3.7）。
 - 不做 D2（条线做真实层级节点），也不改 `full_path_name` 的空格分隔契约。
 - 不做登出/令牌黑名单、不做首登改密的服务端强制（仍在 HANDOFF §3.1 待办）。
+  **→ 2026-09-13 已由后续的「P1 安全项」批次补做**（`POST /auth/logout` + jti 黑名单；首登标记烙进 Access Token 由过滤器强制），见 `HANDOFF.md` §2.6。
 - 不做工单读接口的属主校验（IDOR，独立一条待办）。
+  **→ 2026-09-13 已由同一批次补做**：`GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` 三个端点收口为「报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理」，见 `HANDOFF.md` §2.6。
 
 ## 3. 模型总览
 
@@ -138,6 +140,13 @@ UPDATE sys_user  SET department    = REPLACE(department,'教职工','所属单�
 - `packages/shared/src/utils/format.ts` 的 `OperatorRoleLabels` 改为认职能码；**保留旧键作为兼容映射**（`USER_STUDENT`/`USER_TEACHER`/`REPAIR_WORKER`/`LOGISTICS_ADMIN`/`SUPER_ADMIN`/`STUDENT`/`TEACHER`/`WORKER`/`ADMIN` → 对应中文），历史行不重写。
 - `WorkOrderTimeline.vue` 的 `role-border-*`/`badge-*` CSS 类补职能码（旧类保留）。
 - 效果：演示库 77 条日志里现在**裸码且丢配色**的 27 条（`USER_STUDENT` 18 + `USER_TEACHER` 9）恢复中文与配色。
+
+### 5.4 批次 4 实现补充（2026-09-13 落地时的三处判断，与 §5.3 原文的差异都记在这里）
+
+1. **种子数据改写，而不是「保留旧码只修展示层」**：§5.3 原文把 `data-demo.sql` 的旧码当作"历史行"。但本仓库是**绿地项目**，那 77 条是**演示种子**而非真实历史——留着旧码会让演示库同时出现「报修学生」（旧）与「报修人」（新）两种写法描述同一件事。故 59 处旧码按等价表改写（`USER_STUDENT`/`USER_TEACHER`→`REPORTER` 27 处、`REPAIR_WORKER`→`WORKER` 27 处、`LOGISTICS_ADMIN`→`DISPATCHER` 5 处）。**生产库的历史行仍不 backfill**，展示层兼容映射照旧保留（它服务的正是那种数据）。
+2. **顺带修掉一处动作码不一致**：种子写 `REWORK_ARBITRATE`，而运行时写 `REWORK_ASSIGN`，且 `ActionTypeLabels` 只收录后者 → 该行在时间轴上显示裸动作码。已改为 `REWORK_ASSIGN`。**这是同一类缺陷**（种子与运行时词表不一致），属批次 4 的应修范围。
+3. **语义定为「动作所属职能」而不是「操作人持有的全部职能」**：`operator_role` 记的是**该动作以哪种职能身份执行**，因此与 `@PreAuthorize` 一一对应，服务层直接写常量即可，不必回头查 `sys_user.user_type`（旧实现正是查它，于是同一次派单在不同人手里写成不同的条线码）。操作人本人由 `operator_id`/`operator_name` 标识。附带收益：平台管理员执行仲裁也写 `DISPATCHER`（动作是调度侧的），审计语义稳定可断言。
+4. **反漏改守卫补一个洞**：`NoLegacyRoleCodeTest` 原本只扫 `src/main/java` 与 `apps/admin-web/src`，**唯独没扫 `packages/shared/src`**——而旧码兼容表 `OperatorRoleLabels` 恰好住在那里。已补第三个扫描根，白名单只列 `utils/format.ts`；`types/notification.ts` 里那份含旧码的 `operatorRole` 联合类型随之收敛为 `string`（并把现行词表写进注释）。
 
 ## 6. 授权落地（前端）
 
@@ -267,7 +276,7 @@ isStudent: boolean              // branch === 'STUDENT'
 | **1 语义改名** | `sys_role` 4 码 + `user_type` 4 值 + 44 处注解 + 去回退 + 注册白名单 + 导入建档不变式 + 前端能力判定 + 种子 + 测试改造 + `NoLegacyRoleCodeTest` | **✅ 2026-09-13 已落地**：`mvn test` **94/94**；`assert-identity-batch1` **22 条 ALL PASS**；对现有账号行为零变化（唯一例外：无职能绑定账号改为登录被拒，今天不可达）。注册白名单（P0）与导入建档顺带在此批次完成 |
 | **2 字典 D1** | audience 4 值 + 二级单位标注 + 根改名「所属单位」+ `department` 前缀迁移 + 个人中心直接传 `userType` + 生产 DDL/种子 + 迁移脚本 + 探针重写 | **✅ 2026-09-13 已落地**：`OrgTreeIntegrationTest` 8/8；`assert-profile` **85 条 ALL PASS**（含「教师看不到后勤单位」「后勤看不到任何学院」两条硬回归）；`assert-drill` 130/130 零回归 |
 | **3 权限闭环** | `PUT /users/{id}/functions`（职能分配 + 不变式校验）+ 师傅档案 CRUD + 用户台账 UI | ⏳ 待做（导入侧的建档已在批次 1 完成） |
-| **4 词表与文档** | 审计 `operator_role` 统一（4 职能码 + `SYSTEM`）+ 时间轴标签/CSS 兼容旧值 + README/CONTEXT/ADR 同步 | ⏳ 待做 |
+| **4 词表与文档** | 审计 `operator_role` 统一（4 职能码 + `SYSTEM`）+ 时间轴标签/CSS 兼容旧值 + README/CONTEXT/ADR 同步 | **✅ 2026-09-13 已落地**（见 §5.4）：运行时 12 处写点全部改为职能码常量；`data-demo.sql` 的 77 条演示日志改写为新码（含顺带修掉 `REWORK_ARBITRATE`→`REWORK_ASSIGN` 的动作码不一致）；前端两处兼容表补齐新旧两代词表；`NoLegacyRoleCodeTest` 补扫 `packages/shared/src`；新增 `AuditRoleVocabularyIntegrationTest`（逐个动作核对职能码）+ `.scratch/assert-audit-vocab.mjs`（11 条真机断言）。`mvn test` **112/112** |
 
 **批次 2 实现时暴露并固化的一条语义**（原设计未写、测试先失败才发现）：**剪枝后没有任何子节点的中间节点会被整体剪掉**。「所属单位」根节点本身 `audience=NULL`（三条线在二级单位上声明），若只按 `audience` 判断，这个空壳会出现在**每一条**条线的树里（学生视角也会看到「所属单位」）。因此 `pruneByAudience` 增加一条：原本有子节点、剪枝后一个不剩的中间节点不再返回——「我这条线下一无所属」时，那个父节点本就不该出现。
 
