@@ -209,6 +209,28 @@
 
 **本轮未修（明确记录）**：批次 3（职能分配 + 师傅档案 CRUD + 台账 UI）；`repair_order_log.operator_role` 的**生产历史行不 backfill**（审计表不可篡改，只做展示层兼容）；`is_first_login` 的拦截是"令牌内标记"而非每次查库，故**已签发且未改密的旧票在 2h 内仍可用**（与"老令牌自然过期"同一口径）；§3.1 的其余 P1/P2（`/inventory/parts` 暴露面、测试/生产 DDL 不一致、`sys_permission` 死表等）仍未动。
 
+## 2.7 文档回填（2026-09-13，P1 + 批次 4 之后的文档同步）
+
+**背景**：§2.6 的改动落在代码与测试上，文档只更新了 `AGENTS.md`/`HANDOFF.md`/`CONTEXT.md`/身份设计文档四处。本轮回填其余文档，并处理"历史文档是否要改"的判断。
+
+**改了什么**
+- **`README.md`**（此前完全没覆盖本轮能力，且 §5 的用例数过期）：
+  - §2 第 1 条（Issue 01&02）：把「初次登录强制弹出改密对话框」改写为**服务端强制**（`code=1009` + 改密返回重签双令牌），并新增**登出即吊销**（双令牌 jti 黑名单）；
+  - §2 第 9 条（Issue 10）：补**审计操作者角色只有一个词表**（职能码 + `SYSTEM`，与 `@PreAuthorize` 一一对应，历史行不重写）；
+  - §3.3 之后**新增 §3.4「权限与数据边界（多实例部署前必读）」**：工单读端点的属主判定、令牌吊销的**单实例语义**（多实例必须保证 Redis 可用，否则登出只在单节点生效）、以及"未登出的 Access Token 在 2h 内仍可用"这条残留窗口；
+  - §4.1 的 `student01` 说明补"服务端强制"；
+  - §5：用例数 **67 → 112**，测试套件分布补 6 个本轮新增/关键类（`FirstLoginEnforcementIntegrationTest`/`LogoutRevocationIntegrationTest`/`WorkOrderReadOwnershipIntegrationTest`/`AuditRoleVocabularyIntegrationTest`/`NoLegacyRoleCodeTest`/`RegisterWhitelistIntegrationTest`）。
+- **`docs/20260913-1045-…-identity-analysis.md`（专项分析报告）**：B1~B4 四条 P1 按该报告对 A1 的**既有惯例**就地标注「已修」+ 回归用例名（**保留原始缺陷描述与实测证据**，它是有日期的历史快照）；§3.2~§3.5 四节各加一行状态说明；§4 的修复建议 4~7 逐条标注落地情况，并写明**三处刻意偏离建议**的地方（词表取职能码而非建议里写于改名前的 `STUDENT/TEACHER/...`；首登改密改走令牌 claim 而非每请求查库，附两条理由；会话治理选 ①）。
+- **`docs/adr/0002-session-revocation-first-login-and-audit-role-vocabulary.md`（新增）**：把本轮三条"难回滚 / 无上下文会困惑 / 有真实取舍"的决定连同**被否决的备选方案与理由**写成 ADR（会话吊销走 jti 黑名单而非缩短 TTL；首登改密走令牌 claim 而非 `HandlerInterceptor` 每请求查库；审计角色记「动作所属职能」而非操作人条线或全部职能；演示种子改写而非只修展示层）。末尾 Consequences 里记了单实例语义、2h 残留窗口、`password/change` 返回类型变更、以及"审计词表与 `@PreAuthorize` 绑定"这条后续约束。
+- **`docs/20260912-1351-…-unified-portal-design.md`**：其 §6 写着「首登强制改密沿用前端 `el-dialog`，无需改动」——加一行 2026-09-13 补充说明（前端弹窗行为不变，服务端已另行强制）。
+- **`docs/20260913-1118-…-identity-role-model-design.md`**：§10 测试表回填**实际落地的用例名与状态**（原表里 `RegisterWhitelistTest`/`AuditRoleVocabularyTest` 等是规划名，且 `UserFunctionAssignmentTest`/`WorkerProfileInvariantTest` 属批次 3、仍为 ⏳ 未做）；§10 基线更新到 112/112、探针清单补 `assert-audit-vocab.mjs`；§14 补 ADR 0002 的说明。
+- **`AGENTS.md`**：§1 的文档指针补 ADR 0002 与分析报告"已就地标注"的说明。
+
+**刻意不改的文档（连同理由）**
+- `docs/20260906-1223-…-implementation-plan.md`：它里面的 `operator_role` DDL 注释仍是旧词表（`STUDENT, WORKER, ADMIN, SYSTEM`），示例 JSON 里也有 `"operatorRole": "STUDENT"`。**不改**——它是**计划期的历史文档**（今天仍描述着已移除的 Vant/mobile-web 架构），批次 1 的身份改名同样没有回填它；口径的唯一来源是 `CONTEXT.md`，DDL 的事实来源是 `sql/schema.sql`（其注释早已是新词表口径）。改它等于把历史计划伪造成"当时的正确"，反而有害。
+- `docs/20260906-1219-…-requirements.md`（第 90 行「首次登录强制修改初始弱密码」）、`docs/20260907-2000-…-architecture.md`（表清单只列列名，未声明词表）、三份 2026-09-06/07 的 code-review：**都是历史快照且结论未被本轮推翻**，无需改动。
+- `docs/20260906-1750-…-code-review.md` 第 93 行描述的"首登改密缺口"是**当时**的发现（当时确实只缺前端），本轮修的是服务端那一层——历史记录保持原样。
+
 ## 3. 待办与建议下一步
 
 | 优先级 | 事项 | 依据 |

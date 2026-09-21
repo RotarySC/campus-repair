@@ -252,22 +252,25 @@ isStudent: boolean              // branch === 'STUDENT'
 - `data-test.sql`（角色 4 行、用户条线、org 标注、顺手**补一个教工账号**——今天测试库没有 `USER_TEACHER` 角色，教工注册路径无测试覆盖，见分析报告 §3.7）。
 
 **新增**
-| 用例 | 断言 |
-| :--- | :--- |
-| `RegisterWhitelistTest` | `userType` ∈ 3 个可用条线才成功；`PLATFORM_ADMIN`/`ADMIN`/`WORKER` 一律失败；且注册出来**只**绑 `REPORTER`（P0 回归） |
-| `OrgTreeAudienceTest`（扩） | `audience=FACULTY` 树中**不含** `后勤维修中心`/`电工班`/`后勤保障处·调度中心`；`audience=LOGISTICS` 树中**不含**任何学院；`audience=ADMIN` 只含信息中心 —— **对应用户报的堆叠现象** |
-| `UserFunctionAssignmentTest` | 给师傅加 `REPORTER` 后 `/users/me/repair-summary` 可用；撤销后不可用；`roleCodes` 为空时**登录被拒**（不再是回退升权） |
-| `WorkerProfileInvariantTest` | 给无档案用户分配 `WORKER` → 报错；删除仍持 `WORKER` 的档案 → 报错；导入行含 `WORKER` 但缺 `skillCode` → 该行失败 |
-| `AuditRoleVocabularyTest` | 提单/接单/派单写入的 `operator_role` ∈ 4 职能码 ∪ {SYSTEM} |
-| `NoLegacyRoleCodeTest` | 扫描 `server/src/main/java` 与 `apps/admin-web/src`，断言**不再出现** 5 个旧码（防 44 处漏改；这是本次最大的机械风险） |
+| 用例 | 断言 | 落地名与状态 |
+| :--- | :--- | :--- |
+| `RegisterWhitelistTest` | `userType` ∈ 3 个可用条线才成功；`PLATFORM_ADMIN`/`ADMIN`/`WORKER` 一律失败；且注册出来**只**绑 `REPORTER`（P0 回归） | ✅ `RegisterWhitelistIntegrationTest`（5 例） |
+| `OrgTreeAudienceTest`（扩） | `audience=FACULTY` 树中**不含** `后勤维修中心`/`电工班`/`后勤保障处·调度中心`；`audience=LOGISTICS` 树中**不含**任何学院；`audience=ADMIN` 只含信息中心 —— **对应用户报的堆叠现象** | ✅ 并入 `OrgTreeIntegrationTest`（8 例） |
+| `UserFunctionAssignmentTest` | 给师傅加 `REPORTER` 后 `/users/me/repair-summary` 可用；撤销后不可用；`roleCodes` 为空时**登录被拒**（不再是回退升权） | ⏳ 未做——依赖批次 3 的职能分配接口 |
+| `WorkerProfileInvariantTest` | 给无档案用户分配 `WORKER` → 报错；删除仍持 `WORKER` 的档案 → 报错；导入行含 `WORKER` 但缺 `skillCode` → 该行失败 | ⏳ 未做——导入侧的不变式已在批次 1 落地，但**分配/撤销**两个校验点属批次 3 |
+| `AuditRoleVocabularyTest` | 提单/接单/派单写入的 `operator_role` ∈ 4 职能码 ∪ {SYSTEM} | ✅ `AuditRoleVocabularyIntegrationTest`（批次 4）——实际做得比本行更严：**逐个动作**核对职能码（提单/评价→`REPORTER`、接单/完工→`WORKER`、指派/作废→`DISPATCHER`、超时核销→`SYSTEM`），而不是只断言"落在集合里"（后者在把 REPORTER 误写成 DISPATCHER 时仍是绿的） |
+| `NoLegacyRoleCodeTest` | 扫描 `server/src/main/java` 与 `apps/admin-web/src`，断言**不再出现** 5 个旧码（防 44 处漏改；这是本次最大的机械风险） | ✅ 已落地，且**扫三处**（批次 4 补 `packages/shared/src`，否则旧码兼容表 `OperatorRoleLabels` 住在那里等于留了个后门）；豁免 2 个展示层文件 |
+| `WorkOrderReadOwnershipTest` | 工单读三端点的属主判定四方向（本人/指派师傅/调度管理放行，他人报修人与非指派师傅 403，不存在工单仍报 2003） | ✅ `WorkOrderReadOwnershipIntegrationTest`（6 例，2026-09-13 P1 批次） |
+| `FirstLoginEnforcementTest` | 首登未改密时业务端点 `code=1009`、改密/本人资料/换票放行、改密后新票放行而旧票仍被拦、非首登账号不受影响 | ✅ `FirstLoginEnforcementIntegrationTest`（3 例，2026-09-13 P1 批次） |
+| `LogoutRevocationTest` | 登出吊销双令牌（Access 401 / Refresh 报 1005）、吊销只作用于被出示的令牌、幂等不抛错、Refresh Token 走查询参数兜底 | ✅ `LogoutRevocationIntegrationTest`（4 例，2026-09-13 P1 批次） |
 
 **真机探针**
-- `.scratch/assert-profile.mjs`（**已重写，85 条 ALL PASS**）：条线取值、占位文案按条线三分、以及两条硬回归——「教师视角**看不到**后勤处室/班组」「后勤视角**看不到**任何学院」。
+- `.scratch/assert-profile.mjs`（**已重写，88 条 ALL PASS**）：条线取值、占位文案按条线三分、以及两条硬回归——「教师视角**看不到**后勤处室/班组」「后勤视角**看不到**任何学院」。
 - `.scratch/assert-identity-batch1.mjs`（**22 条 ALL PASS**）：导航按职能取并集、首页优先级、越权落 403、注册页身份+条线。
-- `.scratch/diag-identity-timeline.mjs` 用作审计词表修复后的对照（应显示中文+配色，而不是裸码）。
-- 既有 `.scratch/assert-drill.mjs`（130，**已实测零回归**）/.scratch/assert-shell-toggle.mjs（42）等。
+- `.scratch/assert-audit-vocab.mjs`（**11 条 ALL PASS**，批次 4 新增）：时间轴四色齐全、逐卡片「标签 ↔ 边框色」一一对应、无裸码、**他人单不渲染且不泄漏报修人姓名手机号**（IDOR 的界面级断言）。它取代了 `.scratch/diag-identity-timeline.mjs` 的对照作用——后者是修复前打印裸码的**诊断**脚本，保留作历史证据。
+- 既有 `.scratch/assert-drill.mjs`（**130/130 已实测零回归**）/.scratch/assert-shell-toggle.mjs（42）等。
 
-**基线**：`mvn test` 88 → **94/94 实测**（新增 `RegisterWhitelistIntegrationTest` 5 + `NoLegacyRoleCodeTest` 1；批次 2 无新增用例，改写 `OrgTreeIntegrationTest` 两条）；`tsc` + `vue-tsc` exit 0。
+**基线**：`mvn test` 88 → **94/94**（批次 1）→ **95/95**（评审修复）→ **112/112 实测**（P1 批次 + 批次 4）；`tsc` + `vue-tsc` exit 0。
 
 ## 11. 建议提交批次（可独立回滚）
 
@@ -311,3 +314,5 @@ isStudent: boolean              // branch === 'STUDENT'
 
 本决策满足领域建模技能的三个条件——**难回滚**（44 处注解 + 生产数据 + 令牌）、**无上下文会困惑**（为什么 `user_type` 存的是条线而不是"用户类型"？为什么 `PLATFORM_ADMIN` 隐含调度能力？）、**存在真实取舍**（A vs B、D1 vs D2、是否合并学生与教工为同一职能）。
 `docs/adr/` 目录当前不存在，我建议新建 `docs/adr/0001-identity-organization-branch-and-functions.md`（单段即可）。
+
+> **【2026-09-13 后续】** 已落地为 `docs/adr/0001-identity-organization-branch-and-functions.md`。同日的 P1 批次与批次 4 又产生了三条同样满足上述条件、且**各自都有被否决的备选方案**的决定（会话吊销走 jti 黑名单 vs 缩短 TTL；首登改密走令牌 claim vs 每请求查库；审计角色记「动作所属职能」vs 记操作人条线），另落一份 `docs/adr/0002-session-revocation-first-login-and-audit-role-vocabulary.md`。

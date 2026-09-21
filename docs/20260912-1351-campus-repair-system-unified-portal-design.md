@@ -114,6 +114,7 @@ isMobile =
 - **移动树**：未登录 → `/login`；`REPAIR_WORKER` 访问学生页 → `/worker/workbench`（既有）；管理员访问学生页 → `/mobile-admin-notice`（**新增**，替换现状「直接看到学生首页」的洞）。
 - `AdminLayout.navItems` 改为按角色过滤的常量映射：管理员 7 项、师生 2 项（提交报修、我的工单）；品牌区副标题与顶栏角色文案按角色微调。
 - 首登强制改密：沿用 admin `App.vue` 现有全局 `el-dialog` 阻断（`isFirstLogin === 1`），无需改动，自然覆盖新纳入的师生。
+  > **【2026-09-13 补充】** 前端弹窗仍然存在、行为不变；但**服务端已另行强制**（标记烙进 Access Token，未改密前业务接口一律 `code=1009`），且改密端点改为返回重新签发的双令牌。见 `docs/adr/0002-session-revocation-first-login-and-audit-role-vocabulary.md`。
 
 ## 7. PC 师生端页面设计（Element Plus 形态）
 

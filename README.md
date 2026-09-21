@@ -64,7 +64,8 @@
 1. **用户台账与多端安全认证 (`Issue 01 & 02`)**
    - 支持学号/工号/手机号登录，BCrypt 加密，连续输错 3 次强制弹出图形验证码防刷；
    - 前端网络客户端自动捕获 HTTP 401，在后台使用 Refresh Token 静默换票重发；
-   - 初次登录系统强制弹出弱密码修改对话框，未改密前禁止访问业务路由；
+   - **首登强制改密由服务端落实**：`is_first_login=1` 会烙进 Access Token，未改密前除改密端点、本人资料与 `/auth/**` 外的业务请求一律被拦（`code=1009`），改密成功即返回重新签发的双令牌——此前该策略只是前端弹窗，直接打接口即可绕过（初始密码是公开约定值）；
+   - **登出即吊销**：`POST /auth/logout` 把 Access 与 Refresh 双令牌的 `jti` 写入吊销黑名单（Redis 优先、进程内兜底，TTL 取令牌剩余有效期），登出后旧 Access 立即 401、旧 Refresh 不能再换票；该端点幂等且不抛错；
    - 基于 EasyExcel 实现万人级人员名单批量导入解析，返回带行号的错误隔离报告。
 
 2. **空间网格体系与故障分类字典 (`Issue 03`)**
@@ -110,6 +111,7 @@
 
 9. **全生命周期站内信与流转审计时间轴 (`Issue 10`)**
    - 独立不可篡改审计流转日志表（`repair_order_log`），记录提单、派单、接单、挂起、完工、评价与仲裁全轨迹；
+   - **审计操作者角色只有一个词表**：`operator_role` 记「该动作是以哪种**职能**身份执行的」（`REPORTER`/`WORKER`/`DISPATCHER`/`PLATFORM_ADMIN` + 系统自动流转 `SYSTEM`），与后端 `@PreAuthorize` 一一对应；操作人本人由 `operator_id`/`operator_name` 标识。改名之前落库的历史行不重写，由展示层兼容翻译；
    - PC 管理端与移动端双端纵向流转审计时间轴组件（`WorkOrderTimeline.vue`），语义化角色标签与存证照片九宫格；
    - 站内信支持 6 大消息分类，提供未读红点徽标与抽屉式全功能消息中心；
    - 抽象外部通知 SPI 扩展接口（`Notifier`），内置控制台日志通知器（`MockConsoleNotifier`）与邮件通道适配器（`MailNotifier`）。
@@ -203,6 +205,12 @@ mvn spring-boot:run
 
 > 前端以同源相对路径 `/api/v1` 访问后端，推荐生产采用**同源反向代理**同时转发 `/api` 与 `/uploads`（见 AGENTS.md 部署约束）；跨域白名单只服务于前后端分域部署的场景。
 
+### 3.4 权限与数据边界（多实例部署前必读）
+
+- **角色注解只回答「你是什么角色」，不回答「这张单是不是你的」**：`GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` 三个读端点额外做**属主判定**——放行集合为「报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理」，其余一律 403（与 2003「工单不存在」刻意区分）。判定在 Service 层（`WorkOrderService.assertReadable`），新增读端点时照此补齐。
+- **令牌吊销是单实例语义**：吊销黑名单走 `AuthStateStore`（Redis 优先、进程内 `ConcurrentHashMap` 兜底）。**多实例/生产部署必须保证 Redis 可用**，否则「登出即失效」只在处理该请求的节点上生效，跨节点不共享（与登录失败计数、图形验证码同一套降级策略）。
+- **未登出的令牌在有效期内仍可用**：Access Token 默认 2h、无状态且不查库，登出只能吊销「被出示过的那一枚」；账号级即时失效仍依赖 `status=0` 停用 + 重新登录。
+
 ---
 
 ## 4. 默认内置账号与测试账号
@@ -224,7 +232,7 @@ mvn spring-boot:run
 | **后勤保障 / 维修作业** | `worker01` / `13800000002` | `password` | 水暖维修，使用工作台接单出发、施工挂起与完工填报 |
 | **学生 / 报修人** | `student01` / `13800000003` | `password` | 极速报修提单、防重检测预警、实况对比质检验收与满意度评价 |
 
-> **说明**：`student01` 的 `is_first_login=1`，首次登录会强制要求修改弱初始密码；`admin`、`worker01` 无需改密。
+> **说明**：`student01` 的 `is_first_login=1`，首次登录会强制要求修改弱初始密码（**服务端强制**：未改密前业务接口返回 `code=1009`，只有改密端点、本人资料与 `/auth/**` 放行）；`admin`、`worker01` 无需改密。
 
 ### 4.2 演示数据扩展账号（`data-demo.sql`，仅 `local` 模式加载）
 
@@ -254,7 +262,7 @@ mvn spring-boot:run
 系统全流程坚持测试先行与代码审查闭环，所有状态机流转、并发锁与数据一致性均具备完整的单元与集成测试套件防护：
 
 ```powershell
-# 1. 运行后端 67 项单元与高并发集成测试套件
+# 1. 运行后端 112 项单元与高并发集成测试套件
 mvn test -f server/pom.xml
 
 # 2. 运行前端 Monorepo 全量静态类型检查（两包）
@@ -264,9 +272,15 @@ mvn test -f server/pom.xml
 
 ### 核心测试套件分布
 - `AuthIntegrationTest`：双 Token 鉴权、密码错输 3 次图形验证码、Token 静默刷新拦截、Redis 不可用时的内存降级兜底（登录成功 + 失败计数兜底）；
+- `FirstLoginEnforcementIntegrationTest`：首登未改密时业务端点被拦成 `1009`、改密端点/本人资料/换票仍放行、改密后新票放行而旧票仍被拦；
+- `LogoutRevocationIntegrationTest`：登出吊销双令牌（Access 立即 401、Refresh 换票报 1005）、吊销只作用于被出示的令牌、登出幂等不抛错、Refresh Token 走查询参数兜底；
+- `RegisterWhitelistIntegrationTest`：自助注册条线白名单（`ADMIN` 不开放）、只授 `REPORTER`，防自封超管；
 - `UserIntegrationTest`：师生自主注册防重、EasyExcel 万人批量导入错误行捕获、首次改密；
 - `SpatialDictIntegrationTest`：四级空间树与两级分类树级联、节点软停用机制过滤；
+- `WorkOrderReadOwnershipIntegrationTest`：工单读接口属主判定四方向（本人/指派师傅/调度管理放行，他人报修人与非指派师傅 403，不存在工单仍报 2003）；
 - `WorkOrderIntegrationTest`：单号生成全局单调性、同空间同分类活跃单防重复异步预警；
+- `AuditRoleVocabularyIntegrationTest`：逐个业务动作核对写入的审计角色码（提单/评价→`REPORTER`、接单/完工→`WORKER`、指派/作废→`DISPATCHER`、超时核销→`SYSTEM`），并断言全表落在允许集合内；
+- `NoLegacyRoleCodeTest`：反漏改守卫，扫描后端源码、`apps/admin-web/src` 与 `packages/shared/src` 三处，出现旧角色码即失败并报 `文件:行号`（仅历史词表展示层豁免）；
 - `DispatchEngineIntegrationTest`：最小负荷优先派单算法、全员满载降级与 10 线程并发防超派压测；
 - `DispatchConsoleIntegrationTest`：调度池筛选、看板彩色负荷指标计算、一键派单/改派与作废；
 - `WorkerWorkbenchIntegrationTest`：师傅接单出发打点、现场施工挂起（SLA冻结）、解除挂起（SLA顺延）、申请转派；

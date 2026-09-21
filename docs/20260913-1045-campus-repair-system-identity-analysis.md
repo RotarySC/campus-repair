@@ -12,10 +12,10 @@
 | # | 级别 | 问题 | 证据 |
 | :--- | :--- | :--- | :--- |
 | A1 | **P0** | ~~`POST /api/v1/auth/register` 公开且 `userType` 未白名单 → 任何人可自封 `SUPER_ADMIN`~~ **【2026-09-13 批次 1 已修】** | 修复：`userType` 改为组织条线白名单且自助注册只授 `REPORTER`；回归 `RegisterWhitelistIntegrationTest`；原始证据见 §3.1 |
-| B1 | **P1** | 工单详情/时间轴/评价详情**无属主校验**（IDOR）→ 任意登录用户可读他人工单与报修人手机号 | 实测：`student02` 读到 `student01` 的 1001（姓名+手机号），界面也照常渲染（§3.2） |
-| B2 | **P1** | 审计表 `operator_role` **三套词表并存**，前端标签与配色只覆盖其中一套 → 27/77 条演示日志在时间轴上**显示裸角色码 `USER_STUDENT`、丢失配色** | 实测：API 分布 + 浏览器 computed style（§3.3） |
-| B3 | **P1** | `is_first_login` **只在前端拦**（`App.vue` 弹窗），后端不校验 → 拿初始密码可直接调业务接口 | 实测：`student01`（`isFirstLogin=1`）未改密即 `GET /work-orders/my` → `code=200`（§3.4） |
-| B4 | **P1** | **无登出/无令牌吊销**：`roles` 烙在 JWT 里，Access 2h / Refresh 7d；且角色回收有「**空角色回退到 userType**」的反向提权路径 | 全仓 `logout` 命中 0；`AuthService:133-136`、`162-165`（§3.5） |
+| B1 | **P1** | ~~工单详情/时间轴/评价详情**无属主校验**（IDOR）→ 任意登录用户可读他人工单与报修人手机号~~ **【2026-09-13 P1 批次已修】** | 修复：三个读端点收口为「报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理」，越权 403；回归 `WorkOrderReadOwnershipIntegrationTest`（6 例）。原始证据见 §3.2 |
+| B2 | **P1** | ~~审计表 `operator_role` **三套词表并存**，前端标签与配色只覆盖其中一套 → 27/77 条演示日志在时间轴上**显示裸角色码 `USER_STUDENT`、丢失配色**~~ **【2026-09-13 批次 4 已修】** | 修复：运行时只写 4 职能码 + `SYSTEM`，演示种子 59 处旧码改写，展示层保留旧键兼容历史行；回归 `AuditRoleVocabularyIntegrationTest` + `.scratch/assert-audit-vocab.mjs`（11 条）。原始证据见 §3.3 |
+| B3 | **P1** | ~~`is_first_login` **只在前端拦**（`App.vue` 弹窗），后端不校验 → 拿初始密码可直接调业务接口~~ **【2026-09-13 P1 批次已修】** | 修复：标记烙进 Access Token，过滤器放行名单外一律 `code=1009`；改密端点返回重签双令牌；回归 `FirstLoginEnforcementIntegrationTest`（3 例）。原始证据见 §3.4 |
+| B4 | **P1** | ~~**无登出/无令牌吊销**：`roles` 烙在 JWT 里，Access 2h / Refresh 7d；且角色回收有「**空角色回退到 userType**」的反向提权路径~~ **【2026-09-13 P1 批次已修；反向提权部分批次 1 已修】** | 修复：`POST /auth/logout` + jti 黑名单吊销**双令牌**（Redis 优先/内存兜底）；回归 `LogoutRevocationIntegrationTest`（4 例）。**残留**：未登出的已签发 Access Token 在 2h 内仍可用（无状态 JWT 固有窗口）。原始证据见 §3.5 |
 | C1 | P2 | **身份判定双轨**：路由守卫按 `roleCodes`，而导航/首页/个人中心按 `userType` → 多角色用户「能进页面但看到错的导航」 | `router/index.ts:143-147` vs `AdminLayout.vue:159-166`、`RoleHomeGate.vue:18-20`、`PersonalCenterView.vue:274-286`（§3.6） |
 | C2 | P2 | 5 个角色码以字符串字面量散落在 **44 处 `@PreAuthorize`**，无单一真源；前端另有 4 份重复判断 | 统计见 §3.6 |
 | C3 | P2 | `stores/auth.ts` 的 `isSuperAdmin`/`isLogisticsAdmin` 是**死代码**，且缺 `?.`（`roleCodes` 缺失即 TypeError） | 全仓仅定义、无使用点（§3.6） |
@@ -99,6 +99,8 @@
 
 ### 3.2 P1 · 工单读接口无属主校验（IDOR）
 
+> **【2026-09-13 P1 批次已修】** 本节记录的缺陷与实测证据保持原样（历史快照）；修复方案见 `HANDOFF.md` §2.6、回归用例 `WorkOrderReadOwnershipIntegrationTest`。
+
 - `WorkOrderController.java:57-60`（`/{id}/timeline`）、`:62-66`（`/{id}`）、`:186-190`（`/{id}/evaluation-detail`）**无 `@PreAuthorize`，Service 方法签名里也没有调用者 id**（`getOrderDetail(Long id)` / `getTimeline(Long id)` / `getOrderEvaluationDetail(Long id)`）。
 - **实测（student02 视角，1001 属 student01）**：
 
@@ -113,6 +115,8 @@ GET /work-orders/1001/evaluation-detail -> code=200 有数据
 - 对比：写操作（dispatch/cancel/accept/suspend/transfer-apply/finish/evaluate/arbitrate）**都有角色注解**，且状态机（§3 of AGENTS.md）会挡一部分误操作；缺的正是「读」与「属主」。
 
 ### 3.3 P1 · 审计角色三套词表，前端只认其中一套
+
+> **【2026-09-13 批次 4 已修】** 本节记录的缺陷与实测证据保持原样（历史快照）；修复方案见设计文档 §5.4 与 `HANDOFF.md` §2.6，回归用例 `AuditRoleVocabularyIntegrationTest` + 真机探针 `.scratch/assert-audit-vocab.mjs`。**注意**：下表的 `USER_STUDENT`/`USER_TEACHER` 等取值是**当时**的库内实况，现已改写为新职能码。
 
 - 运行时代码：提单/验收/返工**硬编码** `"STUDENT"`（`WorkOrderService.java:151,872,889`）、师傅动作硬编码 `"WORKER"`（`:584,620,661,703,771`）、作废硬编码 `"ADMIN"`（`:1032`）；而人工派单/改派却写的是 `operator.getUserType()`（`:398,452`）→ `SUPER_ADMIN` / `LOGISTICS_ADMIN` / `USER_STUDENT` / `USER_TEACHER`。
 - 种子数据：`data-demo.sql` 写的是 `USER_STUDENT` / `USER_TEACHER` / `REPAIR_WORKER` / `LOGISTICS_ADMIN`（运行时其实写不出这些）。
@@ -138,12 +142,16 @@ GET /work-orders/1001/evaluation-detail -> code=200 有数据
 
 ### 3.4 P1 · 首次登录强制改密只是「前端建议」
 
+> **【2026-09-13 P1 批次已修】** 本节记录的缺陷与实测证据保持原样（历史快照）；修复方案见 `HANDOFF.md` §2.6，回归用例 `FirstLoginEnforcementIntegrationTest`。
+
 - `App.vue:57-62`：只要 `userInfo.isFirstLogin === 1` 且不在 `/login`，就弹强制改密对话框。
 - 后端**没有任何拦截**（全仓 `isFirstLogin` 只出现在 `UserService` 的读/写与响应装配里）。
 - **实测**：`student01` 登录返回 `isFirstLogin=1`，未改密直接 `GET /work-orders/my` → `code=200`，5 条工单正常返回。
 - 影响：初始密码是公开约定的（README 写明 `password`），这一层等于可跳过；结合 §3.1，管理员重置他人密码后设的强制改密也可被绕过。
 
 ### 3.5 P1 · 会话不可吊销 + 空角色回退的反向提权
+
+> **【2026-09-13 P1 批次已修】** 登出与吊销已落地（`POST /auth/logout` + jti 黑名单吊销双令牌），回归用例 `LogoutRevocationIntegrationTest`；本节记录的缺陷与实测证据保持原样（历史快照）。**仍未闭合的部分**：已签发且未登出的 Access Token（2h）不查库，见本节末段的表述。
 
 - **无登出**：全仓 `logout` 命中 0 处；前端 `stores/auth.ts:32-39` 只清 localStorage。Access 2h、Refresh 7d（`application.yml` → `JwtUtils:26-30`）。令牌被盗/离职回收后，最长 2h 内仍可操作。
 - **角色变更不即时**：`roles` 是 JWT 声明（§1 图），改 `sys_user_role` 只在下一次 `/auth/refresh-token` 后生效，而 refresh 又可用 7 天。
@@ -191,10 +199,14 @@ GET /work-orders/1001/evaluation-detail -> code=200 有数据
 3. 生产若不开放自助注册，直接以配置开关（如 `app.auth.self-register-enabled=false`）关掉该端点。
 
 **P1**
-4. `WorkOrderService.getOrderDetail/getTimeline/getOrderEvaluationDetail` 增加 `operatorId` 参数与属主判定：`studentUserId == me || workerId == me || 管理员角色`，否则 `FORBIDDEN`。Controller 传 `user.getUserId()`；`checkDuplicate`（若保留）加上「仅师生」注解。
-5. 统一审计词表：**推荐**定义 `OperatorRole` 常量（`STUDENT/TEACHER/WORKER/ADMIN/SYSTEM`）并让运行时全部走它，种子数据做一次性 backfill；**过渡期最低成本**是在 `format.ts:21-30` 与 `WorkOrderTimeline` 的 CSS 里先补 `USER_STUDENT`/`USER_TEACHER` 两个键，立即消除裸码。
-6. 服务端落实首登改密：加一个 `HandlerInterceptor`/过滤器，`isFirstLogin=1` 时只放行 `/users/password/change`、`/users/me`、`/auth/refresh-token`，其余返回专用错误码。
-7. 会话治理（二选一）：① 加 `POST /auth/logout` 并把 `jti` 写入 `AuthStateStore` 黑名单（Redis 可选、内存兜底语义已在 `AuthStateStore` 里）；② 缩短 Access TTL + 刷新轮换，并把「吊销 = `status=0`」写进运维文档，同时**去掉或显式警示** `roleCodes.isEmpty() → userType` 的回退。
+4. ✅ **已落地（2026-09-13 P1 批次）** `WorkOrderService.getOrderDetail/getTimeline/getOrderEvaluationDetail` 增加 `operatorId` 参数与属主判定：`studentUserId == me || workerId == me || 管理员角色`，否则 `FORBIDDEN`。Controller 传 `user.getUserId()`；`checkDuplicate`（若保留）加上「仅师生」注解。
+   —— 实现与建议一致，落地为 `assertReadable(order, viewerUserId, dispatchSide)`（`dispatchSide` 由 `LoginUserPrincipal.isDispatchSide()` 给出）；`checkDuplicate` 加了 `hasRole('REPORTER')`。
+5. ✅ **已落地（2026-09-13 批次 4）** 统一审计词表：**推荐**定义 `OperatorRole` 常量（`STUDENT/TEACHER/WORKER/ADMIN/SYSTEM`）并让运行时全部走它，种子数据做一次性 backfill；**过渡期最低成本**是在 `format.ts:21-30` 与 `WorkOrderTimeline` 的 CSS 里先补 `USER_STUDENT`/`USER_TEACHER` 两个键，立即消除裸码。
+   —— **两处刻意偏离建议**：① 词表取的是**职能码**（`REPORTER/WORKER/DISPATCHER/PLATFORM_ADMIN` + `SYSTEM`）而不是本建议写的 `STUDENT/TEACHER/WORKER/ADMIN`——批次 1 已把「角色」语义收敛为职能，本建议写于改名之前；② 演示种子**改写了**（不只是补展示层键），因为它是绿地项目的演示数据而非真实历史；**生产历史行仍不 backfill**，兼容映射照旧保留。常量落在 `IdentityCodes.AUDIT_SYSTEM` / `ALL_AUDIT_ROLES`（不是新建 `OperatorRole` 类）。
+6. ✅ **已落地（2026-09-13 P1 批次）** 服务端落实首登改密：加一个 `HandlerInterceptor`/过滤器，`isFirstLogin=1` 时只放行 `/users/password/change`、`/users/me`、`/auth/refresh-token`，其余返回专用错误码。
+   —— **实现改走「令牌 claim + 过滤器」而不是每次查库**：若在拦截器里查 `is_first_login`，则每个请求多一次 DB 往返，且**直接签票的集成测试会集体拿到 1009**（种子 `student01` 的标记为 1）。改成登录/换票时把标记烙进 Access Token，过滤器零查库。**连带契约**：`PUT /users/password/change` 必须返回重新签发的双令牌，否则旧票里的标记不消失、用户改完密码反而处处报错。专用错误码 = `PASSWORD_CHANGE_REQUIRED(1009)`。
+7. ✅ **已落地（2026-09-13 P1 批次，选方案 ①）** 会话治理（二选一）：① 加 `POST /auth/logout` 并把 `jti` 写入 `AuthStateStore` 黑名单（Redis 可选、内存兜底语义已在 `AuthStateStore` 里）；② 缩短 Access TTL + 刷新轮换，并把「吊销 = `status=0`」写进运维文档，同时**去掉或显式警示** `roleCodes.isEmpty() → userType` 的回退。
+   —— 选 ①（用户裁决），并**吊销 Access + Refresh 双令牌**：只拉黑 Access 的话，攻击者能用 Refresh 换一枚新票，登出等于没登出。`roleCodes.isEmpty() → userType` 的回退已在批次 1 删除。方案 ② 未采纳，故「已签发未登出的 Access Token 在 2h 内仍可用」这条窗口依然存在（见 §3.5 末段），并已写进 README §3.4。
 
 **P2**
 8. 抽出 `RoleCodes` 常量类，替换 44 处字面量；前端加一个 `identityOf(userInfo)`（返回 `{isAdmin,isTeacher,isStudent,isWorker,audience}`）替换 4 处内联 `userType` 判断，让「路由按 roleCodes / 界面按 userType」收敛到一个函数；顺手删掉 `stores/auth.ts:13-14` 的死 getter。
