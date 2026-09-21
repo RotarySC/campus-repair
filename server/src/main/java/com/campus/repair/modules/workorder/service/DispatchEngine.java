@@ -1,6 +1,7 @@
 package com.campus.repair.modules.workorder.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.modules.spatial.service.SpatialNodeService;
 import com.campus.repair.modules.user.entity.WorkerProfile;
 import com.campus.repair.modules.user.mapper.WorkerProfileMapper;
@@ -140,7 +141,7 @@ public class DispatchEngine {
                             order,
                             0L,
                             "系统智能派单引擎",
-                            "SYSTEM",
+                            IdentityCodes.AUDIT_SYSTEM,
                             "AUTO_DISPATCH",
                             OrderStatusEnum.PENDING_DISPATCH.name(),
                             OrderStatusEnum.ASSIGNED.name(),
@@ -182,7 +183,7 @@ public class DispatchEngine {
                 order,
                 0L,
                 "系统智能派单引擎",
-                "SYSTEM",
+                IdentityCodes.AUDIT_SYSTEM,
                 "MANUAL_DISPATCH",
                 OrderStatusEnum.PENDING_DISPATCH.name(),
                 OrderStatusEnum.MANUAL_DISPATCH.name(),

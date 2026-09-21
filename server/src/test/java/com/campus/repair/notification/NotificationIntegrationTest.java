@@ -244,8 +244,8 @@ public class NotificationIntegrationTest {
         arbitrateReq.setArbitrationNote("已电话联系师傅，排查管路过滤网杂质");
         workOrderService.arbitrateRework(orderId, 1L, arbitrateReq);
 
-        // 9. 查询流转时间轴
-        List<RepairOrderLog> timeline = workOrderService.getTimeline(orderId);
+        // 9. 查询流转时间轴（按属主视角：该单的报修人本人）
+        List<RepairOrderLog> timeline = workOrderService.getTimeline(orderId, studentId, false);
         Assertions.assertNotNull(timeline);
         Assertions.assertTrue(timeline.size() >= 7, "时间轴应至少包含 7 步核心审计动作，实际: " + timeline.size());
 

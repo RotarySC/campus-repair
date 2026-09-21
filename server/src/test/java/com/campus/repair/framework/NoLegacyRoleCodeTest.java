@@ -24,9 +24,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 本用例把「漏改」变成编译期之后立刻可见的失败。
  *
  * <p>扫描范围：① `src/main/java` 的**非注释行**（注释里提到旧码属于解释历史，例如说明 P0 成因）；
- * ② 前端 `apps/admin-web/src` 的 `.ts` / `.vue`（设计 §10 要求）。**历史词表的展示层除外**，
- * 见 {@link #LEGACY_DISPLAY_ALLOWLIST}。SQL 种子里的旧码是历史审计数据的兼容问题，
- * 另由批次 4（`repair_order_log.operator_role` 词表统一）处理。
+ * ② 前端 `apps/admin-web/src` 的 `.ts` / `.vue`（设计 §10 要求）；
+ * ③ 共享包 `packages/shared/src` 的 `.ts`——**这条是 2026-09-13 补的**：前两处都扫了，唯独
+ * 共享包没扫，而 `OperatorRoleLabels` 恰好住在那里，等于给旧码留了一个「扫不到」的后门。
+ * **历史词表的展示层除外**，见 {@link #LEGACY_DISPLAY_ALLOWLIST} / {@link #SHARED_DISPLAY_ALLOWLIST}。
+ * SQL 种子里的旧码已随批次 4 改写为新职能码（`data-demo.sql`），生产库的历史行由展示层兼容翻译。
  */
 class NoLegacyRoleCodeTest {
 
@@ -53,6 +55,17 @@ class NoLegacyRoleCodeTest {
             "components/WorkOrderTimeline.vue"
     );
 
+    /**
+     * 共享包里允许保留旧码的**展示层**文件（相对 `packages/shared/src`）。
+     *
+     * <p>与上面同理：`OperatorRoleLabels` 是把「改名之前落库的历史审计行」翻译成人话的唯一映射表，
+     * 删掉旧键历史日志就会显示裸码。它同样不参与任何身份/权限判定。
+     * 白名单**刻意只列这一个文件**——`types/*.ts`、`constants/*.ts`、`api/*.ts` 出现旧码必须失败。
+     */
+    private static final Set<String> SHARED_DISPLAY_ALLOWLIST = Set.of(
+            "utils/format.ts"
+    );
+
     @Test
     @DisplayName("server/src 下的 Java 源码不得再出现旧角色码（非注释行）")
     void testNoLegacyRoleCodesInJavaSource() throws IOException {
@@ -69,6 +82,16 @@ class NoLegacyRoleCodeTest {
         assertThat(offenders)
                 .as("前端出现旧角色码：身份/权限判定一律用职能（useIdentity 的 has('职能') / roleCodes），"
                         + "只有历史词表展示层可保留旧码")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("共享包 packages/shared/src 不得再出现旧角色码（仅 OperatorRoleLabels 兼容表除外）")
+    void testNoLegacyRoleCodesInSharedPackage() throws IOException {
+        List<String> offenders = scan(resolveSharedSourceRoot(), SHARED_DISPLAY_ALLOWLIST, ".ts");
+        assertThat(offenders)
+                .as("共享包出现旧角色码：只有 utils/format.ts 的历史词表兼容映射可以保留，"
+                        + "类型定义/常量/请求层出现旧码会让下游误以为它还是有效取值")
                 .isEmpty();
     }
 
@@ -119,6 +142,11 @@ class NoLegacyRoleCodeTest {
     /** 前端扫描根：同样兼容「工作目录 = server/」与「工作目录 = 仓库根」两种布局。 */
     private Path resolveFrontendSourceRoot() {
         return resolve("../apps/admin-web/src", "apps/admin-web/src");
+    }
+
+    /** 共享包扫描根：同上，兼容两种工作目录布局。 */
+    private Path resolveSharedSourceRoot() {
+        return resolve("../packages/shared/src", "packages/shared/src");
     }
 
     private Path resolve(String... candidates) {

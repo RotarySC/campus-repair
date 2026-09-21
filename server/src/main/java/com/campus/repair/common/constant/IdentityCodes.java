@@ -58,4 +58,31 @@ public final class IdentityCodes {
 
     public static final Set<String> ALL_FUNCTIONS =
             Set.of(FUNC_REPORTER, FUNC_WORKER, FUNC_DISPATCHER, FUNC_PLATFORM_ADMIN);
+
+    // ------------------------------------------------------------------
+    // 审计词表（repair_order_log.operator_role）
+    // ------------------------------------------------------------------
+
+    /**
+     * 审计日志里「系统自动流转」的操作者码（**不是一个职能**，没有任何人持有它）。
+     *
+     * <p>自动派单引擎、72 小时超时自动核销这类动作由系统写入，操作者 id 为 0。
+     * 它刻意不叫 {@code ADMIN}：后者现在是「行政信息化」条线码，写成它会让自动流转读起来
+     * 像某个具体的人做的。
+     */
+    public static final String AUDIT_SYSTEM = "SYSTEM";
+
+    /**
+     * 允许出现在 {@code repair_order_log.operator_role} 里的**全部**取值。
+     *
+     * <p>语义：这一列记录的是**该动作是以哪种职能身份执行的**（而不是操作人持有的全部职能、
+     * 也不是他的组织条线）——所以它与 `@PreAuthorize` 一一对应：提单/评价写 {@code REPORTER}，
+     * 接单/挂起/转派/完工写 {@code WORKER}，人工派单/改派/作废/仲裁写 {@code DISPATCHER}，
+     * 系统自动流转写 {@code SYSTEM}。操作人本人由 {@code operator_id}/{@code operator_name} 标识。
+     *
+     * <p>历史数据不受此约束（改名前后是两套词表），展示层按
+     * {@code packages/shared/src/utils/format.ts} 的兼容映射翻译。
+     */
+    public static final Set<String> ALL_AUDIT_ROLES = Set.of(
+            FUNC_REPORTER, FUNC_WORKER, FUNC_DISPATCHER, FUNC_PLATFORM_ADMIN, AUDIT_SYSTEM);
 }

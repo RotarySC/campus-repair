@@ -67,20 +67,33 @@ class WorkOrderAccessControlIntegrationTest {
     @BeforeEach
     void setUp() {
         Mockito.when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        resetStudentPassword();
+        resetStudentAccount();
     }
 
     /**
-     * UserIntegrationTest（非事务）会把 student01 密码改为 NewPassword@2026 且在共享
-     * Spring 上下文里持久生效，测试类执行顺序不定，故登录前显式重置回 password
-     * （本测试类事务回滚，重置不外泄）。
+     * 把 student01 还原成「密码 password + 已非首次登录」的普通账号，再用于登录。
+     *
+     * <p>两个前提都被破坏过：`UserIntegrationTest`（非事务）会把 student01 密码改为
+     * NewPassword@2026 且跨类持久；`data-test.sql` 种的 `is_first_login=1` 会让服务端
+     * （P1 起）把业务请求拦成 1009，本类要测的提单/`/my` 就永远走不到。本类事务回滚，重置不外泄。
      */
-    private void resetStudentPassword() {
+    private void resetStudentAccount() {
         com.campus.repair.modules.user.entity.SysUser student = userMapper.selectOne(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.campus.repair.modules.user.entity.SysUser>()
                         .eq(com.campus.repair.modules.user.entity.SysUser::getUsername, "student01"));
-        if (student != null && !passwordEncoder.matches("password", student.getPassword())) {
+        if (student == null) {
+            return;
+        }
+        boolean changed = false;
+        if (!passwordEncoder.matches("password", student.getPassword())) {
             student.setPassword(passwordEncoder.encode("password"));
+            changed = true;
+        }
+        if (student.getIsFirstLogin() != null && student.getIsFirstLogin() != 0) {
+            student.setIsFirstLogin(0);
+            changed = true;
+        }
+        if (changed) {
             userMapper.updateById(student);
         }
     }

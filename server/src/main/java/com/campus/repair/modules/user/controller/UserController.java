@@ -3,6 +3,8 @@ package com.campus.repair.modules.user.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.campus.repair.common.result.R;
 import com.campus.repair.framework.security.LoginUserPrincipal;
+import com.campus.repair.modules.auth.service.AuthService;
+import com.campus.repair.modules.auth.vo.LoginResponseVO;
 import com.campus.repair.modules.user.dto.AvatarUpdateRequest;
 import com.campus.repair.modules.user.dto.PasswordChangeRequest;
 import com.campus.repair.modules.user.dto.UserProfileUpdateRequest;
@@ -30,6 +32,7 @@ public class UserController {
 
     private final UserService userService;
     private final ProfileStatisticsService profileStatisticsService;
+    private final AuthService authService;
 
     @Operation(summary = "获取当前已登录用户信息")
     @GetMapping("/me")
@@ -37,12 +40,14 @@ public class UserController {
         return R.success(userService.getProfile(user.getUserId()));
     }
 
-    @Operation(summary = "修改登录密码")
+    @Operation(summary = "修改登录密码（成功后重新签发令牌）")
     @PutMapping("/password/change")
-    public R<Void> changePassword(@AuthenticationPrincipal LoginUserPrincipal user,
-                                  @Valid @RequestBody PasswordChangeRequest request) {
+    public R<LoginResponseVO> changePassword(@AuthenticationPrincipal LoginUserPrincipal user,
+                                             @Valid @RequestBody PasswordChangeRequest request) {
         userService.changePassword(user.getUserId(), request);
-        return R.success("密码修改成功", null);
+        // 必须换票：首登强制改密的账号，旧 Access Token 里烙着 pwdChange=true，
+        // 不重新签发的话改完密码后每个业务请求仍会被拦成 1009（见 JwtAuthenticationFilter）
+        return R.success("密码修改成功", authService.issueTokensFor(user.getUserId()));
     }
 
     @Operation(summary = "更新个人资料与默认住址（全量覆盖）")

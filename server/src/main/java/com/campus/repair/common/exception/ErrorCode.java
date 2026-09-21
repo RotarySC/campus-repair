@@ -11,6 +11,7 @@ public enum ErrorCode {
     UNAUTHORIZED(401, "认证无效或Token已过期"),
     FORBIDDEN(403, "权限不足，拒绝访问"),
     NOT_FOUND(404, "请求资源不存在"),
+    UNSUPPORTED_MEDIA_TYPE(415, "请求 Content-Type 不受支持，请使用 application/json"),
     INTERNAL_ERROR(500, "系统服务内部异常"),
 
     // 业务错误码
@@ -22,6 +23,7 @@ public enum ErrorCode {
     USERNAME_EXISTS(1006, "学号/工号已存在，请勿重复注册"),
     PHONE_EXISTS(1007, "手机号已存在"),
     USER_NO_FUNCTION(1008, "账号未分配职能，请联系管理员"),
+    PASSWORD_CHANGE_REQUIRED(1009, "请先修改初始密码后再使用系统"),
     ORDER_DUPLICATE_ACTIVE(2001, "同一位置已存在未结单同类故障单"),
     ORDER_STATE_TRANSITION_INVALID(2002, "当前工单状态与流转动作不匹配"),
     ORDER_NOT_FOUND(2003, "工单不存在"),

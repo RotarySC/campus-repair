@@ -30,6 +30,7 @@ public class WorkOrderController {
 
     @Operation(summary = "失焦检测同空间同分类是否存在未结单报修")
     @PostMapping("/check-duplicate")
+    @PreAuthorize("hasRole('REPORTER')")
     public R<DuplicateCheckResultVO> checkDuplicate(@Valid @RequestBody DuplicateCheckRequest request) {
         return R.success(workOrderService.checkDuplicate(request));
     }
@@ -54,16 +55,28 @@ public class WorkOrderController {
         return R.success(workOrderService.getMyOrders(user.getUserId(), page, size, status));
     }
 
-    @Operation(summary = "获取工单流转审计时间轴")
+    /**
+     * 三个「读单张工单」端点都必须带上调用者身份做属主判定。
+     *
+     * <p>此前它们**既没有 `@PreAuthorize`、Service 签名里也没有调用者 id**，任意登录用户
+     * 按 id 遍历即可读到全校工单——包括报修人姓名与手机号（分析报告 §3.2 的 IDOR 实测：
+     * student02 能读到 student01 的 1001 并让前端页面正常渲染）。放行集合是
+     * 「报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理」，判定在 Service 里（`assertReadable`）。
+     */
+    @Operation(summary = "获取工单流转审计时间轴（限报修人本人/指派师傅/调度管理）")
     @GetMapping("/{id}/timeline")
-    public R<java.util.List<com.campus.repair.modules.workorder.entity.RepairOrderLog>> getTimeline(@PathVariable Long id) {
-        return R.success(workOrderService.getTimeline(id));
+    public R<java.util.List<com.campus.repair.modules.workorder.entity.RepairOrderLog>> getTimeline(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(workOrderService.getTimeline(id, user.getUserId(), user.isDispatchSide()));
     }
 
-    @Operation(summary = "查询工单基础信息")
+    @Operation(summary = "查询工单基础信息（限报修人本人/指派师傅/调度管理）")
     @GetMapping("/{id}")
-    public R<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> getOrderDetail(@PathVariable Long id) {
-        return R.success(workOrderService.getOrderDetail(id));
+    public R<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> getOrderDetail(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(workOrderService.getOrderDetail(id, user.getUserId(), user.isDispatchSide()));
     }
 
     @Operation(summary = "调度中心获取待办工单池列表及各分类统计")
@@ -184,9 +197,11 @@ public class WorkOrderController {
         return R.success();
     }
 
-    @Operation(summary = "获取工单完工与评价前后实况对比信息")
+    @Operation(summary = "获取工单完工与评价前后实况对比信息（限报修人本人/指派师傅/调度管理）")
     @GetMapping("/{id}/evaluation-detail")
-    public R<com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO> getEvaluationDetail(@PathVariable Long id) {
-        return R.success(workOrderService.getOrderEvaluationDetail(id));
+    public R<com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO> getEvaluationDetail(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(workOrderService.getOrderEvaluationDetail(id, user.getUserId(), user.isDispatchSide()));
     }
 }

@@ -193,8 +193,9 @@ public class EvaluationAndReworkIntegrationTest {
         assertEquals(OrderStatusEnum.COMPLETED.name(), completed.getStatus());
         assertNotNull(completed.getClosedTime(), "结单时间戳必须固化");
 
-        // 验证评价详情
-        WorkOrderEvaluationVO detail = workOrderService.getOrderEvaluationDetail(order.getId());
+        // 验证评价详情（按属主视角：该单的报修人本人）
+        WorkOrderEvaluationVO detail = workOrderService.getOrderEvaluationDetail(
+                order.getId(), studentUser.getId(), false);
         assertEquals(5, detail.getRatingStar());
         assertEquals("张师傅上门非常迅速，门锁完全修好了，点赞！", detail.getEvaluationComment());
         assertTrue(detail.getRatingTags().contains("准时到达"));
@@ -332,7 +333,8 @@ public class EvaluationAndReworkIntegrationTest {
         assertNotNull(autoClosed.getClosedTime());
 
         // 验证评价记录带超时标记，且不强行虚增评分（ratingStar 为 null，避免虚假好评）
-        WorkOrderEvaluationVO eval = workOrderService.getOrderEvaluationDetail(order.getId());
+        WorkOrderEvaluationVO eval = workOrderService.getOrderEvaluationDetail(
+                order.getId(), studentUser.getId(), false);
         assertEquals(1, eval.getIsAutoConfirmed(), "应标记为72小时超时自动确认");
         assertNull(eval.getRatingStar(), "自动确认结单不应强设虚假评分");
         assertTrue(eval.getEvaluationComment().contains("72小时"));

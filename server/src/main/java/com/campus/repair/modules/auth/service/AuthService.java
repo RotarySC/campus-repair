@@ -3,6 +3,8 @@ package com.campus.repair.modules.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
+import com.campus.repair.framework.security.AuthStateStore;
+import com.campus.repair.framework.security.TokenBlacklist;
 import com.campus.repair.framework.util.JwtUtils;
 import com.campus.repair.modules.auth.dto.LoginRequest;
 import com.campus.repair.modules.auth.dto.RefreshTokenRequest;
@@ -38,6 +40,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final AuthStateStore authStateStore;
+    private final TokenBlacklist tokenBlacklist;
 
     @Value("${app.security.max-failed-attempts-for-captcha:3}")
     private int maxFailedAttemptsForCaptcha;
@@ -129,23 +132,7 @@ public class AuthService {
         // 登录成功，清理失败计数器
         authStateStore.delete(failedKey);
 
-        // 获取用户职能列表（**不做 userType 回退**：userType 是组织条线，不是职能码；
-        // 回退会让"删掉角色绑定"反而升权，见 CONTEXT.md 与设计文档 §4.2）
-        List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
-        if (roleCodes.isEmpty()) {
-            throw new BusinessException(ErrorCode.USER_NO_FUNCTION);
-        }
-
-        // 签发双 Token
-        String accessToken = jwtUtils.generateAccessToken(user.getId(), user.getUsername(), roleCodes);
-        String refreshToken = jwtUtils.generateRefreshToken(user.getId(), user.getUsername());
-
-        return LoginResponseVO.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .expiresIn(7200L)
-                .userInfo(userService.buildProfile(user))
-                .build();
+        return issueTokens(user);
     }
 
     public LoginResponseVO refreshToken(RefreshTokenRequest request) {
@@ -154,24 +141,74 @@ public class AuthService {
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_EXPIRED);
         }
 
+        // 已登出（jti 在黑名单里）的 Refresh Token 不得再换出新票，否则登出形同虚设
+        if (tokenBlacklist.isRevoked(jwtUtils.getJti(refreshToken))) {
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_EXPIRED.getCode(),
+                    "该 Refresh Token 已因登出失效，请重新登录");
+        }
+
         Long userId = jwtUtils.getUserId(refreshToken);
         SysUser user = userMapper.selectById(userId);
         if (user == null || user.getStatus() == 0) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
+        return issueTokens(user);
+    }
+
+    /**
+     * 登出：把出示的 Access / Refresh Token 一并拉黑（双 Token 都要吊销，否则换票端点
+     * 能用 Refresh Token 把已被吊销的访问权「复活」）。
+     *
+     * <p>刻意做成**幂等且不抛错**：令牌缺失、非法、已过期都静默跳过。登出是不可失败的清理动作，
+     * 前端已清空本地登录态，这里再报错只会把用户卡在一个"登不出去"的假象里。
+     */
+    public void logout(String accessToken, String refreshToken) {
+        revokeIfUsable(accessToken);
+        revokeIfUsable(refreshToken);
+    }
+
+    private void revokeIfUsable(String token) {
+        if (!StringUtils.hasText(token) || !jwtUtils.validateToken(token)) {
+            return;
+        }
+        tokenBlacklist.revoke(jwtUtils.getJti(token), jwtUtils.remainingValidity(token));
+    }
+
+    /**
+     * 改密成功后由控制层调用：重新签发一对令牌。
+     *
+     * <p>必要性：旧 Access Token 里烙着 {@code pwdChange=true}，改完密若不换票，
+     * {@code JwtAuthenticationFilter} 会继续把所有业务请求拦成 1009——用户改完密码反而处处报错。
+     * 重新签发时从库里读到的 {@code is_first_login} 已归零，新票自然不带该标记。
+     */
+    public LoginResponseVO issueTokensFor(Long userId) {
+        SysUser user = userMapper.selectById(userId);
+        if (user == null || (user.getStatus() != null && user.getStatus() == 0)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        return issueTokens(user);
+    }
+
+    /**
+     * 由已加载的用户实体签发双 Token 并装配登录响应（登录 / 换票 / 改密后换票三处共用）。
+     *
+     * <p>职能码一律取自 {@code sys_user_role}，**不做 userType 回退**：userType 是组织条线，
+     * 不是职能码；回退会让"删掉角色绑定"反而升权（见 CONTEXT.md 与设计文档 §4.2）。
+     */
+    private LoginResponseVO issueTokens(SysUser user) {
         List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
-        if (roleCodes.isEmpty()) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
             throw new BusinessException(ErrorCode.USER_NO_FUNCTION);
         }
 
-        String newAccessToken = jwtUtils.generateAccessToken(user.getId(), user.getUsername(), roleCodes);
-        String newRefreshToken = jwtUtils.generateRefreshToken(user.getId(), user.getUsername());
+        boolean mustChangePassword = user.getIsFirstLogin() != null && user.getIsFirstLogin() == 1;
 
         return LoginResponseVO.builder()
-                .accessToken(newAccessToken)
-                .refreshToken(newRefreshToken)
-                .expiresIn(7200L)
+                .accessToken(jwtUtils.generateAccessToken(
+                        user.getId(), user.getUsername(), roleCodes, mustChangePassword))
+                .refreshToken(jwtUtils.generateRefreshToken(user.getId(), user.getUsername()))
+                .expiresIn(jwtUtils.getAccessTokenExpirationSeconds())
                 .userInfo(userService.buildProfile(user))
                 .build();
     }

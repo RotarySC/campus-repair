@@ -118,7 +118,8 @@ class WorkOrderIntegrationTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data", hasSize(greaterThanOrEqualTo(1))))
                 .andExpect(jsonPath("$.data[0].actionType").value("SUBMIT"))
-                .andExpect(jsonPath("$.data[0].operatorRole").value("STUDENT"))
+                // 批次 4 起审计词表统一为职能码：提单人写 REPORTER（不再是组织条线 STUDENT）
+                .andExpect(jsonPath("$.data[0].operatorRole").value("REPORTER"))
                 .andExpect(jsonPath("$.data[0].fromStatus").value("DRAFT"))
                 .andExpect(jsonPath("$.data[0].toStatus").value("PENDING_DISPATCH"));
     }

@@ -1,4 +1,4 @@
-package com.campus.repair.modules.auth.service;
+package com.campus.repair.framework.security;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,15 +12,20 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 认证态存储（连续输错计数 / 图形验证码），Redis 优先、进程内内存兜底。
+ * 认证态存储（连续输错计数 / 图形验证码 / 已吊销令牌），Redis 优先、进程内内存兜底。
  *
  * <p>设计动机：{@code local} profile 只排除了 Redisson 自动配置，并未排除 Spring Data Redis，
  * 而登录/验证码链路此前强依赖 Redis —— 本机没起 Redis 时登录直接 500，与 README「开箱即用、无外置依赖」
  * 的承诺矛盾。此处与 {@code OrderNoGenerator}（单号发号器本地 AtomicLong 兜底）、
  * {@code DispatchEngine}（无 Redisson 时本地 ReentrantLock 兜底）采用同一套降级策略。</p>
  *
- * <p><b>注意</b>：内存兜底是单实例语义，多实例/生产部署必须保证 Redis 可用，否则失败计数与验证码
- * 无法跨节点共享，防爆破能力会下降。</p>
+ * <p><b>注意</b>：内存兜底是单实例语义，多实例/生产部署必须保证 Redis 可用，否则失败计数、验证码
+ * 与<b>令牌吊销黑名单</b>无法跨节点共享，防爆破与登出即时失效的能力都会下降。</p>
+ *
+ * <p><b>为什么放在 {@code framework/security} 而不是 {@code modules/auth}</b>：它被
+ * {@link JwtAuthenticationFilter}（框架层，每个请求都要查一次吊销黑名单）与
+ * {@code modules.auth.service.AuthService}（业务层）同时使用。放在业务模块里会让框架层反向依赖
+ * 业务模块，形成分层倒挂。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -112,7 +117,7 @@ public class AuthStateStore {
 
     private void warnFallback(Exception e) {
         if (fallbackWarned.compareAndSet(false, true)) {
-            log.warn("[AuthStateStore] Redis 不可用，认证限流/验证码已降级为进程内内存存储（单实例语义，生产环境请确保 Redis 可用）: {}",
+            log.warn("[AuthStateStore] Redis 不可用，认证限流/验证码/令牌吊销黑名单已降级为进程内内存存储（单实例语义，生产环境请确保 Redis 可用）: {}",
                     e.getMessage());
         }
     }

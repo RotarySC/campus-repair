@@ -76,4 +76,31 @@ class GlobalExceptionHandlerIntegrationTest {
         mockMvc.perform(get("/api/v1/__no_such_endpoint__"))
                 .andExpect(status().isUnauthorized());
     }
+
+    /**
+     * Content-Type 不是 JSON 时，Spring 抛 {@code HttpMediaTypeNotSupportedException}，
+     * 此前落进 `Exception` 兜底变成 **500「系统处理异常」**：客户端发错 Content-Type 却拿到
+     * 「服务端崩了」的结论，还污染 ERROR 日志（本轮用 `Invoke-WebRequest -Method POST` 打登出
+     * 接口时实测踩到）。现在按 HTTP 语义回 415。
+     */
+    @Test
+    @DisplayName("Content-Type 不是 JSON → 415（而不是 500 系统异常）")
+    void testUnsupportedMediaTypeReturns415() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("username", "admin")
+                        .param("password", "password"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value(415));
+    }
+
+    @Test
+    @DisplayName("请求体是坏 JSON → 400（而不是 500 系统异常）")
+    void testMalformedJsonBodyReturns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\": \"admin\", "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
 }

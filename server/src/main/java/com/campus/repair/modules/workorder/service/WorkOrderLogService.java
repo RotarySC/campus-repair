@@ -10,6 +10,15 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 不可篡改的工单流转审计写入与读取。
+ *
+ * <p>{@code operatorRole} 列的取值域是 {@code IdentityCodes.ALL_AUDIT_ROLES}
+ * （4 个职能码 + {@code SYSTEM}），语义是「**该动作是以哪种职能身份执行的**」。
+ * 批次 4 起运行时只写这一套词表；改名前的历史行仍是旧角色码，由前端
+ * {@code OperatorRoleLabels} 的兼容映射翻译，**不重写历史**。
+ * 参数为 null 时的兜底值是 {@code SYSTEM}（而不是某个具体角色码，避免凭空冒充一个人）。
+ */
 @Service
 @RequiredArgsConstructor
 public class WorkOrderLogService {

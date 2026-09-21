@@ -1,6 +1,7 @@
 package com.campus.repair.modules.workorder.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.modules.spatial.entity.RepairCategory;
@@ -148,7 +149,7 @@ public class WorkOrderService {
                 order,
                 applicant.getId(),
                 applicant.getRealName(),
-                auditRoleOf(applicant),
+                IdentityCodes.FUNC_REPORTER,
                 "SUBMIT",
                 "DRAFT",
                 "PENDING_DISPATCH",
@@ -165,7 +166,9 @@ public class WorkOrderService {
                 .build();
     }
 
-    public List<com.campus.repair.modules.workorder.entity.RepairOrderLog> getTimeline(Long orderId) {
+    public List<com.campus.repair.modules.workorder.entity.RepairOrderLog> getTimeline(
+            Long orderId, Long viewerUserId, boolean dispatchSide) {
+        assertReadable(loadOrder(orderId), viewerUserId, dispatchSide);
         return orderLogService.getTimeline(orderId);
     }
 
@@ -206,11 +209,10 @@ public class WorkOrderService {
         return resultPage;
     }
 
-    public com.campus.repair.modules.workorder.vo.DispatchOrderItemVO getOrderDetail(Long orderId) {
-        RepairOrder order = orderMapper.selectById(orderId);
-        if (order == null) {
-            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
-        }
+    public com.campus.repair.modules.workorder.vo.DispatchOrderItemVO getOrderDetail(
+            Long orderId, Long viewerUserId, boolean dispatchSide) {
+        RepairOrder order = loadOrder(orderId);
+        assertReadable(order, viewerUserId, dispatchSide);
         com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo = new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
         org.springframework.beans.BeanUtils.copyProperties(order, vo);
         vo.setStatus(order.getStatus());
@@ -392,10 +394,10 @@ public class WorkOrderService {
         order.setDispatchedTime(LocalDateTime.now());
         orderMapper.updateById(order);
 
-        // 记录流转审计
+        // 记录流转审计（角色码 = 该动作所属职能，见 IdentityCodes.ALL_AUDIT_ROLES 的说明）
         SysUser operator = userService.getUserById(operatorUserId);
         String opName = operator != null ? operator.getRealName() : "调度主管";
-        String opRole = auditRoleOf(operator);
+        String opRole = IdentityCodes.FUNC_DISPATCHER;
 
         String remark = StringUtils.hasText(request.getDispatchRemark()) ? request.getDispatchRemark().trim() : "调度中心人工指派";
         if (oldWorkerId != null && !oldWorkerId.equals(targetWorker.getId())) {
@@ -449,7 +451,7 @@ public class WorkOrderService {
 
         SysUser operator = userService.getUserById(operatorUserId);
         String opName = operator != null ? operator.getRealName() : "调度主管";
-        String opRole = auditRoleOf(operator);
+        String opRole = IdentityCodes.FUNC_DISPATCHER;
 
         orderLogService.recordLog(
                 order,
@@ -581,7 +583,7 @@ public class WorkOrderService {
                 order,
                 workerUserId,
                 workerName,
-                "WORKER",
+                IdentityCodes.FUNC_WORKER,
                 "ACCEPT",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name(),
@@ -617,7 +619,7 @@ public class WorkOrderService {
                 order,
                 workerUserId,
                 workerName,
-                "WORKER",
+                IdentityCodes.FUNC_WORKER,
                 "SUSPEND",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.SUSPENDED.name(),
@@ -658,7 +660,7 @@ public class WorkOrderService {
                 order,
                 workerUserId,
                 workerName,
-                "WORKER",
+                IdentityCodes.FUNC_WORKER,
                 "RESUME",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name(),
@@ -700,7 +702,7 @@ public class WorkOrderService {
                 order,
                 workerUserId,
                 workerName,
-                "WORKER",
+                IdentityCodes.FUNC_WORKER,
                 "TRANSFER_APPLY",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.MANUAL_DISPATCH.name(),
@@ -768,7 +770,7 @@ public class WorkOrderService {
                 order,
                 workerUserId,
                 workerName,
-                "WORKER",
+                IdentityCodes.FUNC_WORKER,
                 "FINISH_UPLOAD",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.PENDING_ACCEPTANCE.name(),
@@ -869,7 +871,7 @@ public class WorkOrderService {
                     order,
                     studentUserId,
                     studentName,
-                    auditRoleOf(student),
+                    IdentityCodes.FUNC_REPORTER,
                     "REWORK_TRIGGER",
                     currentStatus.name(),
                     targetStatus.name(),
@@ -886,7 +888,7 @@ public class WorkOrderService {
                     order,
                     studentUserId,
                     studentName,
-                    auditRoleOf(student),
+                    IdentityCodes.FUNC_REPORTER,
                     "MANUAL_ACCEPT",
                     currentStatus.name(),
                     targetStatus.name(),
@@ -937,7 +939,7 @@ public class WorkOrderService {
                 order,
                 0L,
                 "系统调度器",
-                "SYSTEM",
+                IdentityCodes.AUDIT_SYSTEM,
                 "AUTO_ACCEPT",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.COMPLETED.name(),
@@ -1029,7 +1031,7 @@ public class WorkOrderService {
                 order,
                 adminUserId,
                 adminName,
-                "ADMIN",
+                IdentityCodes.FUNC_DISPATCHER,
                 "REWORK_ASSIGN",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED.name(),
@@ -1041,11 +1043,10 @@ public class WorkOrderService {
     /**
      * 获取工单完工与评价对比详情（Visual Diff）
      */
-    public com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO getOrderEvaluationDetail(Long orderId) {
-        RepairOrder order = orderMapper.selectById(orderId);
-        if (order == null) {
-            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
-        }
+    public com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO getOrderEvaluationDetail(
+            Long orderId, Long viewerUserId, boolean dispatchSide) {
+        RepairOrder order = loadOrder(orderId);
+        assertReadable(order, viewerUserId, dispatchSide);
 
         com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO vo = new com.campus.repair.modules.workorder.vo.WorkOrderEvaluationVO();
         vo.setOrderId(order.getId());
@@ -1107,6 +1108,40 @@ public class WorkOrderService {
         return vo;
     }
 
+    private RepairOrder loadOrder(Long orderId) {
+        RepairOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        return order;
+    }
+
+    /**
+     * 工单读接口的属主判定（IDOR 收口）。
+     *
+     * <p>放行集合刻意只有三种人：**报修人本人**、**当前指派师傅**、**调度/平台管理**。
+     * 前两者是「与这张单有直接关系的人」，后者是业务上必须能看全量工单的角色
+     * （调度中心抽屉、工单报表都要它）。
+     *
+     * <p>为什么放在 Service 而不是注解上：`@PreAuthorize` 只能表达「你是什么角色」，表达不了
+     * 「这张单是不是你的」——同一角色内的个体边界只能靠这一层手写判断，而它此前完全缺失。
+     *
+     * <p>越权时抛 {@code AccessDeniedException}（沿用本类既有 {@link #getAndVerifyWorkerOrder}
+     * 的口径，落 HTTP 403），而不是伪装成 2003「工单不存在」：本项目是所有登录用户都能枚举
+     * 工单 id 的封闭校园系统，可调试性比「不泄漏存在性」更值钱。
+     */
+    private void assertReadable(RepairOrder order, Long viewerUserId, boolean dispatchSide) {
+        if (dispatchSide) {
+            return;
+        }
+        boolean owner = viewerUserId != null && viewerUserId.equals(order.getStudentUserId());
+        boolean assignee = viewerUserId != null && viewerUserId.equals(order.getWorkerId());
+        if (!owner && !assignee) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "越权拦截：仅报修人本人、当前指派师傅与调度管理可查看该工单");
+        }
+    }
+
     private RepairOrder getAndVerifyWorkerOrder(Long orderId, Long workerUserId) {
         RepairOrder order = orderMapper.selectById(orderId);
         if (order == null) {
@@ -1116,24 +1151,5 @@ public class WorkOrderService {
             throw new org.springframework.security.access.AccessDeniedException("越权拦截：您不是该工单当前指派的维修师傅，无法操作");
         }
         return order;
-    }
-
-    /**
-     * 审计日志（{@code repair_order_log.operator_role}）里的操作人角色码。
-     *
-     * <p>这一列目前是**历史词表与现行码混装**的：旧数据里是改名前的角色码
-     * （SUPER_ADMIN / LOGISTICS_ADMIN / REPAIR_WORKER…），运行时写的是操作人的**组织条线**
-     * （{@code sys_user.user_type}，见 {@code IdentityCodes}），词表统一属批次 4。本方法只保证两点：
-     * ① 写进库的值一定在前端 {@code OperatorRoleLabels} 里有文案，不会在时间轴上显示成裸码；
-     * ② 取不到操作人时写 {@code SYSTEM}（系统自动流转）而**不是** {@code ADMIN}——后者现在是
-     * 「行政信息化」条线码，写成它会读起来像某个具体的人。
-     *
-     * <p>同理，师生侧的动作也不能再写死 {@code STUDENT}：教工报修、教工评价都会落成
-     * 「报修学生」，这是审计数据上的错标。
-     */
-    private static String auditRoleOf(SysUser operator) {
-        return operator != null && StringUtils.hasText(operator.getUserType())
-                ? operator.getUserType()
-                : "SYSTEM";
     }
 }

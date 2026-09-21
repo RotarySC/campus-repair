@@ -166,6 +166,8 @@ CREATE TABLE repair_order_log (
   order_no VARCHAR(32) NOT NULL,
   operator_id BIGINT NOT NULL,
   operator_name VARCHAR(32) NOT NULL,
+  -- 经办人职能码 (REPORTER, WORKER, DISPATCHER, PLATFORM_ADMIN, SYSTEM)；语义是「该动作以哪种职能身份执行」。
+  -- 历史行可能仍是旧角色码/组织条线码，展示层（OperatorRoleLabels）需兼容，与生产 sql/schema.sql 同口径。
   operator_role VARCHAR(32) NOT NULL,
   action_type VARCHAR(32) NOT NULL,
   from_status VARCHAR(32) NOT NULL,
