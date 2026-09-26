@@ -24,7 +24,7 @@
         @row-click="openDetail"
       >
         <template #col-status="{ row }">
-          <el-tag :type="statusTagType(row.status)" effect="light">
+          <el-tag :type="orderStatusTagType(row.status)" effect="light">
             {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
           </el-tag>
         </template>
@@ -51,7 +51,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { EditPen } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
-import { DispatchOrderItemVO, OrderStatusLabels } from '@campus/shared';
+import { DispatchOrderItemVO, OrderStatusLabels, orderStatusTagType } from '@campus/shared';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 
@@ -86,7 +86,7 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      type: statusTagType(row.status)
+      type: orderStatusTagType(row.status)
     })
   },
   {
@@ -98,16 +98,6 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
   },
   { key: 'createdAt', label: '提单时间', width: 170, valueType: 'datetime' }
 ];
-
-function statusTagType(status: string): 'success' | 'primary' | 'danger' | 'warning' | 'info' {
-  switch (status) {
-    case 'COMPLETED': return 'success';
-    case 'PENDING_ACCEPTANCE': return 'primary';
-    case 'REWORK_PENDING': return 'danger';
-    case 'IN_PROGRESS': case 'ASSIGNED': return 'warning';
-    default: return 'info';
-  }
-}
 
 function handleTabChange() {
   page.value = 1;

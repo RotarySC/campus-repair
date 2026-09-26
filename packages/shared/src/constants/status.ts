@@ -22,6 +22,27 @@ export const OrderStatusLabels: Record<OrderStatusEnum, string> = {
   [OrderStatusEnum.CANCELLED]: '已作废'
 };
 
+/** el-tag 的语义色档；与 `ResponsiveTable` 的 `CardTagType` 是同一集合 */
+export type OrderStatusTagType = 'success' | 'primary' | 'danger' | 'warning' | 'info';
+
+/**
+ * 工单状态 → `el-tag` 语义色。**全仓唯一一份**。
+ *
+ * 此前 `StudentOrderListView.vue` 与 `PersonalCenterView.vue` 各抄了一遍逐字节相同的实现，
+ * 师傅工作台要用第三份时才发现——那正是「同一个状态在不同页显示成不同颜色」的起点。
+ * 新增任何展示工单状态的页面，一律 import 这里，不要再写本地副本。
+ */
+export function orderStatusTagType(status?: string | null): OrderStatusTagType {
+  switch (status) {
+    case 'COMPLETED': return 'success';
+    case 'PENDING_ACCEPTANCE': return 'primary';
+    case 'REWORK_PENDING': return 'danger';
+    case 'IN_PROGRESS':
+    case 'ASSIGNED': return 'warning';
+    default: return 'info';
+  }
+}
+
 export const WorkerSkillLabels: Record<string, string> = {
   ELECTRICIAN: '电工电气',
   PLUMBER: '水暖管道',
