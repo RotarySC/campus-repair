@@ -127,5 +127,5 @@ INSERT IGNORE INTO `sys_config` (`config_key`, `config_value`, `description`) VA
 --      OR CONCAT(',', REPLACE(REPLACE(`keywords`, '，', ','), '、', ','), ',') LIKE '%,灯,%'
 --      OR CONCAT(',', REPLACE(REPLACE(`keywords`, '，', ','), '、', ','), ',') LIKE '%,门,%');
 
--- 5.5 三个配置键已就位（预期 3）
+-- 5.5 四个配置键已就位（预期 4；第 4 节的 INSERT 就是四个，含 assistant_llm_escalate_below）
 -- SELECT COUNT(*) FROM `sys_config` WHERE `config_key` LIKE 'assistant%';

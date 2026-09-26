@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 大模型这条路径的契约测试，两块：
+ * 大模型这条路径的契约测试，三块：
  *
  * <p><b>① 升级制</b>——规则没把握时才把判断交给大模型，有把握时**一次请求都不发**。
  *
@@ -42,6 +42,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p><b>② 合并策略</b>——模型返回的**顺序不参与排序**（根治"首候选随机翻"），
  * 且模型**不得淘汰规则命中**（只能填空位）。这两条也只在"模型真的被调了、且返回了东西"
  * 时才成立，所以同样需要计数传输层来确认用例没有空转。
+ *
+ * <p><b>③ `engine` 语义</b>——它记的是「模型有没有**贡献**可用结果」，**不是**「模型有没有被调」。
+ * 模型返回的 id 全是规则已命中的、或候选位已被规则占满时，一个候选都不会多，`engine` 必须
+ * 如实保持 `RULE`（"调了但没用上"与"没调"对外是同一件事；§3.6 原文只写了"返回空列表不算贡献"，
+ * 这是同一口径在"非空但无用"上的推广）。**所以任何"模型被调了没有"的断言都不能拿 `engine` 当代理**
+ * ——那是恒真/恒假信号，只能看 `calls`。
  *
  * <p>本类通过 `@SpringBootTest(properties = …)` 打开大模型（否则 `isLlmEnabled()` 恒假、
  * 测试会**空转通过**），并用一个 `@Primary` 的计数实现替换真实传输层——
@@ -215,11 +221,15 @@ class AssistantLlmEscalationTest {
     }
 
     @Test
-    @DisplayName("弱命中（只命中 1 个关键词 = MEDIUM/5）也升级——实测那正是模型能补出更好答案的一档")
+    @DisplayName("弱命中（只命中 1 个关键词 = MEDIUM/5）也升级给模型")
     void weakHitEscalatesToModel() throws Exception {
         suggest(weakHitText)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.engine").value("RULE+LLM"));
+                .andExpect(jsonPath("$.data.candidates[0].categoryId").value(leafId.intValue()))
+                // 本用例的模型答的是**规则已经命中的那一条**（见 @BeforeEach 的 transport.response），
+                // 一个候选都没多 ⇒ 按 §3.6 的口径它没贡献，engine 如实保持 RULE。
+                // 「模型被调了」由下面的 calls 断言，不再由 engine 兼任（那是恒真代理，见类注释）。
+                .andExpect(jsonPath("$.data.engine").value("RULE"));
 
         assertThat(transport.calls.get())
                 .as("5 < 10，低于阈值就该交给模型")
@@ -233,7 +243,9 @@ class AssistantLlmEscalationTest {
 
         suggest(leafName)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.engine").value("RULE+LLM"));
+                // 调是调了，但模型答的还是规则已命中的那条 ⇒ 无贡献 ⇒ RULE。
+                // 这条用例的断言对象本来就是 calls（engine 在这里区分不出"调没调"）。
+                .andExpect(jsonPath("$.data.engine").value("RULE"));
 
         assertThat(transport.calls.get()).as("阈值 0 = 关闭升级制").isEqualTo(1);
     }
@@ -308,12 +320,48 @@ class AssistantLlmEscalationTest {
         // 于是这三条规则命中被整批截掉 —— 「开了大模型反而更差」。
         suggest("锁芯" + unique + "玻璃" + unique + "纱窗" + unique)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.engine").value("RULE+LLM"))
+                // 名额已满 ⇒ 模型这三条一条都进不来 ⇒ 它没贡献，engine 保持 RULE。
+                // 这条断言与下面的 calls 合起来才完整：**调了模型，但一个候选都没采纳**。
+                .andExpect(jsonPath("$.data.engine").value("RULE"))
                 .andExpect(jsonPath("$.data.candidates.length()").value(3))
                 .andExpect(jsonPath("$.data.candidates[0].categoryId").value(hitA.intValue()))
                 .andExpect(jsonPath("$.data.candidates[1].categoryId").value(hitB.intValue()))
                 .andExpect(jsonPath("$.data.candidates[2].categoryId").value(hitC.intValue()));
 
         assertThat(transport.calls.get()).as("模型确实被调了，只是它的答案没进候选").isEqualTo(1);
+    }
+
+    // ------------------------------------------------------------------
+    // engine 语义：它记的是「模型有没有**贡献**」，不是「模型有没有被调」
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("engine 记的是「贡献」不是「调用」：模型答规则已命中的 ⇒ RULE；补出新细类 ⇒ RULE+LLM")
+    void engineReflectsContributionNotInvocation() throws Exception {
+        Long parentId = createParent("engine语义EN" + unique);
+        Long extra = createLeaf(parentId, "地漏返味EN" + unique, "地漏" + unique, 5);
+
+        // ① 模型答的是规则**已经命中**的那条（@BeforeEach 里的 transport.response = envelope(leafId)）：
+        //    问了，但一个候选都没多 ⇒ 与"没调"对外是同一件事，engine 必须是 RULE。
+        //    这正是 §3.6「engine = 模型有没有贡献可用结果」在"非空但无用"上的推广——
+        //    此前实现只要 ids 非空就置 RULE+LLM，于是这条用例会红。
+        suggest(weakHitText)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.engine").value("RULE"))
+                .andExpect(jsonPath("$.data.candidates.length()").value(1))
+                .andExpect(jsonPath("$.data.candidates[0].categoryId").value(leafId.intValue()));
+
+        // ② 换成一道规则没命中的细类：候选多了一条 ⇒ 真的贡献了 ⇒ RULE+LLM
+        transport.response = envelope(extra);
+        suggest(weakHitText)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.engine").value("RULE+LLM"))
+                .andExpect(jsonPath("$.data.candidates.length()").value(2))
+                .andExpect(jsonPath("$.data.candidates[0].categoryId").value(leafId.intValue()))
+                .andExpect(jsonPath("$.data.candidates[1].categoryId").value(extra.intValue()));
+
+        assertThat(transport.calls.get())
+                .as("两次都必须真的问过模型——差别只在模型答的东西有没有用")
+                .isEqualTo(2);
     }
 }

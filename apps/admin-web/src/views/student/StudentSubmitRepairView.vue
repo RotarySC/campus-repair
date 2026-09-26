@@ -137,11 +137,10 @@ import { useViewport } from '../../composables/useViewport';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
 import SuggestionCardList from '../../components/assistant/SuggestionCardList.vue';
 import {
-  ASSISTANT_DEGRADED_LABELS,
   compressImage,
-  type AssistantCandidate,
-  type AssistantSuggestion
+  type AssistantCandidate
 } from '@campus/shared';
+import { assistantDegradedHint, requestAssistantSuggestion } from '../../api/assistant';
 
 const { isNarrowPhone } = useViewport();
 
@@ -325,27 +324,24 @@ async function fetchAssistantSuggestion() {
   if (text.length < 2 || dismissedDescription.value === text) {
     return;
   }
-  try {
-    const res = await httpClient.post<AssistantSuggestion>('/assistant/suggest', { description: text });
-    if (res.code !== 200 || !res.data) {
-      clearAssistant();
-      return;
-    }
-    // 请求期间用户可能已经自己选了分类、或又改了描述——两种情况都不该再覆盖界面
-    if (form.categoryId || form.description.trim() !== text) {
-      return;
-    }
-    assistantCandidates.value = res.data.candidates || [];
-    if (res.data.noMatch) {
-      assistantHint.value =
-        '没能判断出具体细类，请手动选择；补充「哪个房间、什么声音、什么时候开始的」会更准。';
-    } else if (res.data.degradedReason) {
-      assistantHint.value = ASSISTANT_DEGRADED_LABELS[res.data.degradedReason];
-    } else {
-      assistantHint.value = '';
-    }
-  } catch (_) {
+  // 请求出口与抽屉共用（`api/assistant.ts`）：本页只负责"什么时候问、答完怎么画"
+  const outcome = await requestAssistantSuggestion(text);
+  if (!outcome.ok) {
     clearAssistant();
+    return;
+  }
+  // 请求期间用户可能已经自己选了分类、或又改了描述——两种情况都不该再覆盖界面
+  if (form.categoryId || form.description.trim() !== text) {
+    return;
+  }
+  const suggestion = outcome.suggestion;
+  assistantCandidates.value = suggestion.candidates || [];
+  if (suggestion.noMatch) {
+    assistantHint.value =
+      '没能判断出具体细类，请手动选择；补充「哪个房间、什么声音、什么时候开始的」会更准。';
+  } else {
+    // 没降级时是空串——那一行自然不渲染
+    assistantHint.value = assistantDegradedHint(suggestion);
   }
 }
 

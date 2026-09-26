@@ -129,23 +129,12 @@ import { ArrowDown, Bell, Menu, SwitchButton } from '@element-plus/icons-vue';
 import { UserInfo, functionLabel } from '@campus/shared';
 import { useAuthStore, httpClient } from '../stores/auth';
 import { useIdentity } from '../composables/useIdentity';
-import type { FunctionCode } from '../composables/useIdentity';
 import { BREAKPOINTS, useViewport } from '../composables/useViewport';
-import { visibleNavItems } from '../constants/navItems';
+// NavItem 只在 constants/navItems.ts 定义一次——此前本文件又抄了一份同名字段的结构体，
+// 抽清单时把数组搬走了、类型留在原地，于是同一个形状有了两个来源（改一处不会改另一处）
+import { visibleNavItems, type NavItem } from '../constants/navItems';
 import NotificationCenterDrawer from '../components/NotificationCenterDrawer.vue';
 import AssistantWidget from '../components/AssistantWidget.vue';
-
-interface NavItem {
-  path: string;
-  label: string;
-  icon: string;
-  /**
-   * 需要哪一个**职能**才可见（口径见仓库根 CONTEXT.md；不再按 userType 判定）。
-   * `'ADMIN_SIDE'` 是「调度 **或** 平台管理」这一组，用命名常量而不是拿 `'DISPATCHER'`
-   * 当哨兵值——后者会让字段名与它实际表达的含义不符。
-   */
-  requires: FunctionCode | 'ADMIN_SIDE';
-}
 
 const identity = useIdentity();
 

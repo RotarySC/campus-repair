@@ -10,7 +10,7 @@ import org.springframework.web.client.RestClient;
  * {@link AssistantLlmTransport} 的真实实现（Spring 6.1 的 {@code RestClient}）。
  *
  * <p>客户端在**构造时**建一次并复用；超时取
- * {@code app.assistant.llm.timeout-ms}（默认 3000ms）——**助手永远不能把提单页拖住**。
+ * {@code app.assistant.llm.timeout-ms}（默认 8000ms）——**助手永远不能把提单页拖住**。
  * 不配任何重试：超时即降级，重试只会让用户多等。
  *
  * <p>建在构造时而不是 {@code @PostConstruct}：这样传输层可以**脱离 Spring 上下文**

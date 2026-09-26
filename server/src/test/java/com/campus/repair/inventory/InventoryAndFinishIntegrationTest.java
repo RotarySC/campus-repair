@@ -124,7 +124,8 @@ public class InventoryAndFinishIntegrationTest {
 
         testStudent = createStudent("inv_student_01", "耗材测试同学", "13812340099");
 
-        worker1 = createWorker("inv_worker_01", "水暖张师傅", "13812340001");        WorkerProfile p1 = new WorkerProfile();
+        worker1 = createWorker("inv_worker_01", "水暖张师傅", "13812340001");
+        WorkerProfile p1 = new WorkerProfile();
         p1.setUserId(worker1.getId());
         p1.setSkillCode("GENERAL");
         p1.setCampusId(testCampusId);

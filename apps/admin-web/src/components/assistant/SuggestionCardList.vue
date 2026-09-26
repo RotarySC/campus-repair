@@ -17,7 +17,7 @@
       <p class="category-path">{{ candidate.categoryPath }}</p>
 
       <p class="meta-line">
-        <span v-if="candidate.skillCode">维修工种：{{ candidate.skillCode }}</span>
+        <span v-if="candidate.skillCode">维修工种：{{ skillLabel(candidate.skillCode) }}</span>
         <span v-if="candidate.slaHours">承诺时效：{{ candidate.slaHours }} 小时</span>
       </p>
 
@@ -35,6 +35,7 @@
 <script setup lang="ts">
 import {
   ASSISTANT_CONFIDENCE_LABELS,
+  WorkerSkillLabels,
   type AssistantCandidate,
   type AssistantConfidence
 } from '@campus/shared';
@@ -51,6 +52,17 @@ function confidenceTagType(confidence: AssistantConfidence): 'success' | 'warnin
   if (confidence === 'HIGH') return 'success';
   if (confidence === 'MEDIUM') return 'warning';
   return 'info';
+}
+
+/**
+ * 工种码 → 中文标签。
+ *
+ * <p>卡片是**给人看的**，不能把 `PLUMBER` 这种字典码直接端出去——全站其它地方
+ * （工作台、调度中心、空间字典）都走 `WorkerSkillLabels`，这里也不能例外。
+ * 查不到时回落原码而不是留空：宁可露出一个陌生的码，也不要让「维修工种：」后面什么都没有。
+ */
+function skillLabel(code: string): string {
+  return WorkerSkillLabels[code] ?? code;
 }
 </script>
 

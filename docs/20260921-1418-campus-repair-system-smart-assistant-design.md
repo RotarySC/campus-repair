@@ -9,14 +9,15 @@
 | 子系统 | 状态 |
 | :--- | :--- |
 | §2 数据层（两列 + 种子 + 配置键 + 迁移脚本） | **已落地**，H2 实测通过（§6.1） |
-| §3 后端 `modules/assistant` | **已落地**，`mvn test` 174/174 |
+| §3 后端 `modules/assistant` | **已落地**，`mvn test` 176/176 |
 | §4 前端（气泡抽屉 / 提单页内联 / 字典页可编辑） | **已落地**，`tsc` + `vue-tsc` exit 0 |
-| §6 测试与验收 | **已验收**：真机探针 43 条 ALL PASS |
+| §6 测试与验收 | **已验收**：真机探针 52 条 ALL PASS |
 | §0.1 验收后修复（制度问答按职能裁剪） | **已修复**，149/149 |
 | §0.2 验收后修复（大模型信封解包） | **已修复**，160/160（+9 条真实 HTTP 用例） |
 | §0.3 首次接入真实提供方（MiMo `mimo-v2.6-flash`） | **已跑通**：`engine=RULE+LLM`、`degradedReason=null` |
 | §0.4 升级制（规则有把握就不调模型） | **已落地**，169/169；4/8 请求免调模型 |
 | §0.5 候选顺序确定化 + 提问历史（含 C 段的 chip 形态与文案调整） | **已落地**，174/174；真机首候选 3/3 稳定；探针 49 条 ALL PASS |
+| §0.6 两轴代码评审（`master...HEAD`）后的问题修复 | **已修复**，176/176；探针 52 条 ALL PASS |
 
 ### 0.1 验收后修复：制度问答曾是「三类账号一模一样」（2026-09-26）
 
@@ -201,6 +202,41 @@ modelReturnOrderDoesNotAffectCandidates candidates[0].categoryId expected:<21> b
 
 **这一轮探针暴露了一个一直存在的方法论漏洞**（记在 `AGENTS.md` §2.2）：本探针此前所有断言都是 **DOM/文本级**的（`innerText`、`classList`、宽度），而**后台标签里 Vue 的 `<transition>` 会卡在 `enter-from`——抽屉永久停在 `translateX(100%)`，即完全在屏幕外**（实测 `drawer.left=1272`，视口正好 1272）。内容断言照样全绿，所以一直没发现；直到加了第一条依赖**位置**的断言（hover 要算鼠标坐标）才量出来。修法是量位置前把 `.assistant-drawer{transform:none}` 钉到终态，并新增一条「抽屉在视口内」的前置断言，免得以后再用屏外坐标去量。
 
+### 0.6 两轴代码评审后的问题修复（2026-09-27）
+
+对 `master...HEAD`（9 个提交 / 44 文件 / +5797−71）跑了一次**两轴评审**——Standards 轴按 `AGENTS.md` + `CONTEXT.md` + Fowler 味道基线，Spec 轴按本文档 §1 的**用户裁决**与 §2–§5 的契约（§0.x 那些事后追记**不作为**验收依据，否则就成了"拿代码描述去验收代码"）。共 **18 条**，按处置归并为 13 项。
+
+**改代码（9 项）**
+
+| # | 问题 | 处置 |
+| :--- | :--- | :--- |
+| 1 | `AssistantLlmProperties` 字段默认仍是 **3000ms / 64 tokens**，与 §3.4 写的 8000/512 矛盾；实测的坏值只被 `application.yml` 覆盖 | 字段默认改成 **8000 / 512**。默认值只在"没加载到那段 yml"的上下文（新 profile、切片测试）里生效——**那正是最不容易被发现的时候**，留着旧值等于埋一颗 §0.3 已经踩过的雷 |
+| 2 | **`engine` 语义**：只要模型返回非空 ids 就置 `RULE+LLM`，即使那些 id 全是规则已命中的、`merge` 后候选一字未变 | 改成"**合并后候选真的多了一条**才算贡献"（`merged.size() > ranked.size()`；`merge` 只追加、从不删减，比长度就够）。这是 §3.6「模型返回空列表不算贡献」在**"非空但无用"**上的推广 |
+| 3 | 请求体的 `spaceId` 被**静默丢弃**（DTO 收了、Controller 只传 description） | 按 §7「只回显不参与打分」**真的回显**：VO 加字段、Service 签名带上、Controller 传下去；`packages/shared` 的 `AssistantSuggestion` 同步补 `spaceId` |
+| 4 | 抽屉区块标题写作**「常见问题」**，而 `CONTEXT.md` 的「制度问答」条目明确把它列进 `_Avoid_` | 标题与空态文案都改成**「制度问答」**。与上一轮「最近提问 → 最近询问」是同一类缺陷，只是上一轮只改了那一个词 |
+| 5 | 快捷入口缺 §4 要求的**「通知中心」动作项**，于是 `AssistantWidget` 暴露的 `notifyCenter` **全仓无调用者 = 死代码** | 补上这一项（`Bell` 图标，走 `emit('open-notifications')` 让外壳打开那个全局唯一的站内消息抽屉），并抽出 `openNotificationCenter()` 与 `notifyCenter` 共用同一条路 |
+| 6 | `NavItem` 接口在 `constants/navItems.ts` 与 `AdminLayout.vue` **各定义了一份**（抽清单时把数组搬走了、类型留在原地） | 删掉 `AdminLayout.vue` 里那份，改为 `import { visibleNavItems, type NavItem }`；顺带清掉因此失效的 `FunctionCode` 导入 |
+| 7 | 候选卡片把**工种字典码**直接端给用户（`维修工种：PLUMBER`），而全站其它地方都走 `WorkerSkillLabels` | 加 `skillLabel()` 走同一张表（`PLUMBER → 水暖管道`），查不到时回落原码而不是留空 |
+| 8 | `/assistant/suggest` 的拉取逻辑在抽屉与提单页**各写了一遍**（POST + 成败判定 + 降级文案映射） | 抽成 `apps/admin-web/src/api/assistant.ts`：`requestAssistantSuggestion()`（**不抛异常**，归一成 `ok` / `rejected` / `unavailable`）+ `assistantDegradedHint()`。两个入口只留各自的界面表现 |
+| 9 | `RestClientLlmTransport` 的 javadoc 写「默认 3000ms」（与 #1 同源）；`InventoryAndFinishIntegrationTest` 一行塞了两条语句 | 注释改 8000；两行拆开 |
+
+**改文档（4 项，代码是对的）**
+
+| # | 文档写的 | 实际 / 改为 |
+| :--- | :--- | :--- |
+| 10 | §5 称参数校验失败为「HTTP 200 + `code=400`」 | §0.1 早已实测纠正为 **HTTP 400**（`GlobalExceptionHandler` 标了 `@ResponseStatus(BAD_REQUEST)`），§5 漏改 → 同步 |
+| 11 | §4 说内联推荐在**「故障细类」上方**、按**描述哈希**记住已忽略 | 代码是**紧跟在「故障细类」下方**、按**描述整串**比较。**下方是对的**：推荐要贴着它要填的那个字段，而不是贴在下方的描述框旁边；"哈希"只是行文随意，整串比较行为等价且更好读 → 改文档 |
+| 12 | 迁移自检 5.5 写「三个配置键（预期 3）」，但同一文件第 4 节标题写"四个"且实插 **4** 个；`data-demo.sql` 注释也写"三个键" | 都改成**四个**（含 `assistant_llm_escalate_below`）。**"自检期望值"写错最危险——它会让人以为检查通过了** |
+| 13 | `README.md` 仍写「后端 160 项」 | 改 **176**，并把 `AssistantLlmEscalationTest` 补进测试套件分布 |
+
+**新增测试 2 例（174 → 176）**：`AssistantApiIntegrationTest#suggestEchoesSpaceId`（带 `spaceId` 原样回显且候选不变；不带则回显 `null`——**不要替调用方猜一个默认空间**）；`AssistantLlmEscalationTest#engineReflectsContributionNotInvocation`（同一个弱命中输入，模型答"规则已命中的那条" ⇒ `RULE`；换成规则没命中的细类 ⇒ `RULE+LLM`，两次都 `calls == 2`）。**后者顺带纠正了本类里三处把 `engine` 当"模型有没有被调"代理的断言**——那是恒真信号，`engine` 从来只记"有没有贡献"。
+
+**探针 49 → 52 条**（§6.3）。
+
+**这一轮值得记下来的两条**：
+- **"文档说 A、代码做 B"必须先判哪边对，再动手**。13 项里有 4 项结论是**改文档**（#10–#13）。若一律"让代码服从文档"，会把一个正确的界面位置和一个更危险的自检期望值改坏。
+- **`engine` 这类"给人看的诊断字段"最容易悄悄说谎**：它不影响任何业务分支，所以错了也不会有人报 bug——只能靠"口径写死 + 用例盯住"。同一类字段还有 `degradedReason` 与 `noMatch`。
+
 ## 1. 现状与决策（动手前已核实）
 
 | 事实 | 依据 / 结论 |
@@ -380,6 +416,8 @@ noMatch=true   engine=RULE   degradedReason=null   候选=（无）
 前端落到 `noMatch` 分支（「没听明白是什么故障…」），**不试图回答**，把选择权交回用户。
 
 > **语义细节**：这几条耗时 2~4.5s，说明**模型确实被调了**（`noMatch` 触发升级），但 `engine` 仍是 `RULE`——`engine` 的语义是"**模型有没有贡献可用结果**"，模型返回空列表不算贡献。**「`engine=RULE` + 高延迟」= 问了模型、模型说不知道。**
+>
+> **这条口径的完整形式（2026-09-27 补齐）**：`engine=RULE+LLM` 的**唯一**判据是"合并后候选**真的多了一条**"。模型返回非空但**一条都没能进来**的两种情形同样不算贡献：① 返回的 id 全是规则已经命中的；② 候选位已被规则占满（`assistant_max_candidates`）。此前实现只判 `categoryIds` 非空就置 `RULE+LLM`，于是"调了模型但一个候选都没采纳"被记成了贡献——**`engine` 是给人看的诊断字段，记错方向会让人以为模型有用，从而调高对它的预期**。推论：**任何"模型到底有没有被调"的断言都不能拿 `engine` 当代理**，只能看请求计数（`AssistantLlmEscalationTest` 的计数传输层）。
 
 **对抗测试**：
 
@@ -400,7 +438,7 @@ noMatch=true   engine=RULE   degradedReason=null   候选=（无）
 | `apps/admin-web/src/components/AssistantWidget.vue`（新） | 右下悬浮气泡 + `el-drawer`（`:size="isNarrowPhone ? '100%' : '420px'"`，与通知抽屉一致）。五段内容：① 推荐（仅报修人）② 自助排查 ③ 快捷入口（`visibleNavItems` + 「通知中心」动作项）④ 我的工单速查（仅报修人）⑤ 制度问答。**2026-09-26 起提问框在提交后清空，问题落进「最近询问」（§0.5 B/C）**：`localStorage` 键 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`、上限 8 条、同一条去重提前、点条目**直接重问**、**换行 chip 云**（长描述截断）、**悬停/聚焦才露出单条删除徽标**、带「清空」；读写全程 `try/catch`（存不下就只留内存，绝不把助手搞崩） |
 | `apps/admin-web/src/components/assistant/SuggestionCardList.vue`（新） | 纯展示卡片（分类路径 / 大类 / 工种 / SLA / 置信度 / 命中词 + 「采用并提单」）；**抽屉与提单页共用同一组件** |
 | `apps/admin-web/src/layouts/AdminLayout.vue` | 挂载 `<AssistantWidget />`（紧邻通知抽屉）；nav 数组改 import |
-| `apps/admin-web/src/views/student/StudentSubmitRepairView.vue` | ① 描述停输 600ms、`categoryId` 仍为空且文本 ≥2 字时调 `/suggest`，在「故障细类」上方内联渲染候选（可关闭，按描述哈希记住已忽略，不反复打扰）；② 点「采用」⇒ 填 `categoryId`/`categoryPath`/`categoryFullPathName` + `saveDraft()`；③ 读 `route.query` 预填：**`categoryId` 覆盖草稿**（用户是从助手显式跳来的），**`spaceId` 仅在本页为空时填入**，应用后 `router.replace` 摘掉 query，避免刷新重复应用 |
+| `apps/admin-web/src/views/student/StudentSubmitRepairView.vue` | ① 描述停输 600ms、`categoryId` 仍为空且文本 ≥2 字时调 `/suggest`，**紧跟在「故障细类」这一项下方**内联渲染候选（可关闭，**按描述整串**记住已忽略，不反复打扰）；② 点「采用」⇒ 填 `categoryId`/`categoryPath`/`categoryFullPathName` + `saveDraft()`；③ 读 `route.query` 预填：**`categoryId` 覆盖草稿**（用户是从助手显式跳来的），**`spaceId` 仅在本页为空时填入**，应用后 `router.replace` 摘掉 query，避免刷新重复应用 |
 | `apps/admin-web/src/views/spatial/SpatialManageView.vue` | 分类表格加「关键词」列；新增/编辑弹窗加「助手同义词」（一级/二级都可填）与「自助排查提示」（仅二级显示，占位提示「多个步骤用 \| 分隔」） |
 
 **「采用」后的跳转**：`/student/submit?categoryId=<叶子>&spaceId=<默认空间>`，`spaceId` 仅当 `userInfo.defaultSpaceId` 存在时带上，让 URL 自洽。
@@ -409,7 +447,7 @@ noMatch=true   engine=RULE   degradedReason=null   候选=（无）
 
 | 场景 | 行为 |
 | :--- | :--- |
-| 描述只有标点或单字 | `@Size(min=2,max=300)` ⇒ HTTP 200 + `code=400`（`PARAM_INVALID`） |
+| 描述只有标点或单字 | `@Size(min=2,max=300)` ⇒ **HTTP 400** + `code=400`（`PARAM_INVALID`）——§0.1 已纠正过这个写法，此处同步 |
 | 关键词互为子串 | 叶子名命中（+10）压过关键词（+5）；同分再按 `sortOrder`/`id`，结果稳定 |
 | 一个关键词命中多个叶子 | 各得 +5，按 §3.3 规则 6 排序，**不随机** |
 | 分类被停用 / 逻辑删除 | 不进入候选（`status=1` 过滤 + `@TableLogic`） |
@@ -458,28 +496,30 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 
 **同日再扩到 49 条**（§0.5 C 的形态与单条删除）：区块标题口径是「最近询问」；历史是**换行 chip**而不是整行条（`display:flex` + `flex-wrap:wrap` + 胶囊比容器窄 + 圆角）；再问一条后**恰好 2 条**、新的在前、旧的没被顶掉；**抽屉在视口内**（前置自检，见下）；删除徽标**默认 `opacity:0`、鼠标悬停该条变 `1`**（用 CDP `Input.dispatchMouseEvent` 真实移动鼠标取证——页面内合成事件不触发 `:hover`，`AGENTS.md` §2.2 有同源教训）；**单条删除只删那一条**、其余保留并落盘。
 
+**2026-09-27 扩到 52 条**（§0.6 评审修复）：区块标题必须含**「制度问答」**且**不含**被 `_Avoid_` 掉的「常见问题」（读 `.block-title` **全集**，而不是 `innerText.includes`——后者在标题写错时照样可能通过）；快捷入口 = **侧边栏导航并集 + 「通知中心」动作项**（三条断言从"与导航完全相等"改成"并集 + 那一项"）；**点「通知中心」真的打开外壳那个站内消息抽屉**（`notifyCenter` 此前全仓无调用者 = 死代码，现在有断言盯着）；候选卡片**工种显示中文标签**（`PLUMBER` → `水暖管道`）且**不得出现字典码**。
+
 **两条探针自身的加固（都是实测踩出来的，不是产品缺陷）**：
 ① **探针改为从干净历史开始**（`openAs(..., {clearAssistantHistory:true})` 只在最开头用一次）。此前历史里混进了**人工在浏览器里点出来的**「吊扇坏了」，于是「未提问时不显示历史」「单条删除后只剩一条」这类**精确**断言连带失败——断言写成精确值就必须自己保证前置状态，不能假设上一次运行是干净的。**只在最开头清**：后面的 `openAs` 是「刷新后历史仍在」的用例，清了就自相矛盾。
-② **量位置前必须把抽屉 `transform` 钉到终态**。后台标签里 rAF 暂停 ⇒ Vue 的 `<transition>` 卡在 `enter-from` ⇒ **抽屉永久停在 `translateX(100%)`，完全在屏幕外**（实测 `drawer.left=1272`、视口 1272）。本探针此前全是 DOM/文本级断言所以一直没暴露，直到加了第一条依赖位置的断言才量出来。现在除关过渡外还注入 `.assistant-drawer{transform:none!important}`，并加一条「抽屉在视口内」的前置断言，免得以后再用屏外坐标去量。
+② **量位置前必须把抽屉 `transform` 钉到终态**。后台标签里 rAF 暂停 ⇒ Vue 的 `<transition>` 卡在 `enter-from` ⇒ **抽屉永久停在 `translateX(100%)`，完全在屏幕外**（实测 `drawer.left=1272`、视口 1272）。本探针此前全是 DOM/文本级断言所以一直没暴露，直到加了第一条依赖位置的断言才量出来。现在注入 `.el-drawer{transform:none!important}`（**对所有抽屉**——新增的「通知中心」断言也要量它，只钉助手那一个不够），并加一条「抽屉在视口内」的前置断言，免得以后再用屏外坐标去量。
 
 ### 6.4 验收命令（**已现跑**）
 
 ```powershell
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
-mvn test -f server/pom.xml                       # 174/174 BUILD SUCCESS（基线 112 + 智能助手 62）
-mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 174/174（两种顺序都全绿）
+mvn test -f server/pom.xml                       # 176/176 BUILD SUCCESS（基线 112 + 智能助手 64）
+mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 176/176（两种顺序都全绿）
 # ↑ 引号是必须的：不加引号 PowerShell 会把它拆成 `.runOrder=alphabetical`，
 #   Maven 报 `Unknown lifecycle phase ".runOrder=alphabetical"`（实测，2026-09-26）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json                  # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json  # exit 0
-node .scratch/assert-assistant.mjs               # 49 条 ALL PASS
+node .scratch/assert-assistant.mjs               # 52 条 ALL PASS
 node .scratch/assert-identity-batch1.mjs         # ALL PASS（改了 navItems 所在文件，必跑）
 node .scratch/assert-profile.mjs                 # ALL PASS
 node .scratch/assert-drill.mjs                   # 130/130
 ```
 
-**用例数拆分（174 = 112 + 62）**：`AssistantRuleEngineTest` **19** + `AssistantLlmClientTest` 10 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 + `RestClientLlmTransportTest` 9 + **`AssistantLlmEscalationTest` 7** = **62**（FAQ 按职能裁剪 +2；大模型信封解包 +11；升级制 +9；**排序确定化 +5**）。
+**用例数拆分（176 = 112 + 64）**：`AssistantRuleEngineTest` **19** + `AssistantLlmClientTest` 10 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` **15** + `RestClientLlmTransportTest` 9 + **`AssistantLlmEscalationTest` 8** = **64**（FAQ 按职能裁剪 +2；大模型信封解包 +11；升级制 +9；排序确定化 +5；**评审修复 +2**：`spaceId` 回显、`engine` 记贡献不记调用）。
 
 **接口级实测（真机 8080，演示数据）**：
 
@@ -493,7 +533,7 @@ node .scratch/assert-drill.mjs                   # 130/130
 | `worker01` 调 `/status`、`/faq` | 200（全角色开放）；`/faq` 按职能返回**师傅那套 10 条**，数值含 72 |
 | `student02` / `worker01` / `admin` / `worker02` 调 `/faq` | 10 / 10 / 10 / **18** 条；三者交集**只有通用 2 条**；`worker02` = 报修人 ∪ 师傅（§0.1） |
 
-**真机探针覆盖的 49 条**（`assert-assistant.mjs`）：报修人 34 条（气泡 a11y、五段内容、快捷入口与侧边栏同源、候选四要素、自助排查出现、「采用并提单」跳转+预填+query 摘除、**常见问题为报修人那套**、**提问后清空输入框 + 「最近询问」16 条**）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**、**常见问题换成师傅那套且不含报修人专属题**）、管理员 3 条（含常见问题为调度/平台那套）、`worker02` 3 条（**并集 18 条 + 两套专属题同时存在 + 去重**）、390 窄档 3 条。
+**真机探针覆盖的 52 条**（`assert-assistant.mjs`）：报修人 37 条（气泡 a11y、五段内容、**快捷入口 = 导航并集 + 「通知中心」动作项（且那一项真的能开抽屉）**、**区块标题用口径词「制度问答」**、候选四要素、**工种显示中文标签**、自助排查出现、「采用并提单」跳转+预填+query 摘除、**制度问答为报修人那套**、**提问后清空输入框 + 「最近询问」16 条**）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**、**制度问答换成师傅那套且不含报修人专属题**）、管理员 3 条（含制度问答为调度/平台那套）、`worker02` 3 条（**并集 18 条 + 两套专属题同时存在 + 去重**）、390 窄档 3 条。
 
 **探针自身踩到的三个坑（都不是产品缺陷，已写进 `AGENTS.md` §2.2）**：① 页面上有**两个** `.path-hint`（空间在前、分类在后），`querySelector` 只会拿到空间那个；② `document.querySelector('.el-drawer')` 会命中**常驻 DOM 的通知中心抽屉**（宽度 0），必须从 `#assistant-drawer-panel` 往上 `closest`；③ 窄档抽屉宽度由全局 `responsive.css` 统一收敛为 `min(92vw, …)`（390 → 359），**不能断言 100vw**。
 

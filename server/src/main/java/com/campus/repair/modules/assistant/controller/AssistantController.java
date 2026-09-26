@@ -51,7 +51,7 @@ public class AssistantController {
     @PostMapping("/suggest")
     @PreAuthorize("hasRole('REPORTER')")
     public R<AssistantSuggestionVO> suggest(@Valid @RequestBody AssistantSuggestRequest request) {
-        return R.success(assistantService.suggest(request.getDescription()));
+        return R.success(assistantService.suggest(request.getDescription(), request.getSpaceId()));
     }
 
     @Operation(summary = "制度问答（按调用者职能裁剪：通用 + 报修人 / 维修作业 / 调度·平台管理，多职能取并集）")

@@ -284,7 +284,7 @@ mvn spring-boot:run
 系统全流程坚持测试先行与代码审查闭环，所有状态机流转、并发锁与数据一致性均具备完整的单元与集成测试套件防护：
 
 ```powershell
-# 1. 运行后端 160 项单元与高并发集成测试套件
+# 1. 运行后端 174 项单元与高并发集成测试套件
 mvn test -f server/pom.xml
 
 # 2. 运行前端 Monorepo 全量静态类型检查（两包；.vue 单文件组件需用 vue-tsc，见 AGENTS.md §2）
@@ -293,9 +293,9 @@ mvn test -f server/pom.xml
 ```
 
 ### 核心测试套件分布
-- `AssistantRuleEngineTest` / `AssistantApiIntegrationTest` / `AssistantLlmClientTest` / `OrderStatusNarrativeTest`：智能助手的规则打分与确定性排序（叶子名 +10 > 关键词 +5 > 大类名 +3、<2 字的词忽略、同分按 `sortOrder`/`id`、`sort()` 与入参顺序无关且不改动入参）、无命中不硬猜、按职能分档鉴权（推荐与进度仅报修人，`WORKER`/`PLATFORM_ADMIN` 落 403）、总开关关闭时返回空结果、FAQ 数值取自系统参数、大模型降级矩阵（超时/报错/非法 JSON 一律回退纯规则且 HTTP 仍 200）、响应信封解包与封闭集过滤；
+- `AssistantRuleEngineTest` / `AssistantApiIntegrationTest` / `AssistantLlmClientTest` / `OrderStatusNarrativeTest`：智能助手的规则打分与确定性排序（叶子名 +10 > 关键词 +5 > 大类名 +3、<2 字的词忽略、同分按 `sortOrder`/`id`、`sort()` 与入参顺序无关且不改动入参）、无命中不硬猜、按职能分档鉴权（推荐与进度仅报修人，`WORKER`/`PLATFORM_ADMIN` 落 403）、总开关关闭时返回空结果、`spaceId` 原样回显（收了就不能静默丢掉）、FAQ 数值取自系统参数、大模型降级矩阵（超时/报错/非法 JSON 一律回退纯规则且 HTTP 仍 200）、响应信封解包与封闭集过滤；
 - `RestClientLlmTransportTest`：**真实 HTTP**（JDK `HttpServer` 回环网关，不 mock 请求工厂）——报文契约（路径/`Bearer`/`Content-Type`/请求体、`base-url` 多斜杠）、**真实 chat/completions 信封端到端**、非 2xx 与**真读超时**降级、配置不就绪时零请求；
-- `AssistantLlmEscalationTest`：**升级制 + 合并策略**——用 `@Primary` 的**计数传输层**断言"到底有没有发请求"（只看响应体会得到恒真测试）；HIGH 命中 ⇒ `engine=RULE` 且零请求，`noMatch`/弱命中 ⇒ 各升级一次，阈值 `0`/`1` 的边界行为；**模型把同一集合倒序返回 ⇒ 候选逐位相同**、**规则命中占满名额时模型只能填空位（一条规则命中都不被淘汰）**——这两条已用「把旧实现 stash 回来跑一遍」做过负向对照；
+- `AssistantLlmEscalationTest`：**升级制 + 合并策略 + `engine` 语义**——用 `@Primary` 的**计数传输层**断言"到底有没有发请求"（只看响应体会得到恒真测试）；HIGH 命中 ⇒ `engine=RULE` 且零请求，`noMatch`/弱命中 ⇒ 各升级一次，阈值 `0`/`1` 的边界行为；**模型把同一集合倒序返回 ⇒ 候选逐位相同**、**规则命中占满名额时模型只能填空位（一条规则命中都不被淘汰）**——这两条已用「把旧实现 stash 回来跑一遍」做过负向对照；`engine` 记的是「模型有没有**贡献**」而不是「有没有被调」（模型答规则已命中的 ⇒ `RULE`，补出新细类 ⇒ `RULE+LLM`）；
 - `AuthIntegrationTest`：双 Token 鉴权、密码错输 3 次图形验证码、Token 静默刷新拦截、Redis 不可用时的内存降级兜底（登录成功 + 失败计数兜底）；
 - `FirstLoginEnforcementIntegrationTest`：首登未改密时业务端点被拦成 `1009`、改密端点/本人资料/换票仍放行、改密后新票放行而旧票仍被拦；
 - `LogoutRevocationIntegrationTest`：登出吊销双令牌（Access 立即 401、Refresh 换票报 1005）、吊销只作用于被出示的令牌、登出幂等不抛错、Refresh Token 走查询参数兜底；

@@ -4,7 +4,7 @@
  * 断言四件事：
  *  ① 报修人：气泡 → 抽屉五段齐全 → 「帮我判断」出候选（含工种/SLA/命中词）→「采用并提单」
  *     带着细类跳到提单页并**预填**，且 URL 上的 query 被摘掉；
- *  ② 非报修职能（维修作业 / 平台管理）：抽屉只有快捷入口 + 常见问题，
+ *  ② 非报修职能（维修作业 / 平台管理）：抽屉只有快捷入口 + 制度问答，
  *     **且一次 `/assistant/suggest` 请求都不发**（用 CDP Network 域取证，而不是只看 DOM）；
  *  ③ 快捷入口与侧边栏导航**同源**（同一个 `visibleNavItems`）——这条是强断言，导航一改就红；
  *  ④ 窄档（390）无横向溢出，抽屉占满宽度。
@@ -84,7 +84,9 @@ async function openAs(path, auth, { clearAssistantHistory = false } = {}) {
   await evalJs(
     `(()=>{const s=document.createElement('style');s.textContent='.el-drawer,.el-overlay{transition:none!important}'` +
     `+'.assistant-bubble{transition:none!important}'` +
-    `+'.assistant-drawer{transform:none!important}';document.head.appendChild(s);return 1})()`
+    // 抽屉的 transform 也要钉到终态：见本节末尾的说明（后台标签里 rAF 暂停，
+    // Vue 的 <transition> 卡在 enter-from ⇒ 抽屉永久停在屏幕外）。通知中心那个抽屉同理。
+    `+'.el-drawer{transform:none!important}';document.head.appendChild(s);return 1})()`
   );
 }
 
@@ -126,9 +128,12 @@ async function drawerSnapshot() {
       quick: [...p.querySelectorAll('.quick-item span')].map(s => s.innerText.trim()),
       hasSuggestBox: !!p.querySelector('textarea'),
       hasProgress: text.includes('我的工单进度'),
-      hasFaq: text.includes('常见问题'),
+      // 口径词是「制度问答」——CONTEXT.md 把「常见问题」列进了 _Avoid_
+      hasFaq: text.includes('制度问答'),
+      // 区块标题全集：用来断言「制度问答」这个口径词真的上了界面，而不是只在注释里
+      blockTitles: [...p.querySelectorAll('.block-title')].map(e => e.innerText.trim()),
       faqCount: p.querySelectorAll('.el-collapse-item').length,
-      // 常见问题的标题文本：断言「按职能裁剪」必须看内容——只数条数会漏掉"三套账号一模一样"这类缺陷
+      // 制度问答的标题文本：断言「按职能裁剪」必须看内容——只数条数会漏掉"三套账号一模一样"这类缺陷
       faqQuestions: [...p.querySelectorAll('.el-collapse-item__header')].map(e => e.innerText.trim()),
       hasSelfHelp: text.includes('提交前可以先试试'),
       hasHistory: !!p.querySelector('.history-title'),
@@ -179,17 +184,53 @@ let drawer = await drawerSnapshot();
 check('抽屉可打开', drawer !== null);
 check('报修人抽屉含推荐区（描述输入框）', drawer?.hasSuggestBox === true);
 check('报修人抽屉含「我的工单进度」', drawer?.hasProgress === true);
-check('报修人抽屉含「常见问题」且为报修人那套（10 条 = 通用 2 + 报修人 8）',
+check('报修人抽屉含「制度问答」且为报修人那套（10 条 = 通用 2 + 报修人 8）',
   drawer?.hasFaq === true && drawer?.faqCount === 10 &&
   drawer.faqQuestions.includes('报修后多久会有人上门？') &&
   !drawer.faqQuestions.includes('收到派单后我该做什么？') &&
   !drawer.faqQuestions.includes('自动派单什么时候会失败？'),
   `faqCount=${drawer?.faqCount} 首条=${drawer?.faqQuestions?.[0]}`);
+check('区块标题用口径词「制度问答」，没有用被 _Avoid_ 掉的「常见问题」',
+  drawer?.blockTitles?.includes('制度问答') === true &&
+  drawer?.blockTitles?.includes('常见问题') === false,
+  JSON.stringify(drawer?.blockTitles));
 check('未提问时不显示自助排查区', drawer?.hasSelfHelp === false);
 check('未提问且无历史时不显示「最近询问」', drawer?.hasHistory === false);
-check('快捷入口与侧边栏导航同源',
-  JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...navLabels].sort()),
+// 快捷入口 = 导航并集 **+** 「通知中心」动作项（设计文档 §4）：前者防清单漂移，后者是动作不是路由
+const QUICK_ACTION = '通知中心';
+check('快捷入口 = 侧边栏导航并集 + 「通知中心」动作项',
+  JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...navLabels, QUICK_ACTION].sort()),
   `快捷入口=${JSON.stringify(drawer.quick)} 侧边栏=${JSON.stringify(navLabels)}`);
+
+// 那一项必须真的能打开外壳的站内消息抽屉——此前 `notifyCenter` 全仓无人调用 = 死代码
+await evalJs(`(() => {
+  const p = document.querySelector('#assistant-drawer-panel');
+  [...p.querySelectorAll('.quick-item')]
+    .find(b => b.innerText.includes(${JSON.stringify('通知中心')}))?.click();
+  return 1;
+})()`);
+let notif = { found: false };
+for (let i = 0; i < 20; i++) {
+  notif = await evalJs(`(() => {
+    const d = [...document.querySelectorAll('.el-drawer')].find(el =>
+      (el.innerText || '').includes('站内消息通知中心'));
+    if (!d) return { found: false };
+    const r = d.getBoundingClientRect();
+    return { found: true, width: Math.round(r.width), left: Math.round(r.left), visible: r.width > 0 && r.left >= 0 };
+  })()`);
+  if (notif.visible) break;
+  await sleep(200);
+}
+check('点「通知中心」打开外壳的站内消息抽屉（notifyCenter 不再是死代码）',
+  notif.found === true && notif.visible === true, JSON.stringify(notif));
+// 关掉它，别影响后面的步骤
+await evalJs(`(() => {
+  const d = [...document.querySelectorAll('.el-drawer')].find(el =>
+    (el.innerText || '').includes('站内消息通知中心'));
+  d?.querySelector('.el-drawer__close-btn')?.click();
+  return 1;
+})()`);
+await sleep(400);
 
 // 提问 → 候选
 const QUESTION = '卫生间水龙头一直滴水，关不紧';
@@ -210,7 +251,10 @@ const card = await waitForCandidateCard();
 check('提问后出现候选卡片', card !== null, JSON.stringify(card));
 check('首候选为「水龙头漏水」', card?.name === '水龙头漏水', card?.name);
 check('候选带大类路径（分隔符与选择器一致）', card?.path === '水暖管道 / 水龙头漏水', card?.path);
-check('候选带工种与 SLA', /PLUMBER/.test(card?.meta || '') && /24 小时/.test(card?.meta || ''), card?.meta);
+check('候选带工种与 SLA',
+  /维修工种：水暖管道/.test(card?.meta || '') && /24 小时/.test(card?.meta || ''), card?.meta);
+check('候选卡片工种显示中文标签而不是字典码（PLUMBER → 水暖管道）',
+  !/PLUMBER/.test(card?.meta || ''), card?.meta);
 check('候选展示命中词（可解释）', /命中/.test(card?.matched || ''), card?.matched);
 check('首候选带「首选」标记', card?.firstBadge === true);
 
@@ -415,15 +459,15 @@ await openDrawer();
 drawer = await drawerSnapshot();
 check('师傅抽屉没有推荐区', drawer?.hasSuggestBox === false);
 check('师傅抽屉没有「我的工单进度」', drawer?.hasProgress === false);
-check('师傅抽屉仍是「常见问题」但换成师傅那套（10 条，且不含报修人专属题）',
+check('师傅抽屉仍是「制度问答」但换成师傅那套（10 条，且不含报修人专属题）',
   drawer?.hasFaq === true && drawer?.faqCount === 10 &&
   drawer.faqQuestions.includes('收到派单后我该做什么？') &&
   !drawer.faqQuestions.includes('报修后多久会有人上门？') &&
   !drawer.faqQuestions.includes('我在哪里查看我的工单？'),
   `faqCount=${drawer?.faqCount} 首条=${drawer?.faqQuestions?.[0]}`);
 const workerNav = await evalJs(`[...document.querySelectorAll('.nav-item .nav-label')].map(n => n.innerText.trim())`);
-check('师傅快捷入口与侧边栏同源',
-  JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...workerNav].sort()),
+check('师傅快捷入口 = 侧边栏导航并集 + 「通知中心」动作项',
+  JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...workerNav, QUICK_ACTION].sort()),
   `快捷入口=${JSON.stringify(drawer.quick)} 侧边栏=${JSON.stringify(workerNav)}`);
 check('师傅只请求了 /assistant/status 与 /assistant/faq（未发 /assistant/suggest）',
   !assistantCalls.some((u) => u === '/assistant/suggest'),
@@ -439,11 +483,12 @@ await openAs('/', admin);
 await openDrawer();
 drawer = await drawerSnapshot();
 const adminNav = await evalJs(`[...document.querySelectorAll('.nav-item .nav-label')].map(n => n.innerText.trim())`);
-check('管理员快捷入口 = 侧边栏 6 项',
-  drawer?.quick.length === 6 && JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...adminNav].sort()),
+check('管理员快捷入口 = 侧边栏 6 项 + 「通知中心」动作项',
+  drawer?.quick.length === 7 &&
+  JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...adminNav, QUICK_ACTION].sort()),
   `快捷入口=${JSON.stringify(drawer.quick)}`);
 check('管理员抽屉没有推荐区与进度区', drawer?.hasSuggestBox === false && drawer?.hasProgress === false);
-check('管理员常见问题是调度/平台那套（10 条，且不含报修人与师傅专属题）',
+check('管理员制度问答是调度/平台那套（10 条，且不含报修人与师傅专属题）',
   drawer?.faqCount === 10 &&
   drawer.faqQuestions.includes('自动派单什么时候会失败？') &&
   !drawer.faqQuestions.includes('报修后多久会有人上门？') &&
@@ -452,7 +497,7 @@ check('管理员常见问题是调度/平台那套（10 条，且不含报修人
 await closeDrawer();
 
 // ===========================================================================
-// 3.5) 多职能账号：worker02（WORKER + REPORTER）——常见问题取并集，不是二选一
+// 3.5) 多职能账号：worker02（WORKER + REPORTER）——制度问答取并集，不是二选一
 //      （"导航按职能取并集"是仓库既有口径；内容也不能又写成互斥）
 // ===========================================================================
 const dual = await loginAs('worker02');
@@ -460,7 +505,7 @@ console.log(`\n[worker02] roleCodes=${dual.userInfo.roleCodes.join(',')}`);
 await openAs('/worker/workbench', dual);
 await openDrawer();
 drawer = await drawerSnapshot();
-check('兼职账号常见问题取并集（18 条 = 通用 2 + 报修人 8 + 维修作业 8）',
+check('兼职账号制度问答取并集（18 条 = 通用 2 + 报修人 8 + 维修作业 8）',
   drawer?.faqCount === 18, `faqCount=${drawer?.faqCount}`);
 check('并集里报修人与师傅两套专属题同时存在（未退化成二选一）',
   drawer?.faqQuestions.includes('报修后多久会有人上门？') &&

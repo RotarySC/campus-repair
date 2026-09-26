@@ -31,6 +31,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -167,6 +168,28 @@ class AssistantApiIntegrationTest {
                 // 首候选的自助排查步骤按 | 拆成数组
                 .andExpect(jsonPath("$.data.selfHelpTips", hasSize(3)))
                 .andExpect(jsonPath("$.data.selfHelpTips[0]").value("先关闭角阀或入户水阀"));
+    }
+
+    @Test
+    @DisplayName("请求里的 spaceId 原样回显（v1 空间不参与打分，但收了就不能静默丢掉）")
+    void suggestEchoesSpaceId() throws Exception {
+        // ① 带 spaceId：原样回显，且候选与不带时完全一致（回显 ≠ 参与打分）
+        mockMvc.perform(post("/api/v1/assistant/suggest")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"卫生间水龙头" + unique + "一直滴水，关不紧\",\"spaceId\":1042}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.spaceId").value(1042))
+                .andExpect(jsonPath("$.data.candidates[0].categoryName").value("水龙头漏水" + unique));
+
+        // ② 不带：回显 null——不要"猜一个默认空间"替调用方做主
+        mockMvc.perform(post("/api/v1/assistant/suggest")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(suggestBody("卫生间水龙头" + unique + "一直滴水，关不紧")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.spaceId").value(nullValue()))
+                .andExpect(jsonPath("$.data.candidates[0].categoryName").value("水龙头漏水" + unique));
     }
 
     @Test

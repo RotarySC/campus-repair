@@ -141,7 +141,7 @@ INSERT INTO repair_category (id, parent_id, name, level, worker_skill_code, sla_
 
 -- ---------------------------------------------------------------------------
 -- 5. 系统参数（系统参数页可编辑；auto_acceptance_timeout_hours 被定时核销任务读取）
---    助手三个键同样有**代码级默认值**（1 / 0 / 3）——测试 profile 不种 sys_config，必须靠默认值
+--    助手四个键同样有**代码级默认值**（1 / 0 / 3 / 10）——测试 profile 不种 sys_config，必须靠默认值
 -- ---------------------------------------------------------------------------
 INSERT INTO sys_config (config_key, config_value, description) VALUES
 ('auto_acceptance_timeout_hours', '72', '师生超时未验收时，系统自动核销结单的等待小时数'),

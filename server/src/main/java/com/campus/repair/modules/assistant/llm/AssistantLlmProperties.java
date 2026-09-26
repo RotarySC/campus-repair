@@ -29,10 +29,17 @@ public class AssistantLlmProperties {
 
     private String model;
 
-    /** 连接与读取超时（毫秒）：超时即降级，绝不阻塞提单页 */
-    private int timeoutMs = 3000;
+    /**
+     * 连接与读取超时（毫秒）：超时即降级，绝不阻塞提单页。
+     *
+     * <p><b>默认值必须与 `application.yml` 一致</b>：早期这里是 `3000`，实测思考模型的真实延迟
+     * 1.8~4.9s，3000ms 会打掉近半请求报 `LLM_TIMEOUT`。字段默认值只在"没加载到那段 yml"的上下文
+     * （新 profile、切片测试）里生效——那正是最不容易被发现的时候，所以不能让它留着旧值。
+     */
+    private int timeoutMs = 8000;
 
-    private int maxTokens = 64;
+    /** 同上：思考模型的推理 token 也占 `max-tokens`，64 会把 `content` 挤空（实测 7 条错 3 条）。 */
+    private int maxTokens = 512;
 
     /**
      * 能力是否就绪：开关打开 + 三项配置齐全。

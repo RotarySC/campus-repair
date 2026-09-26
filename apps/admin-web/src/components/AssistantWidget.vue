@@ -154,12 +154,19 @@
               <el-icon :size="18"><component :is="item.icon" /></el-icon>
               <span>{{ item.label }}</span>
             </button>
+            <!-- 「通知中心」是**动作项**、不是路由项：导航清单里没有它，但设计文档 §4 要求
+                 快捷入口 = 导航并集 **+** 这一项。走 emit 让外壳打开那个全局唯一的站内消息抽屉 -->
+            <button type="button" class="quick-item" @click="openNotificationCenter">
+              <el-icon :size="18"><Bell /></el-icon>
+              <span>通知中心</span>
+            </button>
           </div>
         </section>
 
-        <!-- ⑤ 制度问答：全角色 -->
+        <!-- ⑤ 制度问答：全角色。**标题用口径词**——`CONTEXT.md` 的「制度问答」条目明确把
+             「常见问题」列进 _Avoid_（它会被读成"这个系统的 FAQ"，而实际是制度口径问答） -->
         <section class="block">
-          <h3 class="block-title">常见问题</h3>
+          <h3 class="block-title">制度问答</h3>
           <el-collapse v-if="faqItems.length">
             <el-collapse-item
               v-for="(item, index) in faqItems"
@@ -170,7 +177,7 @@
               <p class="faq-answer">{{ item.answer }}</p>
             </el-collapse-item>
           </el-collapse>
-          <p v-else class="block-hint">暂时无法加载常见问题。</p>
+          <p v-else class="block-hint">暂时无法加载制度问答。</p>
         </section>
       </div>
     </el-drawer>
@@ -180,7 +187,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ChatDotRound, Close } from '@element-plus/icons-vue';
+import { Bell, ChatDotRound, Close } from '@element-plus/icons-vue';
 import {
   ASSISTANT_DEGRADED_LABELS,
   type AssistantCandidate,
@@ -190,6 +197,7 @@ import {
   type AssistantSuggestion
 } from '@campus/shared';
 import { httpClient, useAuthStore } from '../stores/auth';
+import { requestAssistantSuggestion } from '../api/assistant';
 import { useIdentity } from '../composables/useIdentity';
 import { useViewport } from '../composables/useViewport';
 import { visibleNavItems } from '../constants/navItems';
@@ -201,7 +209,8 @@ import SuggestionCardList from './assistant/SuggestionCardList.vue';
  * 三条实现约定：
  * 1. **内容按职能裁剪**——推荐与进度只对报修人渲染，**也只在报修人才发请求**
  *    （接口侧同样是 `hasRole('REPORTER')`，前端不能靠"隐藏"当作权限）；
- * 2. **快捷入口与侧边栏同源**（`visibleNavItems`），避免两处清单漂移；
+ * 2. **快捷入口与侧边栏同源**（`visibleNavItems`）**再加一个「通知中心」动作项**——前者防两处
+ *    清单漂移，后者是设计文档 §4 明确要有的；它是动作（开外壳的抽屉）不是路由，所以不在那份清单里；
  * 3. **助手永远不阻断业务**——状态拿不到就整块不渲染，推荐失败只在卡片位置给一行提示，
  *    不弹全局错误、不影响提单页。
  */
@@ -358,17 +367,18 @@ async function onSuggest() {
   suggesting.value = true;
   suggestError.value = '';
   try {
-    const res = await httpClient.post<AssistantSuggestion>('/assistant/suggest', { description: text });
-    if (res.code === 200 && res.data) {
-      suggestion.value = res.data;
+    const outcome = await requestAssistantSuggestion(text);
+    if (outcome.ok) {
+      suggestion.value = outcome.suggestion;
     } else {
       suggestion.value = null;
-      suggestError.value = res.message || '暂时判断不了，请直接选择故障分类。';
+      suggestError.value =
+        outcome.reason === 'rejected'
+          ? outcome.message || '暂时判断不了，请直接选择故障分类。'
+          : '助手暂时不可用，不影响您正常提交报修。';
     }
-  } catch (_) {
-    suggestion.value = null;
-    suggestError.value = '助手暂时不可用，不影响您正常提交报修。';
   } finally {
+    // 请求出口保证不抛异常，这里仍然收口一次：`suggesting` 卡住会让按钮永久禁用
     suggesting.value = false;
   }
 }
@@ -409,8 +419,17 @@ function goOrderDetail(orderId: number) {
   router.push(`/student/orders/${orderId}`);
 }
 
-// 通知中心是外壳里的抽屉（不是路由），走事件而不是跳转
-defineExpose({ notifyCenter: () => emit('open-notifications') });
+/**
+ * 打开站内消息抽屉。
+ *
+ * <p>那个抽屉全站只有一个（在 `AdminLayout` 里），助手不自己再开一个——只把意图转出去。
+ * 快捷入口那一项与 {@link notifyCenter} 走的是同一条路，所以两者不会各开一个抽屉。
+ */
+function openNotificationCenter() {
+  emit('open-notifications');
+}
+
+defineExpose({ notifyCenter: openNotificationCenter });
 </script>
 
 <style scoped>

@@ -47,6 +47,11 @@ export interface AssistantFallbackCategory {
 export interface AssistantSuggestion {
   engine: AssistantEngine;
   degradedReason: AssistantDegradedReason | null;
+  /**
+   * 请求里的报修空间 id **原样回显**（v1 空间不参与打分，见设计文档 §7）。
+   * 没传时是 `null`——不要把它当成"默认空间"。
+   */
+  spaceId: number | null;
   /** 一条都没命中：此时看 `fallbackCategories`，不要硬猜 */
   noMatch: boolean;
   candidates: AssistantCandidate[];

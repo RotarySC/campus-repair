@@ -88,10 +88,13 @@ public class AssistantService {
      *
      * <p>"有没有把握"由 {@code sys_config.assistant_llm_escalate_below} 决定（默认 10 = 非 HIGH 就升级）：
      * 规则已经给出 HIGH 命中时**一次模型调用都不发**——那条路径瞬时、免费、且完全确定。
+     *
+     * @param spaceId 报修空间 id，**只回显、不参与打分**（v1 纯文本匹配，设计文档 §7）
      */
-    public AssistantSuggestionVO suggest(String description) {
+    public AssistantSuggestionVO suggest(String description, Long spaceId) {
         AssistantSuggestionVO result = new AssistantSuggestionVO();
         result.setEngine(ENGINE_RULE);
+        result.setSpaceId(spaceId);
 
         if (!isAssistantEnabled()) {
             result.setNoMatch(true);
@@ -116,8 +119,15 @@ public class AssistantService {
             AssistantLlmClient.Outcome outcome = llmClient.pickCategoryIds(description, dict.leaves(), limit);
             degradedReason = outcome.degradedReason();
             if (!outcome.categoryIds().isEmpty()) {
-                ranked = merge(outcome.categoryIds(), ranked, dict.byId(), limit);
-                result.setEngine(ENGINE_RULE_LLM);
+                List<Scored> merged = merge(outcome.categoryIds(), ranked, dict.byId(), limit);
+                // engine 的语义是「**模型有没有贡献可用结果**」（设计文档 §3.6），不是「调没调模型」：
+                // 模型返回的 id 若全是规则已命中的、或候选位已被规则占满，`merge` 一条都不会多
+                // ⇒ 它没贡献，engine 如实保持 RULE（"调了但没用上"与"没调"对外是同一件事）。
+                // `merge` 只追加、从不删减，所以比长度就够。
+                if (merged.size() > ranked.size()) {
+                    result.setEngine(ENGINE_RULE_LLM);
+                }
+                ranked = merged;
             }
         }
         result.setDegradedReason(degradedReason);
