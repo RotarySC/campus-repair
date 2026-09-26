@@ -9,9 +9,21 @@
 | 子系统 | 状态 |
 | :--- | :--- |
 | §2 数据层（两列 + 种子 + 配置键 + 迁移脚本） | **已落地**，H2 实测通过（§6.1） |
-| §3 后端 `modules/assistant` | **已落地**，`mvn test` 147/147 |
+| §3 后端 `modules/assistant` | **已落地**，`mvn test` 149/149 |
 | §4 前端（气泡抽屉 / 提单页内联 / 字典页可编辑） | **已落地**，`tsc` + `vue-tsc` exit 0 |
-| §6 测试与验收 | **已验收**：真机探针 29 条 ALL PASS（连跑三轮稳定） |
+| §6 测试与验收 | **已验收**：真机探针 33 条 ALL PASS |
+
+### 0.1 验收后修复：制度问答曾是「三类账号一模一样」（2026-09-26）
+
+**缺陷**：`/assistant/faq` 返回的是一份**写死的 8 条静态清单**，服务端根本没取调用者身份。于是报修人 / 维修作业 / 调度·平台管理看到完全相同的内容——其中「报修后多久会有人上门」对师傅是**错的**（要上门的正是他自己），「我在哪里查看我的工单」对师傅与管理员更是无关。设计里写的是「全角色可见、**内容按职能裁剪**」，但实现只裁剪了**区块**（推荐/进度只对报修人渲染），**没裁剪 FAQ 内容**。
+
+**为什么测试与探针都没发现**：`AssistantApiIntegrationTest` 只断言 `hasSize(8)` 与按下标取第 4/5/0 条；探针只断言 `faqCount === 8`。**三类账号的条数恰好都是 8，所以断言一直是绿的**——只数条数、不看内容，是这次漏检的直接原因。
+
+**修法**：`AssistantFaqProvider.listFaq(List<String> functions)` 改为**四组取并集去重**——通用 2 条 + 报修人 8 条 + 维修作业 8 条 + 调度·平台 8 条；职能由控制器从 `LoginUserPrincipal.getRoles()` 取出后传入（本模块不自己读 SecurityContext，便于单测）。顺序固定为「通用 → 报修人 → 维修作业 → 调度·平台」，`LinkedHashMap` 按问题文本去重。**多职能取并集而非二选一**，与仓库既有口径一致（`worker02` = `WORKER`+`REPORTER` → 18 条）。**前端零改动**——筛选放在服务端，抽屉只是渲染返回值。
+
+**效果（真机实测，集合代数已核对）**：报修人 10 / 师傅 10 / 管理员 10 / `worker02` 18；三者交集**只有通用那 2 条**；`worker02` = 报修人 ∪ 师傅，逐条一致。
+
+**断言升级（这才是防复发的关键）**：测试改为**按问题文本定位 + 负向断言**（师傅的 FAQ 里对报修人专属题 `hasSize(0)`），并新增 `worker02` 并集用例；探针从「数条数」改为「断言三套各自含专属题、且不含对方专属题」，另加并集与去重断言。`mvn test` 147 → **149**，探针 29 → **33**。
 
 **实施中相对初稿的四处偏离（都是实测倒逼的，不是随手改的）**
 
@@ -117,7 +129,7 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
 | :--- | :--- | :--- |
 | `POST /api/v1/assistant/suggest` | `@PreAuthorize("hasRole('REPORTER')")` | 故障细类推荐（唯一会调大模型的端点） |
 | `GET /api/v1/assistant/my-progress` | `@PreAuthorize("hasRole('REPORTER')")` | 复用 `getMyOrders(userId,1,1,null)`：已按创建时间倒序、已按 `student_user_id` 自限，**无 IDOR 面** |
-| `GET /api/v1/assistant/faq` | 仅登录（无注解，同 `/org/tree` 档） | 制度问答，数值来自 `sys_config` 与 `app.file.max-size-mb` |
+| `GET /api/v1/assistant/faq` | 仅登录（无注解，同 `/org/tree` 档） | 制度问答。**鉴权与内容分离**：访问控制是「登录即可」，但返回内容按 `LoginUserPrincipal.getRoles()` **按职能裁剪**（§3.5），数值来自 `sys_config` 与 `app.file.max-size-mb` |
 | `GET /api/v1/assistant/status` | 仅登录 | `{enabled, llmReady, engine}`，供前端决定是否渲染入口、也给运维留运行期回滚开关 |
 
 判定一律用**职能**：非报修职能调 `/suggest`、`/my-progress` 落 403（前端探针断言「既不显示也不调用」）。
@@ -174,7 +186,17 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
 
 ### 3.5 制度问答与进度速查
 
-- **FAQ** 的数值全部插值，不留硬编码：`auto_acceptance_timeout_hours`(72)、`rework_rating_threshold`(2)、`sla_warning_ahead_hours`(24)、`app.file.max-size-mb`(10)。共 8 条：多久上门 / 能否指定时间 / 什么算加急 / 为什么提示「同一位置已存在未结单同类故障单」/ 一直不验收会怎样（超时自动核销且**不虚增好评**）/ 打几分会返工 / 在哪里看我的工单 / 照片传不上去怎么办。
+- **FAQ 按职能裁剪**（见 §0.1）。四组，**取并集去重**，顺序固定「通用 → 报修人 → 维修作业 → 调度·平台」：
+
+  | 组 | 条数 | 触发条件 | 覆盖的问题 |
+  | :--- | ---: | :--- | :--- |
+  | 通用 | 2 | 所有登录者 | 助手只出建议（不能直接提单）/ 为什么登录后要先改密码 |
+  | 报修人 | 8 | `REPORTER` | 多久上门 / 能否指定时段 / 什么算加急 / 防重单提示 / 一直不验收（超时核销且**不虚增好评**）/ 打几分会返工 / 在哪里看我的工单 / 照片传不上去 |
+  | 维修作业 | 8 | `WORKER` | 收到派单后做什么 / 现场处理不了（挂起冻结 SLA）/ 转派后归谁 / 完工要提交什么 / 备件怎么记账 / 同时能接多少单 / 什么会触发差评返工 / 快超时会不会被提醒 |
+  | 调度·平台 | 8 | `DISPATCHER` ∨ `PLATFORM_ADMIN` | 自动派单何时失败 / 指派与改派的区别 / 作废注意什么 / 师傅申请转派怎么办 / SLA 怎么算在哪看 / 超时自动核销规则 / 差评返工与仲裁 / 系统参数改了影响哪里 |
+
+  **为什么必须分档**：同一个问题对不同职能的答案会不同，甚至**不适用**——「报修后多久会有人上门」对师傅毫无意义（要上门的正是他自己）。各条答案描述的行为与状态机、SLA 冻结、返工阈值、超时核销口径逐一对应，**改产品规则时要一并改这里**。
+- **FAQ** 的数值全部插值，不留硬编码：`auto_acceptance_timeout_hours`(72)、`rework_rating_threshold`(2)、`sla_warning_ahead_hours`(24)、`app.file.max-size-mb`(10)。
 - **进度速查** 的 `nextStep` 由 `OrderStatusEnum` 全 10 态各映射一句「下一步做什么」，与 §3 状态机一一对应；**缺一即测试失败**。
 
 ## 4. 前端
@@ -232,24 +254,24 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 
 ### 6.3 前端真机探针 `.scratch/assert-assistant.mjs`
 
-气泡存在且 `aria-label` 正确；抽屉可开可关；`student02` 五段齐全；`worker01`/`admin` **无**推荐与进度段且**未发起** `/assistant/suggest` 请求；**快捷入口集合 == 侧边栏可见导航集合**（强断言，导航一改即红）；「水龙头」推荐 ⇒ 采用 ⇒ 跳提单页 ⇒ 分类选择器回显且 `categoryId` 已填；390/1272 两档 `documentElement.scrollWidth - clientWidth === 0`；后台标签下按 `AGENTS.md` §2.2 的规矩轮询 + 补帧。
+气泡存在且 `aria-label` 正确；抽屉可开可关；`student02` 五段齐全；`worker01`/`admin` **无**推荐与进度段且**未发起** `/assistant/suggest` 请求；**快捷入口集合 == 侧边栏可见导航集合**（强断言，导航一改即红）；**常见问题按职能裁剪**——报修人/师傅/管理员三套**各自含专属题且不含对方专属题**，`worker02` 取并集 18 条且同题不重复（**教训：只断言条数会漏掉"三套内容一模一样"，条数恰好相同就一直是绿的**）；「水龙头」推荐 ⇒ 采用 ⇒ 跳提单页 ⇒ 分类选择器回显且 `categoryId` 已填；390/1272 两档 `documentElement.scrollWidth - clientWidth === 0`；后台标签下按 `AGENTS.md` §2.2 的规矩轮询 + 补帧。
 
 ### 6.4 验收命令（**已现跑**）
 
 ```powershell
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
-mvn test -f server/pom.xml                       # 147/147 BUILD SUCCESS（基线 112 + 本轮 35）
-mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 147/147（顺序无关，同上）
+mvn test -f server/pom.xml                       # 149/149 BUILD SUCCESS（基线 112 + 智能助手 37）
+mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 147/147（+2 之前验过顺序无关）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json                  # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json  # exit 0
-node .scratch/assert-assistant.mjs               # 29 条 ALL PASS（连跑三轮稳定）
+node .scratch/assert-assistant.mjs               # 33 条 ALL PASS
 node .scratch/assert-identity-batch1.mjs         # ALL PASS（改了 navItems 所在文件，必跑）
 node .scratch/assert-profile.mjs                 # ALL PASS
 node .scratch/assert-drill.mjs                   # 130/130
 ```
 
-**用例数拆分（147 = 112 + 35）**：`AssistantRuleEngineTest` 12 + `AssistantLlmClientTest` 8 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 12 = **35**。
+**用例数拆分（149 = 112 + 37）**：`AssistantRuleEngineTest` 12 + `AssistantLlmClientTest` 8 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 = **37**（FAQ 按职能裁剪后 +2）。
 
 **接口级实测（真机 8080，演示数据）**：
 
@@ -260,9 +282,10 @@ node .scratch/assert-drill.mjs                   # 130/130
 | `student02` + 「今天天气不错想去打球」 | `noMatch=true`、0 候选、回退 5 个大类 |
 | `worker01` / `admin` 调 `/suggest` | **HTTP 403**（`hasRole('REPORTER')`） |
 | `worker01` 调 `/my-progress` | **HTTP 403** |
-| `worker01` 调 `/status`、`/faq` | 200（全角色开放），FAQ 8 条且数值含 72 |
+| `worker01` 调 `/status`、`/faq` | 200（全角色开放）；`/faq` 按职能返回**师傅那套 10 条**，数值含 72 |
+| `student02` / `worker01` / `admin` / `worker02` 调 `/faq` | 10 / 10 / 10 / **18** 条；三者交集**只有通用 2 条**；`worker02` = 报修人 ∪ 师傅（§0.1） |
 
-**真机探针覆盖的 29 条**（`assert-assistant.mjs`）：报修人 18 条（气泡 a11y、五段内容、快捷入口与侧边栏同源、候选四要素、自助排查出现、「采用并提单」跳转+预填+query 摘除）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**）、管理员 2 条、390 窄档 3 条。
+**真机探针覆盖的 33 条**（`assert-assistant.mjs`）：报修人 18 条（气泡 a11y、五段内容、快捷入口与侧边栏同源、候选四要素、自助排查出现、「采用并提单」跳转+预填+query 摘除、**常见问题为报修人那套**）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**、**常见问题换成师傅那套且不含报修人专属题**）、管理员 3 条（含常见问题为调度/平台那套）、`worker02` 3 条（**并集 18 条 + 两套专属题同时存在 + 去重**）、390 窄档 3 条。
 
 **探针自身踩到的三个坑（都不是产品缺陷，已写进 `AGENTS.md` §2.2）**：① 页面上有**两个** `.path-hint`（空间在前、分类在后），`querySelector` 只会拿到空间那个；② `document.querySelector('.el-drawer')` 会命中**常驻 DOM 的通知中心抽屉**（宽度 0），必须从 `#assistant-drawer-panel` 往上 `closest`；③ 窄档抽屉宽度由全局 `responsive.css` 统一收敛为 `min(92vw, …)`（390 → 359），**不能断言 100vw**。
 
