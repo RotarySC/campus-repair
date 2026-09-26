@@ -90,7 +90,7 @@
    - 右下悬浮气泡 + 抽屉，**全角色可见、内容按职能裁剪**（非报修职能只保留快捷入口与制度问答）；
    - **判断故障类别**：用大白话描述现象 → 给出候选细类（含大类路径、对应工种、承诺 SLA、置信度分档、命中的词），可「采用并提单」一键带参跳到提单页并预填；
    - **本地规则引擎为默认**（零外部依赖、离线可用）：叶子名命中 > 关键词命中 > 大类名命中，同分按 `sortOrder`/`id` 保证确定性；一条都没命中就如实说"判断不了"并回退列出大类，**不硬猜**；
-   - **大模型增强是可选且默认关**（`app.assistant.llm.*` **且** `sys_config.assistant_llm_enabled=1` 才生效）：只能追加/重排候选、不得淘汰规则命中；超时/报错/格式异常一律降级为纯规则且接口仍成功；只发描述与封闭分类清单，不发姓名/手机号/单位；
+   - **大模型增强是可选且默认关**（`app.assistant.llm.*` **且** `sys_config.assistant_llm_enabled=1` 才生效）：只能追加/重排候选、不得淘汰规则命中；超时/报错/格式异常一律降级为纯规则且接口仍成功；只发描述与封闭分类清单，不发姓名/手机号/单位；传输层返回的是 chat/completions 的**原始信封**，解包（取 `choices[0].message.content`）是客户端的职责——**这条边界写错会让每一次真实调用都降级**（已有真实 HTTP 用例锁死）；
    - **提交前自助排查**：按细类给出 2~3 步自救建议（如"先断开该插座上所有电器再复位空开"），若已解决就不必报修；
    - **快捷入口**与侧边栏导航**同源**（同一份 `navItems`），不会出现"导航里没有、助手还推荐"的漂移；
    - **我的工单进度速查**：最近一张单的当前状态 + 「下一步该做什么」（状态机全 10 态各有专属文案）；
@@ -282,7 +282,7 @@ mvn spring-boot:run
 系统全流程坚持测试先行与代码审查闭环，所有状态机流转、并发锁与数据一致性均具备完整的单元与集成测试套件防护：
 
 ```powershell
-# 1. 运行后端 149 项单元与高并发集成测试套件
+# 1. 运行后端 160 项单元与高并发集成测试套件
 mvn test -f server/pom.xml
 
 # 2. 运行前端 Monorepo 全量静态类型检查（两包；.vue 单文件组件需用 vue-tsc，见 AGENTS.md §2）
@@ -291,7 +291,8 @@ mvn test -f server/pom.xml
 ```
 
 ### 核心测试套件分布
-- `AssistantRuleEngineTest` / `AssistantApiIntegrationTest` / `AssistantLlmClientTest` / `OrderStatusNarrativeTest`：智能助手的规则打分与确定性排序（叶子名 +10 > 关键词 +5 > 大类名 +3、<2 字的词忽略、同分按 `sortOrder`/`id`）、无命中不硬猜、按职能分档鉴权（推荐与进度仅报修人，`WORKER`/`PLATFORM_ADMIN` 落 403）、总开关关闭时返回空结果、FAQ 数值取自系统参数、大模型降级矩阵（超时/报错/非法 JSON 一律回退纯规则且 HTTP 仍 200）与封闭集过滤；
+- `AssistantRuleEngineTest` / `AssistantApiIntegrationTest` / `AssistantLlmClientTest` / `OrderStatusNarrativeTest`：智能助手的规则打分与确定性排序（叶子名 +10 > 关键词 +5 > 大类名 +3、<2 字的词忽略、同分按 `sortOrder`/`id`）、无命中不硬猜、按职能分档鉴权（推荐与进度仅报修人，`WORKER`/`PLATFORM_ADMIN` 落 403）、总开关关闭时返回空结果、FAQ 数值取自系统参数、大模型降级矩阵（超时/报错/非法 JSON 一律回退纯规则且 HTTP 仍 200）、响应信封解包与封闭集过滤；
+- `RestClientLlmTransportTest`：**真实 HTTP**（JDK `HttpServer` 回环网关，不 mock 请求工厂）——报文契约（路径/`Bearer`/`Content-Type`/请求体、`base-url` 多斜杠）、**真实 chat/completions 信封端到端**、非 2xx 与**真读超时**降级、配置不就绪时零请求；
 - `AuthIntegrationTest`：双 Token 鉴权、密码错输 3 次图形验证码、Token 静默刷新拦截、Redis 不可用时的内存降级兜底（登录成功 + 失败计数兜底）；
 - `FirstLoginEnforcementIntegrationTest`：首登未改密时业务端点被拦成 `1009`、改密端点/本人资料/换票仍放行、改密后新票放行而旧票仍被拦；
 - `LogoutRevocationIntegrationTest`：登出吊销双令牌（Access 立即 401、Refresh 换票报 1005）、吊销只作用于被出示的令牌、登出幂等不抛错、Refresh Token 走查询参数兜底；

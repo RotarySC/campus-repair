@@ -85,7 +85,7 @@ public class AssistantLlmClient {
                     properties.chatCompletionsUrl(),
                     properties.getApiKey(),
                     buildPayload(description, leaves, limit));
-            List<Long> ids = filterAllowedIds(body, allowed, limit);
+            List<Long> ids = filterAllowedIds(extractAssistantContent(body), allowed, limit);
             // null = 响应不是约定的那个形状 ⇒ 记一次格式降级；
             // 空列表是合法结果（"模型也没把握"），不算降级。
             return ids == null ? Outcome.degraded(REASON_INVALID) : Outcome.ok(ids);
@@ -144,6 +144,37 @@ public class AssistantLlmClient {
             }
         }
         return result;
+    }
+
+    /**
+     * 从 chat/completions 的**响应信封**里取出助手真正说的那段话。
+     *
+     * <p>OpenAI 兼容网关返回的是
+     * {@code {"choices":[{"message":{"content":"{\"categoryIds\":[301]}"}}]}}——
+     * 模型输出的 JSON 是**字符串形式的 {@code content}**，不是响应体的顶层字段。
+     * 把响应体直接交给 {@link #filterAllowedIds} 会在顶层找不到 {@code categoryIds}，
+     * 于是**每一次真实调用都被判成 {@link #REASON_INVALID}**：整条大模型链路静默失效，
+     * 而假传输层返回的是 content，所以纯单元测试照不出来。
+     *
+     * <p>拿不到 {@code content} 时**原样返回响应体**：容忍"网关已经帮我们解包"的实现；
+     * 形状真的不对时仍由 {@link #filterAllowedIds} 判为格式错误，不会静默给出错答案。
+     *
+     * <p>纯函数，便于穷举测试。
+     */
+    public static String extractAssistantContent(String rawBody) {
+        if (rawBody == null || rawBody.isBlank()) {
+            return rawBody;
+        }
+        try {
+            JsonNode content = MAPPER.readTree(stripCodeFence(rawBody.trim()))
+                    .path("choices").path(0).path("message").path("content");
+            if (content.isTextual()) {
+                return content.asText();
+            }
+        } catch (Exception e) {
+            // 不是 JSON：原样交回，由 filterAllowedIds 判为格式错误
+        }
+        return rawBody;
     }
 
     /**

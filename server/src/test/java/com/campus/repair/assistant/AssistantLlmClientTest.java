@@ -127,6 +127,42 @@ class AssistantLlmClientTest {
     }
 
     // ------------------------------------------------------------------
+    // extractAssistantContent：把网关信封解成模型说的话
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("从 choices[0].message.content 里取出模型输出（真实网关的形状）")
+    void extractsContentFromGatewayEnvelope() {
+        assertThat(AssistantLlmClient.extractAssistantContent(
+                "{\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,"
+                        + "\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"categoryIds\\\":[301]}\"}}]}"))
+                .isEqualTo("{\"categoryIds\":[301]}");
+        // 多条 choices 时取第一条
+        assertThat(AssistantLlmClient.extractAssistantContent(
+                "{\"choices\":[{\"message\":{\"content\":\"first\"}},"
+                        + "{\"message\":{\"content\":\"second\"}}]}"))
+                .isEqualTo("first");
+    }
+
+    @Test
+    @DisplayName("拿不到 content 时原样返回响应体（容忍已解包的网关，不静默给错答案）")
+    void fallsBackToRawBodyWhenEnvelopeIsAbsent() {
+        // 网关已经帮我们解包：顶层就是 categoryIds
+        assertThat(AssistantLlmClient.extractAssistantContent("{\"categoryIds\":[301]}"))
+                .isEqualTo("{\"categoryIds\":[301]}");
+        // 不是 JSON
+        assertThat(AssistantLlmClient.extractAssistantContent("我觉得是水龙头坏了"))
+                .isEqualTo("我觉得是水龙头坏了");
+        // choices 在但 content 不是文本（例如某些网关给数组）：仍回落，最终判为格式错误
+        assertThat(AssistantLlmClient.extractAssistantContent(
+                "{\"choices\":[{\"message\":{\"content\":[{\"type\":\"text\"}]}}]}"))
+                .contains("choices");
+        // 空体原样交回
+        assertThat(AssistantLlmClient.extractAssistantContent("   ")).isEqualTo("   ");
+        assertThat(AssistantLlmClient.extractAssistantContent(null)).isNull();
+    }
+
+    // ------------------------------------------------------------------
     // pickCategoryIds：降级矩阵
     // ------------------------------------------------------------------
 

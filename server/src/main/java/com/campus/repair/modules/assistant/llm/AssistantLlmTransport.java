@@ -10,7 +10,13 @@ package com.campus.repair.modules.assistant.llm;
 public interface AssistantLlmTransport {
 
     /**
-     * POST 一段 JSON 并返回响应体。
+     * POST 一段 JSON 并返回**原始响应体**——也就是 chat/completions 的**完整信封**
+     * （{@code {"choices":[{"message":{"content":"…"}}]}}），
+     * <b>不是</b>模型说的那段 content。
+     *
+     * <p>解包是 {@link AssistantLlmClient} 的职责（{@code extractAssistantContent}）。
+     * 这条边界必须写清楚：把信封直接当 content 解析会让**每一次真实调用**都被判成
+     * 格式错误，而假传输层返回的是 content，因此单元测试照不出来。
      *
      * @throws Exception 超时、连接失败、非 2xx —— 一律由调用方兜住并降级
      */

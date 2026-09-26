@@ -9,9 +9,11 @@
 | 子系统 | 状态 |
 | :--- | :--- |
 | §2 数据层（两列 + 种子 + 配置键 + 迁移脚本） | **已落地**，H2 实测通过（§6.1） |
-| §3 后端 `modules/assistant` | **已落地**，`mvn test` 149/149 |
+| §3 后端 `modules/assistant` | **已落地**，`mvn test` 160/160 |
 | §4 前端（气泡抽屉 / 提单页内联 / 字典页可编辑） | **已落地**，`tsc` + `vue-tsc` exit 0 |
 | §6 测试与验收 | **已验收**：真机探针 33 条 ALL PASS |
+| §0.1 验收后修复（制度问答按职能裁剪） | **已修复**，149/149 |
+| §0.2 验收后修复（大模型信封解包） | **已修复**，160/160（+9 条真实 HTTP 用例） |
 
 ### 0.1 验收后修复：制度问答曾是「三类账号一模一样」（2026-09-26）
 
@@ -38,6 +40,22 @@
 
 `InventoryAndFinishIntegrationTest` 没有 `@Transactional`（要验异步派单与真实提交），却写死 `submitOrder(3L, …)` 借用种子账号 student01，于是 student01 名下留下 2 张 `IN_PROGRESS` + 1 张 `PENDING_ACCEPTANCE` 残留单；而 `PersonalCenterIntegrationTest#testRepairSummaryBuckets` 对 student01 的分桶是**精确计数**。新增测试类会改变 surefire 的文件枚举顺序与耗时，该残留就变成 `processingCount expected 2 but was 4`。已按 `AnalyticsCockpitIntegrationTest`（自建大屏测试师生）与 `PersonalCenterIntegrationTest`（`OTHER_STUDENT_ID = 99L`）既有的约定修好：**会提交数据的测试类自带账号，不借用别人在断言的账号**。
 
+### 0.2 验收后修复：大模型链路**每一次真实调用**都会降级（2026-09-26）
+
+**缺陷**：`AssistantLlmTransport.postJson` 的契约是「返回**原始响应体**」，`RestClientLlmTransport` 如实返回了 chat/completions 的**完整信封**（`{"choices":[{"message":{"content":"…"}}]}`）。但 `AssistantLlmClient` 把这段响应体**直接**交给了 `filterAllowedIds`，而后者在**顶层**找 `categoryIds`——信封顶层只有 `id`/`choices`/`usage`，没有 `categoryIds`。于是 `filterAllowedIds` 返回 `null`，**每一次调用都被判成 `LLM_INVALID_RESPONSE`**。
+
+**后果**：接上任何 OpenAI 兼容的真实网关后，`engine` 永远是 `RULE`、`degradedReason` 永远是 `LLM_INVALID_RESPONSE`——**大模型增强等于没接**，而且不抛异常、不影响提单页，从外部看"一切正常"。这是"功能全灭而表面全绿"的静默失效。
+
+**为什么测试没发现**：`AssistantLlmClientTest` 的 8 个用例全部注入手写的 `FakeTransport`，而假传输层**直接返回模型的 content**（`FakeTransport.returning("{\"categoryIds\":[312]}")`）。**假传输层与真实传输层返回的东西形状不同**，于是"信封没被解包"在结构上就照不出来——这正是「测试替身与被替身不一致」的经典代价。设计文档 §6 当时还写着用 `MockRestServiceServer` 测：**全仓从未出现过这个类**（`server/src` 0 处命中，只在本文档里被提到），真实适配器 `RestClientLlmTransport` 当时**零覆盖**。
+
+**修法**：新增纯函数 `AssistantLlmClient.extractAssistantContent(rawBody)`，把信封解成模型说的话再交给 `filterAllowedIds`；拿不到 `content` 时**原样返回响应体**（容忍"网关已经帮我们解包"的实现；形状真不对时仍由 `filterAllowedIds` 判为格式错误，**不静默给出错答案**）。同时把这条边界写进 `AssistantLlmTransport` 的 javadoc，并把 `RestClientLlmTransport` 的客户端从 `@PostConstruct` 挪到**构造器**——它因此能脱离 Spring 上下文被实例化（`AssistantLlmProperties` 是 `@ConfigurationProperties`，注入时已绑定，构造期读超时值是安全的）。
+
+**新增 `RestClientLlmTransportTest`（9 例，真实 HTTP）**：用 JDK 自带的 `com.sun.net.httpserver.HttpServer` 起一个**本地回环网关**，走真的 `RestClient`、真的 socket、真的 JSON 编码，**不 mock 请求工厂**。覆盖：报文契约（方法/路径/`Bearer`/`Content-Type`/请求体、`base-url` 多斜杠）、**真信封端到端**（照出本缺陷的那条）、封闭集过滤与去重、```` ```json ```` 围栏、非 2xx ⇒ `LLM_ERROR`、**真读超时** ⇒ `LLM_TIMEOUT`、配置不就绪 ⇒ 零请求。另在 `AssistantLlmClientTest` 补 2 例解包纯函数用例（信封取 content / 多 choices 取首条 / 无信封回落 / `content` 非文本回落）。`mvn test` 149 → **160**，两种 `runOrder` 都全绿。
+
+**为什么不选 `MockRestServiceServer`**：它会**替换掉请求工厂**，socket 超时根本不会发生——而"助手永远不能拖住提单页"这条不变式恰恰靠 `SimpleClientHttpRequestFactory` 的**真超时**来保证。回环服务端能同时验报文与真超时，因此比 mock 请求工厂**更强**，且不需要引入新依赖。
+
+**这次修复的普适教训**：**只要测试替身替换了真实边界，就必须有一个用例让真实边界也跑一遍**。本轮的信封、上一轮的 FAQ 条数，都是"断言只覆盖了替身的行为、没覆盖真实契约"的同一类错误。
+
 ## 1. 现状与决策（动手前已核实）
 
 | 事实 | 依据 / 结论 |
@@ -49,7 +67,7 @@
 | 提单页的分类提示用 ` / ` 拼路径（`findPathName`），`DrilldownCascader` 默认分隔符也是 ` / ` | `StudentSubmitRepairView.vue` |
 | 提单页**只允许选叶子**（刻意设计：分析接口对 `categoryId` 用 `eq` 精确匹配） | `AGENTS.md` §2.1 「DrilldownCascader」条 |
 | 全仓**零外部 HTTP 客户端**，`Redis` 都可选降级到内存 | 只有 `@Value` 注入，无 `RestTemplate`/`WebClient` |
-| Spring Boot 3.2.5 ⇒ Spring 6.1 ⇒ `RestClient` 与 `MockRestServiceServer` 都可用 | `server/pom.xml` → **LLM 路径不需要新增任何依赖** |
+| Spring Boot 3.2.5 ⇒ Spring 6.1 ⇒ `RestClient` 可用；JDK 自带 `com.sun.net.httpserver.HttpServer` 可当回环网关 | `server/pom.xml` → **LLM 路径不需要新增任何依赖**（`MockRestServiceServer` 最终**没有**采用，理由见 §0.2） |
 | 导航由三个静态数组按职能取并集渲染 | `AdminLayout.vue` 的 `ADMIN_NAV_ITEMS`/`STUDENT_NAV_ITEMS`/`WORKER_NAV_ITEMS` |
 | 抽屉宽度约定：窄档 `100%`、桌面 `420px` | `AdminLayout.vue` 的通知抽屉 |
 | 生产 `sql/schema.sql` 只有 12 张表，**连 `repair_category` / `repair_order` / `sys_config` 都没有** | 既有 P3（HANDOFF §3）——本轮**不重建**，只出迁移脚本 |
@@ -178,7 +196,8 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
 
 - **就绪判定**：`app.assistant.llm.enabled=true` ∧ `base-url`/`api-key`/`model` 均非空 ∧ `sys_config.assistant_llm_enabled=1`。缺任一 ⇒ 纯规则（`engine=RULE`，且**不算降级**、`degradedReason=null`）。
 - **调用**：OpenAI 兼容 `POST {base-url}/chat/completions`，`temperature=0`、`max_tokens=64`、超时 `app.assistant.llm.timeout-ms`（默认 3000ms）。system prompt 里给出**封闭候选清单**（`id|叶子名|大类|工种`）并要求只返回 `{"categoryIds":[...]}`。
-- **解析**：`filterAllowedIds(rawJson, allowedIds)` 做成**静态纯函数**——丢弃未知 id、去重、截断至上限、容忍 ```` ```json ```` 围栏。不合法即 `LLM_INVALID_RESPONSE`。
+- **解析**：先 `extractAssistantContent(响应体)` 从 chat/completions **信封**里取出 `choices[0].message.content`（拿不到就原样回落，见 §0.2），再交给 `filterAllowedIds(rawJson, allowedIds)`——**静态纯函数**，丢弃未知 id、去重、截断至上限、容忍 ```` ```json ```` 围栏。不合法即 `LLM_INVALID_RESPONSE`。
+- **传输层边界**：`AssistantLlmTransport.postJson` 返回的是**原始响应体（完整信封）**，不是模型 content；解包属客户端职责。这条边界写错会让**每一次**真实调用都降级为 `LLM_INVALID_RESPONSE`（§0.2 即为此）。
 - **合并策略（不变式）**：大模型结果**只能追加/重排**，不能淘汰规则命中。最终列表 = 模型序在前，规则命中按原序补足（去重），总数仍受限；`engine="RULE+LLM"`。模型返回空 ⇒ 纯规则且 `degradedReason` 保持 `null`（「模型也没把握」不是故障）。
 - **异常一律吞掉并降级**：超时/非 2xx/JSON 解析失败 ⇒ `degradedReason` 取对应值 + 返回纯规则结果，**HTTP 仍 200**。
 - **隐私边界**：只发**自由文本描述 + 封闭分类清单**；不发姓名、手机号、单位路径、历史工单。
@@ -250,7 +269,8 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 
 - `AssistantRuleEngineTest`（纯单元）：叶子名优先于关键词；多候选择序稳定（同分按 sortOrder/id）；1 字关键词被忽略；重复词只计一次；无命中 ⇒ `noMatch`；停用分类不参与；SLA/工种透传；标点与空白归一。
 - `AssistantApiIntegrationTest`（MockMvc，自建分类与空间）：报修人可用；`WORKER`/`DISPATCHER` 调 `/suggest`、`/my-progress` ⇒ **403**；「水龙头一直滴水」⇒ 首候选 301/`PLUMBER`/24h/`HIGH` 且 `matchedKeywords` 非空；「插座冒烟跳闸」⇒ 312/`ELECTRICIAN`/8h；无关文本 ⇒ `noMatch=true` + 5 个大类；`engine=RULE`；FAQ 数值 == `sys_config`（缺种子时回落默认 72/2/24）；`my-progress` 只回自己的单；`nextStep` 覆盖 10 态；描述越界 ⇒ `code=400`。
-- `AssistantLlmClientTest`：`MockRestServiceServer.bindTo(RestClient.Builder)` 造正常/超时/500/非法 JSON 四种响应断言降级与 `degradedReason`；`filterAllowedIds` 纯函数单测（未知 id、重复、超上限、围栏）。
+- `AssistantLlmClientTest`（纯单元，**假传输层**）：超时/报错/非法 JSON 的降级矩阵与 `degradedReason`；`filterAllowedIds` 纯函数单测（未知 id、重复、超上限、围栏）；`extractAssistantContent` 解包单测（信封取 content、多 choices 取首条、无信封回落、`content` 非文本回落）。
+- `RestClientLlmTransportTest`（**真实 HTTP**，JDK `HttpServer` 回环网关）：报文契约（POST/路径/`Bearer`/`Content-Type`/请求体、`base-url` 多斜杠）、**真信封端到端**（§0.2 的回归用例）、封闭集过滤去重、围栏、非 2xx ⇒ `LLM_ERROR`、**真读超时** ⇒ `LLM_TIMEOUT`、配置不就绪 ⇒ 零请求。**刻意不用 `MockRestServiceServer`**：它替换请求工厂，socket 超时不会发生（理由见 §0.2）。
 
 ### 6.3 前端真机探针 `.scratch/assert-assistant.mjs`
 
@@ -261,8 +281,10 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 ```powershell
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
-mvn test -f server/pom.xml                       # 149/149 BUILD SUCCESS（基线 112 + 智能助手 37）
-mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 147/147（+2 之前验过顺序无关）
+mvn test -f server/pom.xml                       # 160/160 BUILD SUCCESS（基线 112 + 智能助手 48）
+mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 160/160（两种顺序都全绿）
+# ↑ 引号是必须的：不加引号 PowerShell 会把它拆成 `.runOrder=alphabetical`，
+#   Maven 报 `Unknown lifecycle phase ".runOrder=alphabetical"`（实测，2026-09-26）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json                  # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json  # exit 0
 node .scratch/assert-assistant.mjs               # 33 条 ALL PASS
@@ -271,7 +293,7 @@ node .scratch/assert-profile.mjs                 # ALL PASS
 node .scratch/assert-drill.mjs                   # 130/130
 ```
 
-**用例数拆分（149 = 112 + 37）**：`AssistantRuleEngineTest` 12 + `AssistantLlmClientTest` 8 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 = **37**（FAQ 按职能裁剪后 +2）。
+**用例数拆分（160 = 112 + 48）**：`AssistantRuleEngineTest` 12 + `AssistantLlmClientTest` 10 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 + **`RestClientLlmTransportTest` 9** = **48**（FAQ 按职能裁剪 +2；大模型信封解包修复 +11）。
 
 **接口级实测（真机 8080，演示数据）**：
 
@@ -303,7 +325,8 @@ node .scratch/assert-drill.mjs                   # 130/130
 | 项 | 说明 |
 | :--- | :--- |
 | 规则命中率取决于同义词表质量 | 字典页可自助维护（用户已选此方案）；后续可用演示库的 20 张单描述做一轮抽样回归，命中不了的记入「待补词」清单 |
-| 大模型提供方需兼容 OpenAI `/chat/completions` | 不兼容时只需改 `AssistantLlmClient` 的请求与解析两处，规则路径与前端零改动 |
+| 大模型提供方需兼容 OpenAI `/chat/completions` | 不兼容时只需改 `AssistantLlmClient` 的请求与解析两处（**含响应信封形状**，见 §0.2），规则路径与前端零改动 |
+| 大模型链路**从未对真实提供方端到端跑过** | 现有用例全部走本地回环网关（真实 HTTP，但响应是造的）。要接真网关，需注入 `ASSISTANT_LLM_*` 后实跑一次，核对真实返回形状与 `max_tokens=64` 是否够用 |
 | `keywords` 列 255 上限 | 现 7 个叶子的同义词串最长约 70 个汉字（UTF-8 约 210 字节），够用；越界已由服务层显式拒绝 |
 | 无助手相关的运营看板 | 「助手推荐了多少次、采纳率多少」尚未埋点，后续若要看效果需新增事件与聚合 |
 | 「最近一张单」的同毫秒并列 | `getMyOrders` 只按 `created_at` 倒序，两张单时间戳相同时顺序未定义（写测试时实测踩到，已在测试里显式错开时间戳）。若要严格，需改成 `created_at desc, id desc`——那是「我的工单」共用方法的排序口径，本轮刻意不动 |
