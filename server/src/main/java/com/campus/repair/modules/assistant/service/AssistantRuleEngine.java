@@ -71,11 +71,35 @@ public final class AssistantRuleEngine {
     /**
      * 排序：分数降序 → {@code sortOrder} 升序 → {@code id} 升序。
      * 后两级是**确定性保证**：同分时不能让结果取决于数据库返回顺序。
+     *
+     * <p>这是一个**全序**（`id` 是主键，不会并列），所以任何一组候选按它排序后
+     * 顺序唯一——这正是"同一输入 → 同一顺序"的根据。
      */
     private static final Comparator<Scored> ORDER = Comparator
             .comparingInt(Scored::score).reversed()
             .thenComparingInt(s -> s.leaf().sortOrder() == null ? Integer.MAX_VALUE : s.leaf().sortOrder())
             .thenComparingLong(s -> s.leaf().id() == null ? Long.MAX_VALUE : s.leaf().id());
+
+    /**
+     * 按 {@link #ORDER} 排序并截断——**规则路径与"合并大模型结果"路径共用同一份确定性总序**。
+     *
+     * <p>为什么抽成公开方法：不变式是「同样的候选集合 ⇒ 同样的顺序」，而它现在有**两个**入口
+     * （纯规则 {@link #rank} 与 {@code AssistantService.merge}）。两处各写一遍排序迟早漂移成
+     * 两套口径，而"排序不确定"恰恰是本轮要消灭的缺陷。
+     *
+     * <p>注意它**只认候选自身的分数/排序号/id**：大模型返回的先后顺序不参与排序，
+     * 因此模型侧的随机性（思考模型 `temperature` 被强制成 1.0）传不到输出顺序上。
+     *
+     * @return 新列表，不改动入参；{@code limit <= 0} 或入参为空时返回空列表
+     */
+    public static List<Scored> sort(List<Scored> scored, int limit) {
+        if (scored == null || scored.isEmpty() || limit <= 0) {
+            return new ArrayList<>();
+        }
+        List<Scored> result = new ArrayList<>(scored);
+        result.sort(ORDER);
+        return result.size() > limit ? new ArrayList<>(result.subList(0, limit)) : result;
+    }
 
     /**
      * 排序并截断。
@@ -120,8 +144,7 @@ public final class AssistantRuleEngine {
             }
         }
 
-        scored.sort(ORDER);
-        return scored.size() > limit ? new ArrayList<>(scored.subList(0, limit)) : scored;
+        return sort(scored, limit);
     }
 
     /**

@@ -41,6 +41,31 @@
             <span class="block-hint">Ctrl + Enter 快速判断</span>
           </div>
 
+          <!--
+            提问后输入框会清空——把问题留在框里不符合直觉（用户以为已经问过了）。
+            问题不丢：落进「最近提问」，一键重问。
+          -->
+          <div v-if="history.length" class="history">
+            <div class="history-head">
+              <span class="history-title">最近提问</span>
+              <el-button link size="small" @click="clearHistory">清空</el-button>
+            </div>
+            <div class="history-list">
+              <button
+                v-for="item in history"
+                :key="item"
+                type="button"
+                class="history-item"
+                :title="`再次判断：${item}`"
+                :aria-label="`再次判断：${item}`"
+                @click="reuseHistory(item)"
+              >
+                <el-icon :size="13"><Clock /></el-icon>
+                <span class="history-text">{{ item }}</span>
+              </button>
+            </div>
+          </div>
+
           <el-alert
             v-if="suggestError"
             class="inline-alert"
@@ -147,7 +172,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ChatDotRound } from '@element-plus/icons-vue';
+import { ChatDotRound, Clock } from '@element-plus/icons-vue';
 import {
   ASSISTANT_DEGRADED_LABELS,
   type AssistantCandidate,
@@ -189,6 +214,21 @@ const progress = ref<AssistantOrderProgress | null>(null);
 const faqItems = ref<AssistantFaqItem[]>([]);
 const loadedOnce = ref(false);
 
+/**
+ * 「最近提问」：提问后输入框清空，问题落在这里，一键重问。
+ *
+ * 三条约定：
+ * 1. **按账号分键**（`…_<userId>`）——同一台机器上换个账号登录不会看到别人的提问；
+ * 2. **只在浏览器本地**（localStorage）——提问是自由文本，不上服务端，也就没有"清不掉"的问题；
+ * 3. **读写全程 try/catch**——隐私模式/配额满/缓存写坏时，历史退化成本次会话内可用，
+ *    但**绝不因为历史记录把助手搞崩**（与"助手整体不可用时提单页照常工作"同一条铁律）。
+ */
+const HISTORY_STORAGE_PREFIX = 'CAMPUS_REPAIR_ASSISTANT_HISTORY';
+/** 最多留几条：再多多半是想不起来的旧问题，反而把候选挤下去 */
+const HISTORY_LIMIT = 8;
+
+const history = ref<string[]>([]);
+
 const isReporter = computed(() => identity.isReporter.value);
 const drawerSize = computed(() => (isNarrowPhone.value ? '100%' : '420px'));
 const quickLinks = computed(() =>
@@ -196,7 +236,45 @@ const quickLinks = computed(() =>
 );
 const selfHelpTips = computed(() => suggestion.value?.selfHelpTips ?? []);
 
+function historyKey(): string {
+  return `${HISTORY_STORAGE_PREFIX}_${authStore.userInfo?.id ?? 'anonymous'}`;
+}
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(historyKey());
+    const parsed = raw ? JSON.parse(raw) : [];
+    history.value = Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+  } catch (_) {
+    history.value = [];
+  }
+}
+
+function persistHistory() {
+  try {
+    localStorage.setItem(historyKey(), JSON.stringify(history.value));
+  } catch (_) {
+    // 存不下就只留内存：本轮仍然可用，只是刷新后丢历史
+  }
+}
+
+/** 记一条提问：同一条问题不重复堆积，命中已有条目就提到最前 */
+function rememberQuestion(text: string) {
+  history.value = [text, ...history.value.filter((item) => item !== text)].slice(0, HISTORY_LIMIT);
+  persistHistory();
+}
+
+function clearHistory() {
+  history.value = [];
+  try {
+    localStorage.removeItem(historyKey());
+  } catch (_) {
+    // 同上：清不掉也不影响助手
+  }
+}
+
 onMounted(async () => {
+  loadHistory();
   try {
     const res = await httpClient.get<AssistantStatus>('/assistant/status');
     enabled.value = res.code === 200 && !!res.data?.enabled;
@@ -238,12 +316,19 @@ async function loadProgress() {
 }
 
 async function onSuggest() {
+  // 请求在飞时不再受理（按钮本身 loading 会禁用，但 Ctrl+Enter 与历史条目是另一条路）
+  if (suggesting.value) return;
   const text = description.value.trim();
   if (text.length < 2) {
     suggestError.value = '请至少输入 2 个字描述故障现象。';
     suggestion.value = null;
     return;
   }
+  // 先记历史再清空输入框。**顺序是有意的**：清空在前会让"失败后想改一个字重问"没处下手，
+  // 而失败时历史里已经有原文，一键即可重问；成功时框子本来就该是空的。
+  rememberQuestion(text);
+  description.value = '';
+
   suggesting.value = true;
   suggestError.value = '';
   try {
@@ -260,6 +345,18 @@ async function onSuggest() {
   } finally {
     suggesting.value = false;
   }
+}
+
+/**
+ * 点历史条目 = **直接重问**（不是填回输入框再让用户点一次）。
+ *
+ * 这样"问题不丢"才真的省事：`onSuggest` 会把这条提到历史最前、再清空输入框，
+ * 于是点完的状态与手输一次完全一致。规则引擎的排序是确定的（§3.3），
+ * 所以同一句话重问拿到的候选顺序与上次一致——这条交互才站得住。
+ */
+async function reuseHistory(text: string) {
+  description.value = text;
+  await onSuggest();
 }
 
 /** 「采用」= 带着细类跳到提单页预填（绝不自动提交、绝不改用户已填的东西） */
@@ -347,6 +444,64 @@ defineExpose({ notifyCenter: () => emit('open-notifications') });
 }
 .inline-alert {
   margin-top: 10px;
+}
+
+/* 「最近提问」：输入框下方的一小块历史。限高滚动——它是次要入口，
+   不该把候选卡片挤出视野（抽屉里已经叠了五段内容）。 */
+.history {
+  margin-top: 12px;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.history-title {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 108px;
+  overflow-y: auto;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-regular);
+  text-align: left;
+  cursor: pointer;
+}
+.history-item:hover {
+  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-primary);
+}
+.history-item:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-3);
+  outline-offset: 1px;
+}
+.history-item .el-icon {
+  flex: none;
+}
+.history-text {
+  flex: 1;
+  /* 省略号要生效必须给 flex 子项 min-width:0，否则它按内容宽度撑开、整行溢出 */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .no-match {
   margin-top: 12px;

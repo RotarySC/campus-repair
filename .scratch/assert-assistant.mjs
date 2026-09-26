@@ -120,6 +120,8 @@ async function drawerSnapshot() {
       // 常见问题的标题文本：断言「按职能裁剪」必须看内容——只数条数会漏掉"三套账号一模一样"这类缺陷
       faqQuestions: [...p.querySelectorAll('.el-collapse-item__header')].map(e => e.innerText.trim()),
       hasSelfHelp: text.includes('提交前可以先试试'),
+      hasHistory: !!p.querySelector('.history-title'),
+      historyItems: [...p.querySelectorAll('.history-item .history-text')].map(e => e.innerText.trim()),
       drawerWidth: Math.round(w)
     };
   })()`);
@@ -169,14 +171,16 @@ check('报修人抽屉含「常见问题」且为报修人那套（10 条 = 通�
   !drawer.faqQuestions.includes('自动派单什么时候会失败？'),
   `faqCount=${drawer?.faqCount} 首条=${drawer?.faqQuestions?.[0]}`);
 check('未提问时不显示自助排查区', drawer?.hasSelfHelp === false);
+check('未提问且无历史时不显示「最近提问」', drawer?.hasHistory === false);
 check('快捷入口与侧边栏导航同源',
   JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...navLabels].sort()),
   `快捷入口=${JSON.stringify(drawer.quick)} 侧边栏=${JSON.stringify(navLabels)}`);
 
 // 提问 → 候选
+const QUESTION = '卫生间水龙头一直滴水，关不紧';
 await evalJs(`(() => {
   const ta = document.querySelector('#assistant-drawer-panel textarea');
-  ta.value = '卫生间水龙头一直滴水，关不紧';
+  ta.value = ${JSON.stringify(QUESTION)};
   ta.dispatchEvent(new Event('input', { bubbles: true }));
   return 1;
 })()`);
@@ -197,6 +201,42 @@ check('首候选带「首选」标记', card?.firstBadge === true);
 
 drawer = await drawerSnapshot();
 check('出候选后出现自助排查区', drawer?.hasSelfHelp === true);
+
+// ---------------------------------------------------------------------------
+// 1.5) 提问后输入框清空 + 「最近提问」（本轮新增的用户体验）
+// ---------------------------------------------------------------------------
+const afterAsk = await evalJs(
+  `document.querySelector('#assistant-drawer-panel textarea')?.value ?? null`);
+check('提问后输入框已清空（不再留着刚问过的问题）',
+  afterAsk === '', JSON.stringify(afterAsk));
+check('提问进入「最近提问」且排在最前',
+  drawer?.hasHistory === true && drawer?.historyItems[0] === QUESTION,
+  JSON.stringify(drawer?.historyItems));
+
+const historyLabel = await evalJs(
+  `document.querySelector('#assistant-drawer-panel .history-item')?.getAttribute('title') || ''`);
+check('历史条目的 title 说明「点它 = 再次判断」', historyLabel.startsWith('再次判断'), historyLabel);
+
+// 点历史条目 = 直接重问（不是填回输入框再让用户点一次）。
+// 「到底有没有重问」只能靠网络域取证——候选卡片本来就在，看 DOM 是看不出来的。
+const suggestCount = () => assistantCalls.filter((u) => u === '/assistant/suggest').length;
+const beforeReuse = suggestCount();
+await evalJs(`(() => { document.querySelector('#assistant-drawer-panel .history-item')?.click(); return 1; })()`);
+for (let i = 0; i < 30; i++) {
+  if (suggestCount() > beforeReuse) break;
+  await sleep(300);
+}
+check('点历史条目直接重问（确实又发了一次 /assistant/suggest）',
+  suggestCount() === beforeReuse + 1, `${beforeReuse} → ${suggestCount()}`);
+await waitForCandidateCard();
+const afterReuse = await evalJs(
+  `document.querySelector('#assistant-drawer-panel textarea')?.value ?? null`);
+check('重问后输入框同样是空的', afterReuse === '', JSON.stringify(afterReuse));
+drawer = await drawerSnapshot();
+check('重问把该条提到最前（同一条不重复堆积）',
+  drawer?.historyItems.filter((h) => h === QUESTION).length === 1 &&
+  drawer?.historyItems[0] === QUESTION,
+  JSON.stringify(drawer?.historyItems));
 
 // 采用并提单
 await evalJs(`(() => {
@@ -220,6 +260,37 @@ check('「采用并提单」跳到提单页', landed?.path === '/student/submit'
 check('提单页分类已预填并回显路径',
   landed?.hints.some((h) => /水暖管道 \/ 水龙头漏水/.test(h)), JSON.stringify(landed?.hints));
 check('预填用的 query 已被摘掉（刷新不会重复应用）', landed?.search === '', landed?.search);
+
+// ---------------------------------------------------------------------------
+// 1.6) 历史必须活过整页刷新（否则「问题不丢」是假的）+ 「清空」要真的删干净
+// ---------------------------------------------------------------------------
+await openAs('/', student);
+await openDrawer();
+drawer = await drawerSnapshot();
+check('整页刷新后历史仍在（localStorage 持久化）',
+  drawer?.hasHistory === true && drawer?.historyItems[0] === QUESTION,
+  JSON.stringify(drawer?.historyItems));
+
+const historyKey = await evalJs(`(() => {
+  const k = Object.keys(localStorage).find(k => k.startsWith('CAMPUS_REPAIR_ASSISTANT_HISTORY'));
+  return k || null;
+})()`);
+check('历史按账号分键（键名带 userId，换账号看不到别人的提问）',
+  /^CAMPUS_REPAIR_ASSISTANT_HISTORY_\d+$/.test(historyKey || ''), String(historyKey));
+
+// 清空——顺带让本探针幂等：跑完不留历史，同一实例上重跑不会累加
+await evalJs(`(() => {
+  const p = document.querySelector('#assistant-drawer-panel');
+  [...p.querySelectorAll('button')].find(b => b.innerText.trim() === '清空')?.click();
+  return 1;
+})()`);
+await sleep(400);
+drawer = await drawerSnapshot();
+const historyLeft = await evalJs(`localStorage.getItem(${JSON.stringify(historyKey)})`);
+check('「清空」后历史区消失且本地缓存被删除',
+  drawer?.hasHistory === false && historyLeft === null,
+  `hasHistory=${drawer?.hasHistory} storage=${historyLeft}`);
+await closeDrawer();
 
 // ===========================================================================
 // 2) 非报修职能：worker01（WORKER）——不发推荐请求

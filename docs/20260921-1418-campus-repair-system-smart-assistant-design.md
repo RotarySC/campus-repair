@@ -9,13 +9,14 @@
 | 子系统 | 状态 |
 | :--- | :--- |
 | §2 数据层（两列 + 种子 + 配置键 + 迁移脚本） | **已落地**，H2 实测通过（§6.1） |
-| §3 后端 `modules/assistant` | **已落地**，`mvn test` 160/160 |
+| §3 后端 `modules/assistant` | **已落地**，`mvn test` 174/174 |
 | §4 前端（气泡抽屉 / 提单页内联 / 字典页可编辑） | **已落地**，`tsc` + `vue-tsc` exit 0 |
-| §6 测试与验收 | **已验收**：真机探针 33 条 ALL PASS |
+| §6 测试与验收 | **已验收**：真机探针 43 条 ALL PASS |
 | §0.1 验收后修复（制度问答按职能裁剪） | **已修复**，149/149 |
 | §0.2 验收后修复（大模型信封解包） | **已修复**，160/160（+9 条真实 HTTP 用例） |
 | §0.3 首次接入真实提供方（MiMo `mimo-v2.6-flash`） | **已跑通**：`engine=RULE+LLM`、`degradedReason=null` |
 | §0.4 升级制（规则有把握就不调模型） | **已落地**，169/169；4/8 请求免调模型 |
+| §0.5 候选顺序确定化 + 提问历史 | **已落地**，174/174；真机首候选 3/3 稳定 |
 
 ### 0.1 验收后修复：制度问答曾是「三类账号一模一样」（2026-09-26）
 
@@ -133,7 +134,65 @@
 
 **新增测试 9 例（160 → 169）**：`AssistantRuleEngineTest` 12 → 16（阈值边界 10/1/0、取最高分而不依赖列表顺序）；新增 `AssistantLlmEscalationTest` 5 例，用 `@Primary` 的**计数传输层**断言"到底有没有发请求"——只看响应体会得到**恒真**的测试（规则命中时 `engine` 本来就是 `RULE`，模型调没调都一样），所以 `@BeforeEach` 先断言注入到的确实是计数实现，并内置负向对照（同一 HIGH 输入 + 阈值 0 ⇒ `calls == 1`）。
 
-## 1. 现状与决策（动手前已核实）
+### 0.5 验收后改进：候选顺序确定化 + 提问历史（2026-09-26）
+
+用户提了两件事：「处理排序不确定」与「提问后输入框会保留问题，这有点不符合直觉，增加'历史记录'功能升级这一行为」。
+
+#### A. `merge()` 改口径：模型返回顺序**不参与排序**
+
+§8 记的「排序不确定」有两条根因：**模型侧** `temperature` 被服务端强制成 `1.0`（我们传 0 无效）；**客户端侧** `merge()` 拿**模型返回顺序**当主键。§0.4 的升级制只是把 HIGH 路径移出了模型，`merge()` 本身没动。本轮把它改掉，换成三条不变式：
+
+| # | 现在 | 此前 |
+| :--- | :--- | :--- |
+| ① | **规则命中一条都不能少**：模型只能填 `limit` 之内的**空位** | 模型挑的排前面再截断 ⇒ 模型返回满 `limit` 条时规则命中被**整批截掉** |
+| ② | **顺序完全由规则口径决定**：合并后一律走 `AssistantRuleEngine.sort`（分数降序 → `sortOrder` → `id`） | 模型序即最终序 |
+| ③ | 模型仍能**追加**规则漏掉的细类（`promote`，+5 = MEDIUM，`matchedKeywords` 留空） | 同 |
+
+**①是顺手抓到的真缺陷**：此前"开了大模型反而可能更差"——与文档里写的「大模型不得淘汰规则命中」**不符**。②才是"排序不确定"的根治：`sortOrder`+`id` 构成**全序**（`id` 是主键、不会并列），所以同一组候选的顺序唯一。
+
+**把 `sort` 抽成公开方法**（`rank()` 与 `merge()` 共用）：不变式「同样的候选集合 ⇒ 同样的顺序」现在有**两个**入口，两处各写一遍排序迟早漂移成两套口径。
+
+**负向对照（证明新用例不是空转）**：把 `AssistantService.java` `git stash` 回 HEAD 版（模型序在前）后重跑 `AssistantLlmEscalationTest`，新增的两条**精确失败**：
+
+```
+modelCannotEvictRuleHits                candidates[0].categoryId expected:<4> but was:<7>
+modelReturnOrderDoesNotAffectCandidates candidates[0].categoryId expected:<21> but was:<23>
+```
+
+两条都是"模型挑的跑到了第一位"。恢复改动后 7/7 全绿。
+
+**诚实记录的残留**：修的是**顺序**，不是**集合**。模型这次返回 `[301]`、下次返回 `[302]` 时候选**成员**仍会变——那是"用了随机模型"的固有代价，只能靠 §0.4 的升级制把影响面压小（HIGH 路径压根不问模型）。
+
+**真机复测（真实提供方，阈值 10，同一句「宿舍天花板往下渗水」连打 3 次）**：
+
+```
+第 1 次 engine=RULE+LLM → 301 水龙头漏水 | 302 下水道堵塞
+第 2 次 engine=RULE+LLM → 301 水龙头漏水 | 302 下水道堵塞
+第 3 次 engine=RULE+LLM → 301 水龙头漏水 | 311 灯具损坏 | 302 下水道堵塞
+```
+
+**首候选 3/3 稳定**（改之前是在 `301`/`302` 之间随机翻，见 §8 原始记录）。第 3 次模型多补了一条 `311 灯具损坏`，**成员**确实变了——但它的位置不是模型给的：`301`(sortOrder 1) → `311`(sortOrder 1) → `302`(sortOrder 2)，三条同为 5 分，顺序**完全由 `sortOrder` 决定**（`data-demo.sql` 里 311 的 `sort_order=1`、302 是 2）。这正是"顺序确定、成员由模型"的实证。
+
+#### B. 提问后清空输入框 + 「最近提问」
+
+**动机（用户提出）**：提问后输入框仍留着问题——用户容易以为还没问出去。
+
+| 动作 | 行为 |
+| :--- | :--- |
+| 点「帮我判断」/ `Ctrl+Enter` | **先把问题记进历史，再清空输入框**，然后发请求 |
+| 输入不足 2 字 | 只提示，**不入历史**（没什么可记的） |
+| 点历史条目 | **直接重问**（不是填回输入框再让用户点一次）；重问会把该条提到最前 |
+| 点「清空」 | 清掉本账号全部历史，并删除本地缓存 |
+
+**先记后清的顺序是有意的**：请求失败时原文已在历史里、一键可重问；反过来（先清）会让"失败后想改一个字重问"没处下手。另外 `onSuggest` 开头有 `if (suggesting) return`——按钮 `loading` 只挡得住点击，挡不住 `Ctrl+Enter` 与历史条目这两条路。
+
+**存储**：`localStorage`，键 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`——**按账号分键**（同机换账号看不到别人的提问）、**上限 8 条**、同一条不重复堆积（命中已有条目即提到最前）；**只在浏览器本地**，提问是自由文本、不上服务端，因此也不存在"服务端清不掉"的问题。读写全程 `try/catch`：隐私模式/配额满/缓存写坏时退化成本次会话内可用，**绝不因为历史记录把助手搞崩**（与"助手整体不可用时提单页照常工作"同一条铁律）。
+
+**为什么"点历史 = 直接重问"站得住**：A 项把候选顺序变成确定的，同一句话重问拿到的顺序与上次一致——否则"重问"会给出与记忆里不同的答案，这个交互本身就是坏的。**A 与 B 是配套的**。
+
+**范围**：只改抽屉（`AssistantWidget.vue`）里那个**提问框**。提单页的助手是**描述框停输自动推荐**，那个框里装的是工单描述、必须保留，两者语义不同、不能一起改。
+
+
 
 | 事实 | 依据 / 结论 |
 | :--- | :--- |
@@ -267,8 +326,9 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
 | 大类名命中 | **+3** |
 
 5. `confidence`：`≥10 → HIGH`、`5~9 → MEDIUM`、`1~4 → LOW`（**不编造百分比精度**）。
-6. 排序：分数降序 → `sortOrder` 升序 → `id` 升序。**不许依赖 DB 或 `HashMap` 的迭代顺序**（分析聚合曾因此出过不确定排序，见 `AGENTS.md` §2.1）。
+6. 排序：分数降序 → `sortOrder` 升序 → `id` 升序。**不许依赖 DB 或 `HashMap` 的迭代顺序**（分析聚合曾因此出过不确定排序，见 `AGENTS.md` §2.1）。`sortOrder`+`id` 构成**全序**（`id` 是主键、不会并列）⇒ 同一组候选的顺序**唯一**。
 7. 取前 `assistant_max_candidates`（默认 3）；**全部 0 分 ⇒ `noMatch=true`** 并回退给出 ≤5 个大类，**不瞎猜**。
+8. 上述排序抽成公开的 `AssistantRuleEngine.sort(List<Scored>, limit)`，**`rank()` 与 `AssistantService.merge()` 共用同一份**（§0.5）。两处各写一遍排序迟早漂移成两套口径，而"顺序确定"正是本轮修掉的缺陷。
 
 ### 3.4 大模型增强（默认关）
 
@@ -277,7 +337,7 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
 - **调用**：OpenAI 兼容 `POST {base-url}/chat/completions`——**`base-url` 必须到 `/v1` 为止**（代码自己拼 `/chat/completions`；填裸域名返回 404，实测见 §0.3）。`temperature=0`、`max_tokens` 默认 **512**、超时默认 **8000ms**，两者都可环境变量覆盖（`ASSISTANT_LLM_MAX_TOKENS` / `ASSISTANT_LLM_TIMEOUT_MS`）——**默认值由 64/3000 上调的实测依据见 §0.3：思考模型的推理 token 也占 `max-tokens`，调小会把 `content` 挤空**。system prompt 里给出**封闭候选清单**（`id|叶子名|大类|工种`）并要求只返回 `{"categoryIds":[...]}`。
 - **解析**：先 `extractAssistantContent(响应体)` 从 chat/completions **信封**里取出 `choices[0].message.content`（拿不到就原样回落，见 §0.2），再交给 `filterAllowedIds(rawJson, allowedIds)`——**静态纯函数**，丢弃未知 id、去重、截断至上限、容忍 ```` ```json ```` 围栏。不合法即 `LLM_INVALID_RESPONSE`。
 - **传输层边界**：`AssistantLlmTransport.postJson` 返回的是**原始响应体（完整信封）**，不是模型 content；解包属客户端职责。这条边界写错会让**每一次**真实调用都降级为 `LLM_INVALID_RESPONSE`（§0.2 即为此）。
-- **合并策略（不变式）**：大模型结果**只能追加/重排**，不能淘汰规则命中。最终列表 = 模型序在前，规则命中按原序补足（去重），总数仍受限；`engine="RULE+LLM"`。模型返回空 ⇒ 纯规则且 `degradedReason` 保持 `null`（「模型也没把握」不是故障）。
+- **合并策略（三条不变式，2026-09-26 修订，见 §0.5）**：① 大模型**只能填空位**，不得淘汰规则命中、也不得把规则命中挤出 `limit`；② 合并后**顺序一律走 `AssistantRuleEngine.sort`**（分数 → `sortOrder` → `id`），**模型返回的先后顺序不参与排序**——这是"排序不确定"的根治；③ 模型仍能**追加**规则漏掉的细类（`promote`，+5 = MEDIUM，`matchedKeywords` 留空，前端因此不渲染「命中：…」那行）。模型返回空 ⇒ 纯规则且 `degradedReason` 保持 `null`（「模型也没把握」不是故障）。
 - **异常一律吞掉并降级**：超时/非 2xx/JSON 解析失败 ⇒ `degradedReason` 取对应值 + 返回纯规则结果，**HTTP 仍 200**。
 - **隐私边界**：只发**自由文本描述 + 封闭分类清单**；不发姓名、手机号、单位路径、历史工单。
 - **提示注入**：描述是用户输入，会被拼进 prompt。防线有三层——封闭候选集、服务端 `filterAllowedIds` 只认已知 id、助手不自动提单。**实测**（见 §3.6）：要封闭集**外**的 id 会被丢弃；要封闭集**内**的 id 模型自己没照做。最坏后果是把候选**排序弄错**或"多看了一眼错候选"，不会产生越权或脏数据。
@@ -328,7 +388,7 @@ noMatch=true   engine=RULE   degradedReason=null   候选=（无）
 | :--- | :--- |
 | `packages/shared/src/types/assistant.ts`（新）+ `index.ts` | 上述契约的 TS 类型 + `AssistantEngine`/`AssistantConfidence` 联合类型 |
 | `apps/admin-web/src/constants/navItems.ts`（新） | 把 `AdminLayout.vue` 里的 `NavItem` + 三个数组 + `visibleNavItems(identity)` **原样搬出**（纯搬移、零行为变化），让导航与助手快捷入口**同源**，杜绝两份清单漂移 |
-| `apps/admin-web/src/components/AssistantWidget.vue`（新） | 右下悬浮气泡 + `el-drawer`（`:size="isNarrowPhone ? '100%' : '420px'"`，与通知抽屉一致）。五段内容：① 推荐（仅报修人）② 自助排查 ③ 快捷入口（`visibleNavItems` + 「通知中心」动作项）④ 我的工单速查（仅报修人）⑤ 制度问答 |
+| `apps/admin-web/src/components/AssistantWidget.vue`（新） | 右下悬浮气泡 + `el-drawer`（`:size="isNarrowPhone ? '100%' : '420px'"`，与通知抽屉一致）。五段内容：① 推荐（仅报修人）② 自助排查 ③ 快捷入口（`visibleNavItems` + 「通知中心」动作项）④ 我的工单速查（仅报修人）⑤ 制度问答。**2026-09-26 起提问框在提交后清空，问题落进「最近提问」（§0.5 B）**：`localStorage` 键 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`、上限 8 条、同一条去重提前、点条目**直接重问**、带「清空」；读写全程 `try/catch`（存不下就只留内存，绝不把助手搞崩） |
 | `apps/admin-web/src/components/assistant/SuggestionCardList.vue`（新） | 纯展示卡片（分类路径 / 大类 / 工种 / SLA / 置信度 / 命中词 + 「采用并提单」）；**抽屉与提单页共用同一组件** |
 | `apps/admin-web/src/layouts/AdminLayout.vue` | 挂载 `<AssistantWidget />`（紧邻通知抽屉）；nav 数组改 import |
 | `apps/admin-web/src/views/student/StudentSubmitRepairView.vue` | ① 描述停输 600ms、`categoryId` 仍为空且文本 ≥2 字时调 `/suggest`，在「故障细类」上方内联渲染候选（可关闭，按描述哈希记住已忽略，不反复打扰）；② 点「采用」⇒ 填 `categoryId`/`categoryPath`/`categoryFullPathName` + `saveDraft()`；③ 读 `route.query` 预填：**`categoryId` 覆盖草稿**（用户是从助手显式跳来的），**`spaceId` 仅在本页为空时填入**，应用后 `router.replace` 摘掉 query，避免刷新重复应用 |
@@ -349,6 +409,9 @@ noMatch=true   engine=RULE   degradedReason=null   候选=（无）
 | `assistant_enabled=0` | `/status` 报 `enabled=false` ⇒ 前端不渲染气泡；`/suggest` 防御性返回空 |
 | 助手整体不可用 | 提单页捕获异常静默忽略（不弹错、不阻断），表单与提交完全不受影响 |
 | 首登未改密用户 | 被既有 `code=1009` 拦截（与其余业务接口同档，符合预期） |
+| 模型返回顺序与上次不同（思考模型 `temperature` 被强制 1.0） | **候选顺序不变**——合并后一律按 `(分数, sortOrder, id)` 重排，模型序不参与（§0.5 A）。变的是**成员**（模型这次没补那条就没了），这一条无法结构性消除 |
+| 提问失败（助手不可用 / 业务失败） | 输入框已清空但**问题在「最近提问」里**，一键重问；输入内容不会丢 |
+| `localStorage` 不可用 / 配额满 / 缓存写坏 | 历史退化成本次会话内可用（只留内存），助手其余功能不受影响；`try/catch` 覆盖读、写、删三处 |
 
 **铁律：助手是纯建议。** 绝不自动提单、绝不自动改写表单，一律要用户点「采用」。
 
@@ -371,34 +434,36 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 
 ### 6.2 后端用例
 
-- `AssistantRuleEngineTest`（纯单元）：叶子名优先于关键词；多候选择序稳定（同分按 sortOrder/id）；1 字关键词被忽略；重复词只计一次；无命中 ⇒ `noMatch`；停用分类不参与；SLA/工种透传；标点与空白归一。
+- `AssistantRuleEngineTest`（纯单元）：叶子名优先于关键词；多候选择序稳定（同分按 sortOrder/id）；1 字关键词被忽略；重复词只计一次；无命中 ⇒ `noMatch`；停用分类不参与；SLA/工种透传；标点与空白归一。**`sort()`（2026-09-26 新增 3 例）**：同一组候选**任意入参顺序都给出同一输出**（这就是"模型返回顺序"的替身）、截断保留最高分且**不改动入参**、`rank` 与 `sort` 同口径且幂等。
 - `AssistantApiIntegrationTest`（MockMvc，自建分类与空间）：报修人可用；`WORKER`/`DISPATCHER` 调 `/suggest`、`/my-progress` ⇒ **403**；「水龙头一直滴水」⇒ 首候选 301/`PLUMBER`/24h/`HIGH` 且 `matchedKeywords` 非空；「插座冒烟跳闸」⇒ 312/`ELECTRICIAN`/8h；无关文本 ⇒ `noMatch=true` + 5 个大类；`engine=RULE`；FAQ 数值 == `sys_config`（缺种子时回落默认 72/2/24）；`my-progress` 只回自己的单；`nextStep` 覆盖 10 态；描述越界 ⇒ `code=400`。
 - `AssistantLlmClientTest`（纯单元，**假传输层**）：超时/报错/非法 JSON 的降级矩阵与 `degradedReason`；`filterAllowedIds` 纯函数单测（未知 id、重复、超上限、围栏）；`extractAssistantContent` 解包单测（信封取 content、多 choices 取首条、无信封回落、`content` 非文本回落）。
 - `RestClientLlmTransportTest`（**真实 HTTP**，JDK `HttpServer` 回环网关）：报文契约（POST/路径/`Bearer`/`Content-Type`/请求体、`base-url` 多斜杠）、**真信封端到端**（§0.2 的回归用例）、封闭集过滤去重、围栏、非 2xx ⇒ `LLM_ERROR`、**真读超时** ⇒ `LLM_TIMEOUT`、配置不就绪 ⇒ 零请求。**刻意不用 `MockRestServiceServer`**：它替换请求工厂，socket 超时不会发生（理由见 §0.2）。
-- `AssistantLlmEscalationTest`（**升级制**，`@SpringBootTest` + `@Primary` 计数传输层）：HIGH 命中 ⇒ `engine=RULE` 且**零请求**（§0.4 的回归用例）；`noMatch` 与弱命中 ⇒ 各升级 1 次；阈值 `0` ⇒ HIGH 也调；阈值 `1` ⇒ 只有 `noMatch` 升级。**断言对象是"到底有没有发请求"**——只看响应体会得到恒真测试（规则命中时 `engine` 本来就是 `RULE`）。
+- `AssistantLlmEscalationTest`（**升级制 + 合并策略**，`@SpringBootTest` + `@Primary` 计数传输层）：HIGH 命中 ⇒ `engine=RULE` 且**零请求**（§0.4 的回归用例）；`noMatch` 与弱命中 ⇒ 各升级 1 次；阈值 `0` ⇒ HIGH 也调；阈值 `1` ⇒ 只有 `noMatch` 升级。**合并策略（2026-09-26 新增 2 例）**：模型把同一集合**倒序**返回 ⇒ 候选**逐位相同**；规则命中占满 `limit` 时模型只能填空位、**一条规则命中都不被淘汰**。**断言对象是"到底有没有发请求"**——只看响应体会得到恒真测试（规则命中时 `engine` 本来就是 `RULE`）；两条新用例另加 `calls == 2` / `calls == 1` 确认没有空转。**负向对照已做**：把 `AssistantService.java` stash 回 HEAD 版后这两条精确失败（§0.5 A）。
 
 ### 6.3 前端真机探针 `.scratch/assert-assistant.mjs`
 
 气泡存在且 `aria-label` 正确；抽屉可开可关；`student02` 五段齐全；`worker01`/`admin` **无**推荐与进度段且**未发起** `/assistant/suggest` 请求；**快捷入口集合 == 侧边栏可见导航集合**（强断言，导航一改即红）；**常见问题按职能裁剪**——报修人/师傅/管理员三套**各自含专属题且不含对方专属题**，`worker02` 取并集 18 条且同题不重复（**教训：只断言条数会漏掉"三套内容一模一样"，条数恰好相同就一直是绿的**）；「水龙头」推荐 ⇒ 采用 ⇒ 跳提单页 ⇒ 分类选择器回显且 `categoryId` 已填；390/1272 两档 `documentElement.scrollWidth - clientWidth === 0`；后台标签下按 `AGENTS.md` §2.2 的规矩轮询 + 补帧。
+
+**2026-09-26 扩到 43 条**（原 33 + 新增 10 条覆盖 §0.5 B 的提问历史）：未提问时**不渲染**「最近提问」；提问后**输入框为空**；问题进入历史且排最前；条目 `title` 是「再次判断：…」；点条目**确实又发了一次** `/assistant/suggest`（CDP `Network` 域取证——候选卡片本来就在，看 DOM 分辨不出有没有重问）；重问后输入框同样为空；同一条**不重复堆积**；**整页刷新后历史仍在**（真持久化，不是组件内存）；键名匹配 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`（按账号分键）；「清空」后区块消失**且本地缓存被删**。最后一条同时让探针**幂等**——同一实例上重跑不会累加历史。
 
 ### 6.4 验收命令（**已现跑**）
 
 ```powershell
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
-mvn test -f server/pom.xml                       # 169/169 BUILD SUCCESS（基线 112 + 智能助手 57）
-mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 169/169（两种顺序都全绿）
+mvn test -f server/pom.xml                       # 174/174 BUILD SUCCESS（基线 112 + 智能助手 62）
+mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 174/174（两种顺序都全绿）
 # ↑ 引号是必须的：不加引号 PowerShell 会把它拆成 `.runOrder=alphabetical`，
 #   Maven 报 `Unknown lifecycle phase ".runOrder=alphabetical"`（实测，2026-09-26）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json                  # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json  # exit 0
-node .scratch/assert-assistant.mjs               # 33 条 ALL PASS
+node .scratch/assert-assistant.mjs               # 43 条 ALL PASS
 node .scratch/assert-identity-batch1.mjs         # ALL PASS（改了 navItems 所在文件，必跑）
 node .scratch/assert-profile.mjs                 # ALL PASS
 node .scratch/assert-drill.mjs                   # 130/130
 ```
 
-**用例数拆分（169 = 112 + 57）**：`AssistantRuleEngineTest` 16 + `AssistantLlmClientTest` 10 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 + `RestClientLlmTransportTest` 9 + **`AssistantLlmEscalationTest` 5** = **57**（FAQ 按职能裁剪 +2；大模型信封解包 +11；升级制 +9）。
+**用例数拆分（174 = 112 + 62）**：`AssistantRuleEngineTest` **19** + `AssistantLlmClientTest` 10 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 + `RestClientLlmTransportTest` 9 + **`AssistantLlmEscalationTest` 7** = **62**（FAQ 按职能裁剪 +2；大模型信封解包 +11；升级制 +9；**排序确定化 +5**）。
 
 **接口级实测（真机 8080，演示数据）**：
 
@@ -412,18 +477,19 @@ node .scratch/assert-drill.mjs                   # 130/130
 | `worker01` 调 `/status`、`/faq` | 200（全角色开放）；`/faq` 按职能返回**师傅那套 10 条**，数值含 72 |
 | `student02` / `worker01` / `admin` / `worker02` 调 `/faq` | 10 / 10 / 10 / **18** 条；三者交集**只有通用 2 条**；`worker02` = 报修人 ∪ 师傅（§0.1） |
 
-**真机探针覆盖的 33 条**（`assert-assistant.mjs`）：报修人 18 条（气泡 a11y、五段内容、快捷入口与侧边栏同源、候选四要素、自助排查出现、「采用并提单」跳转+预填+query 摘除、**常见问题为报修人那套**）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**、**常见问题换成师傅那套且不含报修人专属题**）、管理员 3 条（含常见问题为调度/平台那套）、`worker02` 3 条（**并集 18 条 + 两套专属题同时存在 + 去重**）、390 窄档 3 条。
+**真机探针覆盖的 43 条**（`assert-assistant.mjs`）：报修人 28 条（气泡 a11y、五段内容、快捷入口与侧边栏同源、候选四要素、自助排查出现、「采用并提单」跳转+预填+query 摘除、**常见问题为报修人那套**、**提问后清空输入框 + 「最近提问」10 条**）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**、**常见问题换成师傅那套且不含报修人专属题**）、管理员 3 条（含常见问题为调度/平台那套）、`worker02` 3 条（**并集 18 条 + 两套专属题同时存在 + 去重**）、390 窄档 3 条。
 
 **探针自身踩到的三个坑（都不是产品缺陷，已写进 `AGENTS.md` §2.2）**：① 页面上有**两个** `.path-hint`（空间在前、分类在后），`querySelector` 只会拿到空间那个；② `document.querySelector('.el-drawer')` 会命中**常驻 DOM 的通知中心抽屉**（宽度 0），必须从 `#assistant-drawer-panel` 往上 `closest`；③ 窄档抽屉宽度由全局 `responsive.css` 统一收敛为 `min(92vw, …)`（390 → 359），**不能断言 100vw**。
 
 ## 7. 明确不做（Out of Scope）
 
 1. **不做**基于历史工单的空间关联推荐（需跨模块聚合读模型；v1 纯文本匹配，`spaceId` 只回显不参与打分）。
-2. **不做**多轮对话与会话记忆（每次请求无状态，避免引入会话存储与吊销治理成本）。
+2. **不做**多轮对话与会话记忆（每次请求无状态，避免引入会话存储与吊销治理成本）。**注意区分**：§0.5 B 的「最近提问」是**浏览器本地的输入历史**（`localStorage`、按账号分键、点一条只是把同一句话重发一次），**不是**会话记忆——服务端仍然完全无状态，模型也看不到上一轮。
 3. **不做**助手自动提单 / 自动选分类 / 自动改表单。
 4. **不做**图片识别故障（需视觉模型与新的上传通道，独立议题）。
-5. **不重建** `sql/schema.sql` 缺失的生产 DDL（既有 P3）。
-6. **不改**注册页与 Excel 导入的自由文本单位（沿用二期遗留决定）。
+5. **不做**提问历史的服务端同步（跨设备/跨浏览器不可见）。提问是自由文本，放本地既省一张表也少一份"清不掉"的隐私面。
+6. **不重建** `sql/schema.sql` 缺失的生产 DDL（既有 P3）。
+7. **不改**注册页与 Excel 导入的自由文本单位（沿用二期遗留决定）。
 
 ## 8. 已知限制 / 后续
 
@@ -436,5 +502,5 @@ node .scratch/assert-drill.mjs                   # 130/130
 | 无助手相关的运营看板 | 「助手推荐了多少次、采纳率多少」尚未埋点，后续若要看效果需新增事件与聚合 |
 | 「最近一张单」的同毫秒并列 | `getMyOrders` 只按 `created_at` 倒序，两张单时间戳相同时顺序未定义（写测试时实测踩到，已在测试里显式错开时间戳）。若要严格，需改成 `created_at desc, id desc`——那是「我的工单」共用方法的排序口径，本轮刻意不动 |
 | 关键词同义词表需人工维护 | 规则命中率取决于词表质量。已提供字典页编辑入口；后续可用演示库的 20 张单描述做一轮抽样，把命中不了的词补进「待补词」清单 |
-| **排序不确定：同一输入的首候选会变**（2026-09-26 实测；**已由 §0.4 升级制大幅缓解，`merge()` 本身仍未改**） | **模型侧**：MiMo 文档明确「思考模式下 `mimo-v2.6-flash`/`pro`/`pro-ultraspeed`/`v2.5-pro`/`v2.5` 不支持自定义 `temperature`/`top_p`，即使传入也会被强制为 `1.0`/`0.95`」——我们传的 `temperature=0` **不生效**。**客户端侧**：`merge()` 是「模型序在前、规则命中按原序补足」，于是模型可以**把规则 HIGH 命中挤到第二位**。**实测**：同一句「宿舍天花板往下渗水」连打 6 次，首候选在 `301 水龙头漏水` / `302 下水道堵塞` 之间随机翻，第 4 次第二候选还变成 `灯具损坏`。**不变式「不淘汰规则命中」仍成立**（只是顺序变），但首候选正是 UI 高亮、用户最可能点「采用」的那一个。**建议修法**：`merge()` 改为**按分数降序、模型序只在同分内做 tiebreak**——规则 HIGH 永远压得住模型新增项（首候选恢复确定性），模型仍能在"规则也没把握"处追加；改完补一条「同输入 N 次首候选一致」的用例。**§0.4 升级制落地后的现状**：HIGH 路径**根本不经过模型**，那条路径已 100% 确定；仍会抖的只剩升级路径，而那里**没有规则命中可被挤掉**，危害从"首候选随机翻"降到"新增候选之间的顺序随机"。 |
+| ~~**排序不确定：同一输入的首候选会变**~~ **已于 2026-09-26 修复（§0.5 A）** | **原始记录（保留）**：MiMo 文档明确「思考模式下 `mimo-v2.6-flash`/`pro`/`pro-ultraspeed`/`v2.5-pro`/`v2.5` 不支持自定义 `temperature`/`top_p`，即使传入也会被强制为 `1.0`/`0.95`」——我们传的 `temperature=0` **不生效**；而 `merge()` 当时是「模型序在前、规则命中按原序补足」，于是模型可以**把规则 HIGH 命中挤到第二位**。实测同一句「宿舍天花板往下渗水」连打 6 次，首候选在 `301 水龙头漏水` / `302 下水道堵塞` 之间随机翻，第 4 次第二候选还变成 `灯具损坏`。**现状**：`merge()` 改为「规则命中必留 + 模型只填空位 + 顺序一律按 `(分数, sortOrder, id)` 重排」，模型返回顺序**完全不参与排序**（§0.5 A）；叠加 §0.4 升级制（HIGH 路径根本不问模型），首候选已 3/3 稳定。**仍存在的**：模型返回的**成员**会变（它这次没补那条就没了）——"用了随机模型"的固有代价，无法结构性消除；实测第 3 次多出一条 `311 灯具损坏`，但它的位置由 `sort_order` 决定而非模型序 |
 | **提示注入：封闭集「之内」拦不住**（2026-09-26 实测） | `filterAllowedIds` 对封闭集**之外**是硬保证（要 `999` 会被丢弃）；但对封闭集**之内**只是"模型没被说服"——若模型返回 `301`，用户会看到「水龙头漏水」。本轮两种注入写法都没得手（§3.6），但那是模型行为而非结构性保证。要变硬需在升级路径加"零命中则把模型答案也降级为 `noMatch`"，代价是砍掉 `noMatch` 路径的全部模型增益（「门框坏了 → 门锁损坏」正是它救的），**是取舍不是 bug** |

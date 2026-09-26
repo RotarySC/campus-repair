@@ -20,9 +20,11 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 智能助手：为报修人判断故障类别、给快捷入口所需的上下文、回答制度问题、速查本人工单进度。
@@ -80,8 +82,9 @@ public class AssistantService {
     /**
      * 判断故障细类。
      *
-     * <p>流程：本地规则先算 → **规则没把握时**才升级给大模型做追加/重排（不淘汰规则命中）
-     * → 组装 VO。关掉总开关时返回空结果（前端本来就不该调，这里只是防御）。
+     * <p>流程：本地规则先算 → **规则没把握时**才升级给大模型**填空位**（追加规则漏掉的细类；
+     * 候选顺序仍由规则口径决定，模型返回顺序不参与）→ 组装 VO。
+     * 关掉总开关时返回空结果（前端本来就不该调，这里只是防御）。
      *
      * <p>"有没有把握"由 {@code sys_config.assistant_llm_escalate_below} 决定（默认 10 = 非 HIGH 就升级）：
      * 规则已经给出 HIGH 命中时**一次模型调用都不发**——那条路径瞬时、免费、且完全确定。
@@ -297,39 +300,55 @@ public class AssistantService {
     /**
      * 合并大模型结果与规则结果。
      *
-     * <p><b>不变式</b>：大模型只能**追加或重排**，不能淘汰规则命中——所以"开了大模型"
-     * 不会让结果比纯规则更差。模型挑的排前面（保留模型的相对顺序），规则命中按原序补足。
+     * <p><b>三条不变式</b>（2026-09-26 修订；此前是"模型序在前、规则命中补足"）：
+     * <ol>
+     *   <li><b>规则命中一条都不能少</b>——大模型只能**填空位**。此前实现把模型挑的排前面
+     *       再截断，模型返回满 {@code limit} 条时规则命中会被整批截掉，等于"开了大模型反而更差"。</li>
+     *   <li><b>顺序完全由规则口径决定</b>——合并后一律走 {@link AssistantRuleEngine#sort}
+     *       （分数降序 → {@code sortOrder} → {@code id}），**模型返回的先后顺序不参与排序**。
+     *       这是"排序不确定"的根治：思考模型的 {@code temperature} 被服务端强制成 1.0
+     *       （设计文档 §8），让它的顺序当主键就等于把随机性直接引进 UI 首候选。</li>
+     *   <li><b>模型仍能追加</b>——规则没命中的叶子由 {@link #promote} 补进候选，
+     *       占用规则命中之外的空位。这正是升级路径的全部增益所在。</li>
+     * </ol>
      */
     private List<Scored> merge(List<Long> llmIds,
                                List<Scored> ruleRanked,
                                Map<Long, RepairCategoryVO> byId,
                                int limit) {
-        Map<Long, Scored> ruleById = new LinkedHashMap<>();
+        // ① 规则命中全数保留（ruleRanked 已按 ORDER 排好、且已截到 limit）
+        List<Scored> selected = new ArrayList<>(ruleRanked);
+        Set<Long> takenIds = new HashSet<>();
         for (Scored scored : ruleRanked) {
-            ruleById.put(scored.leaf().id(), scored);
+            takenIds.add(scored.leaf().id());
         }
 
-        List<Scored> merged = new ArrayList<>();
+        // ② 模型只能填剩下的空位；规则已命中的 id 无须追加（它已经在列表里）
         for (Long id : llmIds) {
-            Scored existing = ruleById.remove(id);
-            if (existing != null) {
-                merged.add(existing);
-            } else {
-                // 规则没命中但模型选了：补一条（分数给关键词档，并说明"由模型推荐"）
-                Scored promoted = promote(id, byId);
-                if (promoted != null) {
-                    merged.add(promoted);
-                }
+            if (selected.size() >= limit) {
+                break;
+            }
+            if (id == null || takenIds.contains(id)) {
+                continue;
+            }
+            Scored promoted = promote(id, byId);
+            if (promoted != null) {
+                selected.add(promoted);
+                takenIds.add(id);
             }
         }
-        for (Scored rest : ruleRanked) {
-            if (ruleById.containsKey(rest.leaf().id())) {
-                merged.add(rest);
-            }
-        }
-        return merged.size() > limit ? new ArrayList<>(merged.subList(0, limit)) : merged;
+
+        // ③ 顺序一律按规则口径重排 —— 模型返回顺序到此为止，不进 UI
+        return AssistantRuleEngine.sort(selected, limit);
     }
 
+    /**
+     * 把"规则没命中、但模型选了"的叶子补成一条候选。
+     *
+     * <p>分数给关键词档（+5 = MEDIUM）：它确实是一条有效建议，但不该比用户自己说出的叶子名
+     * （+10 = HIGH）更可信。{@code matchedKeywords} 刻意留空——本来就没有任何词被命中，
+     * 前端因此不渲染「命中：…」那一行，这就是它与规则命中在界面上唯一的区别。
+     */
     private Scored promote(Long id, Map<Long, RepairCategoryVO> byId) {
         RepairCategoryVO node = byId.get(id);
         if (node == null) {

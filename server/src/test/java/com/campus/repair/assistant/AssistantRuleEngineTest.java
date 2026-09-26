@@ -7,6 +7,7 @@ import com.campus.repair.modules.assistant.service.AssistantRuleEngine.Scored;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -202,6 +203,64 @@ class AssistantRuleEngineTest {
 
         List<Scored> net = AssistantRuleEngine.rank("宿舍网线插着但是上不了网", leaves, 3);
         assertThat(net.get(0).leaf().id()).isEqualTo(341L);
+    }
+
+    // ------------------------------------------------------------------
+    // sort：确定性总序（规则路径与「合并大模型结果」路径共用同一份）
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("sort：同一组候选，无论按什么顺序传进来，输出顺序都唯一")
+    void sortIsOrderIndependent() {
+        // 300 档：HIGH/10，sortOrder 1
+        Scored high = new Scored(leaf(301, "甲", "大类", 1, "甲类"), 10, Confidence.HIGH, List.of("甲类"));
+        // 两个同分 MEDIUM/5，靠 sortOrder 分出先后
+        Scored mediumLate = new Scored(leaf(302, "乙", "大类", 2, "漏水"), 5, Confidence.MEDIUM, List.of("漏水"));
+        Scored mediumEarly = new Scored(leaf(304, "丁", "大类", 1, "漏水"), 5, Confidence.MEDIUM, List.of("漏水"));
+        Scored low = new Scored(leaf(303, "丙", "大类", 3, "漏水"), 3, Confidence.LOW, List.of());
+
+        List<Long> expected = List.of(301L, 304L, 302L, 303L);
+        // 第三个入参顺序就是「大模型返回顺序」——换顺序必须换不出不同结果
+        assertThat(AssistantRuleEngine.sort(List.of(low, high, mediumLate, mediumEarly), 4))
+                .extracting(s -> s.leaf().id()).isEqualTo(expected);
+        assertThat(AssistantRuleEngine.sort(List.of(mediumEarly, mediumLate, high, low), 4))
+                .extracting(s -> s.leaf().id()).isEqualTo(expected);
+        assertThat(AssistantRuleEngine.sort(List.of(mediumLate, mediumEarly, low, high), 4))
+                .extracting(s -> s.leaf().id()).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("sort：截断保留分数最高的前 limit 条，且不改动入参（返回新列表）")
+    void sortTruncatesWithoutMutatingInput() {
+        List<Scored> input = new ArrayList<>(List.of(
+                new Scored(leaf(303, "丙", "大类", 3, "漏水"), 3, Confidence.LOW, List.of()),
+                new Scored(leaf(301, "甲", "大类", 1, "甲类"), 10, Confidence.HIGH, List.of("甲类")),
+                new Scored(leaf(302, "乙", "大类", 2, "漏水"), 5, Confidence.MEDIUM, List.of("漏水"))));
+        List<Long> inputOrderBefore = input.stream().map(s -> s.leaf().id()).toList();
+
+        assertThat(AssistantRuleEngine.sort(input, 2)).extracting(s -> s.leaf().id())
+                .containsExactly(301L, 302L);
+        assertThat(input.stream().map(s -> s.leaf().id()).toList())
+                .as("sort 必须返回新列表——调用方（merge）还要继续用入参")
+                .isEqualTo(inputOrderBefore);
+
+        assertThat(AssistantRuleEngine.sort(input, 0)).isEmpty();
+        assertThat(AssistantRuleEngine.sort(input, -1)).isEmpty();
+        assertThat(AssistantRuleEngine.sort(List.of(), 3)).isEmpty();
+        assertThat(AssistantRuleEngine.sort(null, 3)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("rank 与 sort 用的是同一份顺序口径（分数降序 → sortOrder → id）")
+    void rankAndSortShareTheSameOrder() {
+        List<LeafKnowledge> leaves = List.of(
+                leaf(303, "丙", "大类", 3, "漏水"),
+                leaf(301, "甲", "大类", 1, "漏水"),
+                leaf(302, "乙", "大类", 2, "漏水"));
+        List<Scored> ranked = AssistantRuleEngine.rank("漏水", leaves, 3);
+        assertThat(ranked).extracting(s -> s.leaf().id()).containsExactly(301L, 302L, 303L);
+        // 把已排好的结果再 sort 一遍，顺序不变（幂等）
+        assertThat(AssistantRuleEngine.sort(ranked, 3)).isEqualTo(ranked);
     }
 
     // ------------------------------------------------------------------

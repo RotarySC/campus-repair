@@ -29,13 +29,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * **升级制**的契约测试：规则没把握时才把判断交给大模型，有把握时**一次请求都不发**。
+ * 大模型这条路径的契约测试，两块：
+ *
+ * <p><b>① 升级制</b>——规则没把握时才把判断交给大模型，有把握时**一次请求都不发**。
  *
  * <p><b>为什么必须用计数传输层</b>：这条不变式的断言对象是"到底有没有发 HTTP 请求"，
  * 而不是"返回了什么"。只看响应体会得到一个**恒真**的测试——规则命中时 `engine` 本来就是
  * `RULE`，模型调没调它都是 `RULE`（模型返回空列表时也一样）。这与真机探针里
  * 「非报修职能一次 `/assistant/suggest` 都没发」必须用 CDP `Network` 域取证、而不是看 DOM
  * 是同一个道理（见 `AGENTS.md` §2.2）。
+ *
+ * <p><b>② 合并策略</b>——模型返回的**顺序不参与排序**（根治"首候选随机翻"），
+ * 且模型**不得淘汰规则命中**（只能填空位）。这两条也只在"模型真的被调了、且返回了东西"
+ * 时才成立，所以同样需要计数传输层来确认用例没有空转。
  *
  * <p>本类通过 `@SpringBootTest(properties = …)` 打开大模型（否则 `isLlmEnabled()` 恒假、
  * 测试会**空转通过**），并用一个 `@Primary` 的计数实现替换真实传输层——
@@ -100,6 +106,8 @@ class AssistantLlmEscalationTest {
     private String leafName;
     /** 只命中一个关键词（+5 = MEDIUM）的输入 */
     private String weakHitText;
+    /** 本用例的唯一后缀：同一 JVM 共用一个 H2 库，靠它保证只命中本类自己造的细类 */
+    private String unique;
 
     @BeforeEach
     void setUp() {
@@ -109,22 +117,10 @@ class AssistantLlmEscalationTest {
         transport = (CountingTransport) llmTransport;
         transport.calls.set(0);
 
-        String unique = "ES" + SEQUENCE.incrementAndGet();
+        unique = "ES" + SEQUENCE.incrementAndGet();
 
-        RepairCategory parent = new RepairCategory();
-        parent.setName("水暖管道" + unique);
-        parent.setLevel(1);
-        parent.setSlaHours(24);
-        Long parentId = categoryService.createCategory(parent).getId();
-
-        RepairCategory leaf = new RepairCategory();
-        leaf.setParentId(parentId);
-        leaf.setName("水龙头漏水" + unique);
-        leaf.setWorkerSkillCode("PLUMBER");
-        leaf.setSlaHours(24);
-        leaf.setKeywords("滴水" + unique + ",关不紧");
-        leafId = categoryService.createCategory(leaf).getId();
-
+        Long parentId = createParent("水暖管道" + unique);
+        leafId = createLeaf(parentId, "水龙头漏水" + unique, "滴水" + unique + ",关不紧", 0);
         leafName = "水龙头漏水" + unique;
         weakHitText = "滴水" + unique;
 
@@ -136,8 +132,45 @@ class AssistantLlmEscalationTest {
         transport.response = envelope(leafId);
     }
 
+    private Long createParent(String name) {
+        RepairCategory parent = new RepairCategory();
+        parent.setName(name);
+        parent.setLevel(1);
+        parent.setSlaHours(24);
+        return categoryService.createCategory(parent).getId();
+    }
+
+    /**
+     * 建一道可被推荐的细类。
+     *
+     * @param keywords  助手同义词串；{@code null} 表示没有同义词
+     * @param sortOrder 排序号——同分候选就是靠它定先后，所以造用例时必须显式给
+     */
+    private Long createLeaf(Long parentId, String name, String keywords, Integer sortOrder) {
+        RepairCategory leaf = new RepairCategory();
+        leaf.setParentId(parentId);
+        leaf.setName(name);
+        leaf.setWorkerSkillCode("PLUMBER");
+        leaf.setSlaHours(24);
+        leaf.setKeywords(keywords);
+        leaf.setSortOrder(sortOrder);
+        return categoryService.createCategory(leaf).getId();
+    }
+
     private static String envelope(long categoryId) {
-        return "{\"choices\":[{\"message\":{\"content\":\"{\\\"categoryIds\\\":[" + categoryId + "]}\"}}]}";
+        return envelope(List.of(categoryId));
+    }
+
+    /** 造一个 chat/completions 信封，content 里是按给定顺序排列的 id 数组。 */
+    private static String envelope(List<Long> categoryIds) {
+        StringBuilder ids = new StringBuilder();
+        for (Long id : categoryIds) {
+            if (ids.length() > 0) {
+                ids.append(',');
+            }
+            ids.append(id);
+        }
+        return "{\"choices\":[{\"message\":{\"content\":\"{\\\"categoryIds\\\":[" + ids + "]}\"}}]}";
     }
 
     private String bearer() {
@@ -219,5 +252,68 @@ class AssistantLlmEscalationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.engine").value("RULE+LLM"));
         assertThat(transport.calls.get()).as("只有这一条该升级").isEqualTo(1);
+    }
+
+    // ------------------------------------------------------------------
+    // 合并策略：模型返回顺序不参与排序 + 不得淘汰规则命中
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("模型返回顺序不影响候选顺序——同一个集合换个返回顺序，候选逐位相同")
+    void modelReturnOrderDoesNotAffectCandidates() throws Exception {
+        Long parentId = createParent("水暖管道ORD" + unique);
+        // 两道规则一条都没命中的细类（关键词、叶子名、大类名都不出现在描述里）
+        Long extraEarly = createLeaf(parentId, "地漏返味A" + unique, "地漏" + unique, 5);
+        Long extraLate = createLeaf(parentId, "热水器不热B" + unique, "热水器" + unique, 9);
+
+        // ① 模型按「先 early 后 late」返回
+        transport.response = envelope(List.of(extraEarly, extraLate));
+        suggest(weakHitText)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.engine").value("RULE+LLM"))
+                // 规则命中(5 分, sortOrder 0) 在最前，两条模型补的按 sortOrder 排
+                .andExpect(jsonPath("$.data.candidates[0].categoryId").value(leafId.intValue()))
+                .andExpect(jsonPath("$.data.candidates[1].categoryId").value(extraEarly.intValue()))
+                .andExpect(jsonPath("$.data.candidates[2].categoryId").value(extraLate.intValue()));
+
+        // ② 模型把顺序倒过来返回 —— 正是思考模型 temperature 被服务端强制成 1.0 时发生的事。
+        //    若 merge 拿模型序当主键，这里第 2/3 位就会跟着翻（本轮要根治的缺陷）。
+        transport.response = envelope(List.of(extraLate, extraEarly));
+        suggest(weakHitText)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates[0].categoryId").value(leafId.intValue()))
+                .andExpect(jsonPath("$.data.candidates[1].categoryId").value(extraEarly.intValue()))
+                .andExpect(jsonPath("$.data.candidates[2].categoryId").value(extraLate.intValue()));
+
+        assertThat(transport.calls.get())
+                .as("两次都必须真的问过模型，否则本用例断言的是空气")
+                .isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("规则命中占满名额时模型只能填空位——一条规则命中都不会被淘汰")
+    void modelCannotEvictRuleHits() throws Exception {
+        configService.updateConfig("assistant_max_candidates", "3");
+        Long parentId = createParent("门窗锁具EV" + unique);
+        Long hitA = createLeaf(parentId, "门锁损坏A" + unique, "锁芯" + unique, 1);
+        Long hitB = createLeaf(parentId, "窗玻璃破B" + unique, "玻璃" + unique, 2);
+        Long hitC = createLeaf(parentId, "纱窗破损C" + unique, "纱窗" + unique, 3);
+        // 模型挑的是另外三道——规则一条都没命中它们
+        Long otherX = createLeaf(parentId, "窗帘轨道X" + unique, "窗帘" + unique, 4);
+        Long otherY = createLeaf(parentId, "晾衣架松Y" + unique, "晾衣架" + unique, 5);
+        Long otherZ = createLeaf(parentId, "镜子裂了Z" + unique, "镜子" + unique, 6);
+        transport.response = envelope(List.of(otherX, otherY, otherZ));
+
+        // 三个关键词都命中 ⇒ 规则已经占满 3 个名额。此前的实现会把模型挑的排前面再截断，
+        // 于是这三条规则命中被整批截掉 —— 「开了大模型反而更差」。
+        suggest("锁芯" + unique + "玻璃" + unique + "纱窗" + unique)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.engine").value("RULE+LLM"))
+                .andExpect(jsonPath("$.data.candidates.length()").value(3))
+                .andExpect(jsonPath("$.data.candidates[0].categoryId").value(hitA.intValue()))
+                .andExpect(jsonPath("$.data.candidates[1].categoryId").value(hitB.intValue()))
+                .andExpect(jsonPath("$.data.candidates[2].categoryId").value(hitC.intValue()));
+
+        assertThat(transport.calls.get()).as("模型确实被调了，只是它的答案没进候选").isEqualTo(1);
     }
 }
