@@ -129,8 +129,14 @@ public class AssistantService {
     // 制度问答
     // ------------------------------------------------------------------
 
-    public List<AssistantFaqItemVO> faq() {
-        return faqProvider.listFaq();
+    /**
+     * 制度问答：按调用者<b>职能</b>裁剪内容（通用 + 报修人 / 维修作业 / 调度·平台管理，多职能取并集）。
+     *
+     * <p>职能由控制器从登录态取出后传进来，本模块不自己读 SecurityContext——
+     * 这样"给谁看什么"是一个纯参数，单测不必伪造认证上下文。
+     */
+    public List<AssistantFaqItemVO> faq(List<String> functions) {
+        return faqProvider.listFaq(functions);
     }
 
     // ------------------------------------------------------------------

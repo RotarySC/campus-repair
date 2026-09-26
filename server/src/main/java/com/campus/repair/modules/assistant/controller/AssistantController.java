@@ -54,10 +54,10 @@ public class AssistantController {
         return R.success(assistantService.suggest(request.getDescription()));
     }
 
-    @Operation(summary = "制度问答（时效/加急/防重/超时核销等，数值取自系统参数）")
+    @Operation(summary = "制度问答（按调用者职能裁剪：通用 + 报修人 / 维修作业 / 调度·平台管理，多职能取并集）")
     @GetMapping("/faq")
-    public R<List<AssistantFaqItemVO>> faq() {
-        return R.success(assistantService.faq());
+    public R<List<AssistantFaqItemVO>> faq(@AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(assistantService.faq(user.getRoles()));
     }
 
     @Operation(summary = "我的工单进度速查（只取本人最近一张单）")

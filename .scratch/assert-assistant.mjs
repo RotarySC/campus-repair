@@ -117,6 +117,8 @@ async function drawerSnapshot() {
       hasProgress: text.includes('我的工单进度'),
       hasFaq: text.includes('常见问题'),
       faqCount: p.querySelectorAll('.el-collapse-item').length,
+      // 常见问题的标题文本：断言「按职能裁剪」必须看内容——只数条数会漏掉"三套账号一模一样"这类缺陷
+      faqQuestions: [...p.querySelectorAll('.el-collapse-item__header')].map(e => e.innerText.trim()),
       hasSelfHelp: text.includes('提交前可以先试试'),
       drawerWidth: Math.round(w)
     };
@@ -160,7 +162,12 @@ let drawer = await drawerSnapshot();
 check('抽屉可打开', drawer !== null);
 check('报修人抽屉含推荐区（描述输入框）', drawer?.hasSuggestBox === true);
 check('报修人抽屉含「我的工单进度」', drawer?.hasProgress === true);
-check('抽屉含「常见问题」且 8 条', drawer?.hasFaq === true && drawer?.faqCount === 8, `faqCount=${drawer?.faqCount}`);
+check('报修人抽屉含「常见问题」且为报修人那套（10 条 = 通用 2 + 报修人 8）',
+  drawer?.hasFaq === true && drawer?.faqCount === 10 &&
+  drawer.faqQuestions.includes('报修后多久会有人上门？') &&
+  !drawer.faqQuestions.includes('收到派单后我该做什么？') &&
+  !drawer.faqQuestions.includes('自动派单什么时候会失败？'),
+  `faqCount=${drawer?.faqCount} 首条=${drawer?.faqQuestions?.[0]}`);
 check('未提问时不显示自助排查区', drawer?.hasSelfHelp === false);
 check('快捷入口与侧边栏导航同源',
   JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...navLabels].sort()),
@@ -229,7 +236,12 @@ await openDrawer();
 drawer = await drawerSnapshot();
 check('师傅抽屉没有推荐区', drawer?.hasSuggestBox === false);
 check('师傅抽屉没有「我的工单进度」', drawer?.hasProgress === false);
-check('师傅抽屉仍有「常见问题」', drawer?.hasFaq === true && drawer?.faqCount === 8, `faqCount=${drawer?.faqCount}`);
+check('师傅抽屉仍是「常见问题」但换成师傅那套（10 条，且不含报修人专属题）',
+  drawer?.hasFaq === true && drawer?.faqCount === 10 &&
+  drawer.faqQuestions.includes('收到派单后我该做什么？') &&
+  !drawer.faqQuestions.includes('报修后多久会有人上门？') &&
+  !drawer.faqQuestions.includes('我在哪里查看我的工单？'),
+  `faqCount=${drawer?.faqCount} 首条=${drawer?.faqQuestions?.[0]}`);
 const workerNav = await evalJs(`[...document.querySelectorAll('.nav-item .nav-label')].map(n => n.innerText.trim())`);
 check('师傅快捷入口与侧边栏同源',
   JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...workerNav].sort()),
@@ -252,6 +264,32 @@ check('管理员快捷入口 = 侧边栏 6 项',
   drawer?.quick.length === 6 && JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...adminNav].sort()),
   `快捷入口=${JSON.stringify(drawer.quick)}`);
 check('管理员抽屉没有推荐区与进度区', drawer?.hasSuggestBox === false && drawer?.hasProgress === false);
+check('管理员常见问题是调度/平台那套（10 条，且不含报修人与师傅专属题）',
+  drawer?.faqCount === 10 &&
+  drawer.faqQuestions.includes('自动派单什么时候会失败？') &&
+  !drawer.faqQuestions.includes('报修后多久会有人上门？') &&
+  !drawer.faqQuestions.includes('收到派单后我该做什么？'),
+  `faqCount=${drawer?.faqCount} 首条=${drawer?.faqQuestions?.[0]}`);
+await closeDrawer();
+
+// ===========================================================================
+// 3.5) 多职能账号：worker02（WORKER + REPORTER）——常见问题取并集，不是二选一
+//      （"导航按职能取并集"是仓库既有口径；内容也不能又写成互斥）
+// ===========================================================================
+const dual = await loginAs('worker02');
+console.log(`\n[worker02] roleCodes=${dual.userInfo.roleCodes.join(',')}`);
+await openAs('/worker/workbench', dual);
+await openDrawer();
+drawer = await drawerSnapshot();
+check('兼职账号常见问题取并集（18 条 = 通用 2 + 报修人 8 + 维修作业 8）',
+  drawer?.faqCount === 18, `faqCount=${drawer?.faqCount}`);
+check('并集里报修人与师傅两套专属题同时存在（未退化成二选一）',
+  drawer?.faqQuestions.includes('报修后多久会有人上门？') &&
+  drawer?.faqQuestions.includes('收到派单后我该做什么？'),
+  `含报修人题=${drawer?.faqQuestions.includes('报修后多久会有人上门？')} 含师傅题=${drawer?.faqQuestions.includes('收到派单后我该做什么？')}`);
+check('并集去重：同一条问题不重复出现',
+  new Set(drawer?.faqQuestions).size === drawer?.faqQuestions.length,
+  `去重后 ${new Set(drawer?.faqQuestions).size} / 原始 ${drawer?.faqQuestions.length}`);
 await closeDrawer();
 
 // ===========================================================================

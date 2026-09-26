@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
@@ -310,17 +311,64 @@ class AssistantApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("制度问答：条目齐全、时效数值取自系统参数（测试 profile 无种子时用默认 72/2/24）")
-    void faqUsesConfigValues() throws Exception {
+    @DisplayName("制度问答按职能裁剪：报修人 / 维修作业 / 调度·平台 三套各不相同，且互不含对方的专属问题")
+    void faqIsScopedByFunction() throws Exception {
+        // 报修人：有报修人专属题，没有师傅专属题
         mockMvc.perform(get("/api/v1/assistant/faq")
                         .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(8)))
+                .andExpect(jsonPath("$.data", hasSize(10))) // 通用 2 + 报修人 8
+                .andExpect(jsonPath("$.data[?(@.question=='报修后多久会有人上门？')]", hasSize(1)))
+                .andExpect(jsonPath("$.data[?(@.question=='收到派单后我该做什么？')]", hasSize(0)))
+                .andExpect(jsonPath("$.data[?(@.question=='自动派单什么时候会失败？')]", hasSize(0)));
+
+        // 维修作业：有师傅专属题，没有报修人专属题（"要上门的正是他自己"）
+        mockMvc.perform(get("/api/v1/assistant/faq")
+                        .header("Authorization", bearer(WORKER_ID, "worker01", "WORKER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(10))) // 通用 2 + 维修作业 8
+                .andExpect(jsonPath("$.data[?(@.question=='收到派单后我该做什么？')]", hasSize(1)))
+                .andExpect(jsonPath("$.data[?(@.question=='报修后多久会有人上门？')]", hasSize(0)))
+                .andExpect(jsonPath("$.data[?(@.question=='我在哪里查看我的工单？')]", hasSize(0)))
+                .andExpect(jsonPath("$.data[?(@.question=='自动派单什么时候会失败？')]", hasSize(0)));
+
+        // 调度 / 平台管理：有管理侧专属题，没有报修人与师傅的专属题
+        mockMvc.perform(get("/api/v1/assistant/faq")
+                        .header("Authorization", bearer(ADMIN_ID, "admin", "PLATFORM_ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(10))) // 通用 2 + 调度·平台 8
+                .andExpect(jsonPath("$.data[?(@.question=='自动派单什么时候会失败？')]", hasSize(1)))
+                .andExpect(jsonPath("$.data[?(@.question=='报修后多久会有人上门？')]", hasSize(0)))
+                .andExpect(jsonPath("$.data[?(@.question=='收到派单后我该做什么？')]", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("多职能账号的制度问答取并集：worker02（WORKER+REPORTER）两套专属题都在，且不重复")
+    void faqIsUnionForMultiFunctionAccount() throws Exception {
+        mockMvc.perform(get("/api/v1/assistant/faq")
+                        .header("Authorization", bearer(WORKER_ID, "worker02", "WORKER", "REPORTER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(18))) // 通用 2 + 报修人 8 + 维修作业 8
+                .andExpect(jsonPath("$.data[?(@.question=='报修后多久会有人上门？')]", hasSize(1)))
+                .andExpect(jsonPath("$.data[?(@.question=='收到派单后我该做什么？')]", hasSize(1)))
+                .andExpect(jsonPath("$.data[?(@.question=='自动派单什么时候会失败？')]", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("制度问答：时效数值取自系统参数（测试 profile 无种子时用默认 72/2/24）")
+    void faqUsesConfigValues() throws Exception {
+        // 按问题文本定位而不是按下标——按下标的断言在"分组增删"时会静默测错那一条
+        mockMvc.perform(get("/api/v1/assistant/faq")
+                        .header("Authorization", bearer(STUDENT_ID, "student01", "REPORTER")))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].question").isNotEmpty())
                 // 超时自动核销的 72 小时、返工阈值 2 星、SLA 预警 24 小时
-                .andExpect(jsonPath("$.data[4].answer", containsString("72")))
-                .andExpect(jsonPath("$.data[5].answer", containsString("2")))
-                .andExpect(jsonPath("$.data[0].answer", containsString("24")));
+                .andExpect(jsonPath("$.data[?(@.question=='提交后我一直不验收会怎样？')].answer",
+                        hasItem(containsString("72"))))
+                .andExpect(jsonPath("$.data[?(@.question=='评价打几分会被要求返工？')].answer",
+                        hasItem(containsString("2"))))
+                .andExpect(jsonPath("$.data[?(@.question=='报修后多久会有人上门？')].answer",
+                        hasItem(containsString("24"))));
     }
 
     // ------------------------------------------------------------------
