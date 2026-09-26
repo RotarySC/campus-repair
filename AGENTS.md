@@ -15,6 +15,7 @@
   - **师傅两页的视觉口径（2026-09-27 收口；`docs/20260912-1351-…-unified-portal-design.md` §14，约束表在 `docs/20260906-1430-…-frontend-design.md` §3.3 V1~V9）**：`views/worker/WorkbenchView.vue` 与 `views/worker/WorkerFinishView.vue` 是 R1 单树重构里**唯一只换了组件库、没换视觉语言**的两页——它们从移动端 Vant 版逐行改写而来，保留了 Vant 调色板、页面级居中限宽、自造卡片投影、自造状态徽标与 `round` 按钮。收口后的硬口径：① 根节点 `padding:16px`；② 内容装进 `el-card shadow="never"`（工作台 1 张；完工页 4 张分段，分段用 `#header` + `.section-title`）；③ 卡片用「`1px solid #E5E7EB` + `8px` 圆角」，**不许自造 `box-shadow`**；④ 颜色只用 §3.1 令牌与品牌主色 `#1677FF`——**Vant 色板（`#EE0A24`/`#07C160`/`#969799`/`#646566`/`#323233`/`#EBEDF0`/`#FF976A`/`#ed6a0c`）在两页里必须为 0 命中**；⑤ **不许 `round`**（全仓曾只有这两页用，共 8 处）；⑥ 页面级**禁止** `max-width + margin-inline:auto` 居中，只有表单列可 `max-width:760px` 且**左对齐**；⑦ 状态一律 `el-tag :type="orderStatusTagType(status)" effect="light"`，**不许自造 `.status-badge`**；⑧ 完工页标签走 `:label-position="isNarrowPhone ? 'top' : 'right'"` + `:label-width="isNarrowPhone ? undefined : '110px'"`。**工作台宽档是 `el-table`（一行一单，行高 42px），窄档才是卡片**——走 `ResponsiveTable`，`:card-below="1400"`，故障描述/预约时段标 `TableColumn.cardOnly`；**历史档四种状态（待验收/已结单/返工待派/已作废）对师傅没有业务动作，操作列给只读的「查看」（评价 + 流转时间轴抽屉），不许留成空白列**（见 §2.2「操作列不允许整列空白」）。⚠️ **2026-09-27 第二轮推翻了第一轮的"刻意保留单列卡片流"**：把移动端单列卡片拉成全宽只是让空白换了位置——实测 1920 档描述框 1562px 里只有 182px 是字（**12%**），窗口越宽越糟、纵向一点没省（详见 `docs/20260912-1351-…-unified-portal-design.md` §15）。完工页的 `el-form` **包着** 4 张 `el-card`（`el-form > el-card > el-form-item`）——EP 的 `el-form-item` 用 `inject(formContextKey)` 取上下文，跨 `el-card` 校验成立，已由探针实证。
   - **`orderStatusTagType()` 是全仓唯一一份**（`packages/shared/src/constants/status.ts`，紧挨 `OrderStatusLabels`——同一件事的两个投影：文案与配色）：工单状态 → `el-tag` 语义色。2026-09-27 之前 `StudentOrderListView.vue` 与 `PersonalCenterView.vue` 各有一份**逐字节相同**的实现，师傅工作台要用第三份时才发现——那正是「同一个状态在不同页显示成不同颜色」的起点；现在三处共用一份。新增展示工单状态的页面一律 import 它。**已知后果（有意对齐，不是回归）**：`ASSIGNED` 与 `IN_PROGRESS` 都映射到 `warning`（橙）、`SUSPENDED` 落到 `info`（灰），与工作台旧的自造徽标（待承接=蓝 / 维修中=绿 / 已挂起=橙）不同；判据是"跨页一致"而非"单页可分辨"，挂起信号由 `.suspended-card` 琥珀左条 + `.suspend-banner` 承担。
   - **EP 主色 `#409EFF` vs 自写 chrome 的 `#1677FF`（既有事实，别顺手"修"）**：全仓没有覆盖 `--el-color-primary`，所以 `el-tag`/`el-button` 等 EP 组件渲染成 `#409EFF`，而自写 chrome（`.nav-item.is-active`、`.tab-pill`、`.sla-row`…）用设计文档的品牌主色 `#1677FF`。这个"两个蓝"是既有状态，消除它要改 EP 主题变量（属独立工作）；**要求只是别再引入第三种蓝**。
+  - **时间展示的唯一来源是 `packages/shared/src/utils/format.ts`（2026-09-27 抽取）**：`formatDateTime(value, placeholder?)` → `2026-09-21 16:42`、`formatDate(...)` → `2026-09-21`、`todayIsoDate()` → 本地时区的今天。抽取前全仓有 **4 份各自实现 + 3 处裸渲染**：`ResponsiveTable.display()`、`WorkbenchView.formatTime`、`DispatchCenterView.formatTime`（与前一份逐字节相同）、`PersonalCenterView.formatDateTime`，外加 `WorkOrderTimeline` / `NotificationCenterDrawer` / `StudentOrderDetailView` **直接把后端原始 ISO 渲染给用户**（`2026-09-21T16:42:30.775846`，带 T 带微秒）。**三条硬口径**：① **必须用字符串切片，不许改成 `new Date(...)` + `toLocaleString()`**——后端时间字段都是 `LocalDateTime`（如 `RepairOrderLog.createdAt`），**没有时区标记**，字面值就是业务时间；用 `Date` 解析会按浏览器时区重新解释，同一份数据在不同机器上显示成不同小时数。`test/format.spec.ts` 用 `vi.spyOn(globalThis,'Date')` 断言"实现不得调用 Date 解析输入"来锁死它。② **空值占位符全仓统一 `'—'`**（`EMPTY_PLACEHOLDER`）；`WorkbenchView`/`DispatchCenterView` 原用 `'--'`，已归一——**空值文案也是一种投影，两套写法就是下一个"同一个状态两种颜色"**。③ `todayIsoDate()` **不要用 `new Date().toISOString().slice(0,10)`**——那是 UTC，UTC+8 的 00:00~08:00 会给出**昨天**（`InventoryManageView` 入库单「批次日期」默认值曾这样差一天）。**⚠️ 加公共工具函数前先 grep 一遍名字**：`src/index.ts` 是 `export *` 的 barrel，同名导出不会在写代码时提示，只会在 typecheck 报 `TS2308` + 一串 `TS2345`——本轮就撞上了 `watermark.ts` 里那个同样叫 `formatDateTime(Date)` 的水印时间戳（已改名 `formatWatermarkStamp`：它精确到秒、输入是 `Date`，与"把后端时间显示给人看"是两件事）。单测 `packages/shared/test/format.spec.ts`（14 例）。
 
 ## 2. 常用构建与测试验证命令 (Verified Commands)
 
@@ -87,8 +88,28 @@ node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin
   mvn test -f server/pom.xml
   ```
   实测同一份代码：默认 `%TEMP%` → `Tests run: 176, Failures: 1, Errors: 4`；改到工作区 → **`Tests run: 176, Failures: 0, Errors: 0` / BUILD SUCCESS**。**判据：看到 `Failed to create default temp directory` 或验证码用例报 500，先换 `TEMP` 再重跑，别去读被测代码。**
+- **✅ 前端单测基线（2026-09-27 现测）：`packages/shared` 有 vitest，5 → 20 例全绿**。**只有 `packages/shared` 配了测试**（`"test": "vitest run"` + `vitest@1.6.1` 依赖；`apps/admin-web` 的 `package.json` **没有** test 脚本，页面级验证一律走 `.scratch/assert-*.mjs` 真机探针）。**调用方式有坑**：`node node_modules/.bin/vitest` **会失败**——那个 `.bin/vitest` 是 shell shim（首行是注释 + `# Resolve $0 through symlinks…`），`node` 直接执行会报 `SyntaxError: Invalid or unexpected token`；**必须走包内真实入口**：
+  ```powershell
+  cd packages/shared
+  node node_modules/vitest/vitest.mjs run     # 20 passed (3 files: format 14 / http 3 / watermark 3)
+  ```
+  当前 3 个 spec：`test/format.spec.ts`(14，时间格式化 + 时区不变式)、`test/http.spec.ts`(3，401 静默刷新与并发队列)、`test/watermark.spec.ts`(3，水印时间戳)。**纯函数一律优先加单测，不要在探针里测**——探针要起浏览器 + 两个服务，而 vitest 跑完不到 1 秒。
 
 ### 2.2 验证手法 (Verified Verification Recipes)
+
+- **⚠️ Vite dev server 会「只重转模板、不重转脚本」，于是探针测的是旧代码（2026-09-27 实测，代价是一次假失败）**：症状是探针报 `TypeError: _ctx.formatDateTime is not a function`，而 `vue-tsc` 与 `tsc` 全绿、`assert-dual` 等别的探针也全绿。**根因不是我的代码**——直接 `Invoke-WebRequest http://localhost:3000/src/components/WorkOrderTimeline.vue` 把**被服务的模块**拉下来看，它的 import 列表是**改动前**那一版（类型导入被剥掉后的 `ActionTypeLabels, OrderStatusLabels, OperatorRoleLabels, parseImageUrls`，**没有**新加的 `formatDateTime`），而同一份模块里的模板渲染函数已经是**新**的（`_ctx.formatDateTime(...)` 而不是 `$setup.formatDateTime(...)`）。
+  - **判据**：`_ctx.X is not a function` 出现在 `<script setup>` 组件里 ⇒ 编译器的 **bindingMetadata 是旧的**（已知绑定会编译成 `$setup.X` 或直接内联，只有未知绑定才走 `_ctx`）。**这条报错形态本身就是"服务端模块陈旧"的指纹**，别去改业务代码。
+  - **为什么"重新导航一次"救不回来**：探针每次 `Page.navigate` 是全新页面，但拿到的仍是 dev server 缓存里那份**半新半旧**的模块——所以**不能靠"再跑一次探针"验证**。
+  - **唯一可靠的修法：重启 dev server**。本轮那个实例已经跑了**一天多**（`StartTime 2026/9/26 11:54`，HMR 日志里从 `13:28` 一路到 `21:36` 几百条 update），重启后同一份代码立刻全绿。重启后**先确认服务的模块是新的**再跑探针：
+    ```powershell
+    $c = netstat -ano | Select-String ':3000\s+.*LISTENING'
+    if ($c) { $p = [int](($c[0] -split '\s+' | Where-Object { $_ }) [4]); Stop-Process -Id $p -Force }
+    # 重启（pnpm v11 会拦，用直连入口）：
+    #   cd apps/admin-web && node node_modules/vite/bin/vite.js
+    (Invoke-WebRequest 'http://localhost:3000/src/components/WorkOrderTimeline.vue' -UseBasicParsing).Content -split "`n" |
+      Select-String 'formatDateTime'      # 应看到 import + $setup.formatDateTime
+    ```
+  - **通用结论：改了 `packages/shared` 的导出、或改了某个 SFC 的 import 之后，探针红了要先怀疑 dev server 的 transform 缓存，而不是先怀疑自己的改动。** 判定手法就是上面那条"把被服务的模块拉下来看"，它比读源码可靠——源码对不代表服务端对。
 
 - **接口级**：起服务后直接 `Invoke-RestMethod` / `curl` 打 8080。统一返回体是 `R<T>`（`code/message/data`），业务失败也可能是 HTTP 200 + `code != 200`；导出类接口返回二进制流。
 - **浏览器真机（CDP）**：`node "C:\Users\Rotary\.agents\skills\web-access\scripts\check-deps.mjs" --browser edge` 起代理（本机 Edge 已开 9222）。`POST /new` 开页、`POST /eval?target=ID` 跑 JS 断言 DOM/几何、`POST /click?target=ID` **只接受 CSS 选择器**（传 JS 表达式会静默 SyntaxError）。`/screenshot` 带 `file` 会因代理进程无写权限报 EPERM；**不带 `file` 时直接回传 PNG 字节流**，用 `curl.exe -o out.png` 自行落盘再读图即可。

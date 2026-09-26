@@ -16,6 +16,60 @@ export function parseImageUrls(images?: string | null): string[] {
 }
 
 /**
+ * 时间展示的**唯一来源**（2026-09-27 抽取；此前全仓有 4 份各自实现 + 3 处裸渲染）。
+ *
+ * ## 输入约定：后端发的是**无时区**的 `LocalDateTime`
+ * 后端所有时间字段都是 `LocalDateTime`（如 `RepairOrderLog.createdAt`），Jackson 序列化成
+ * `2026-09-21T16:42:30.775846`——**没有时区标记**，字面值就是业务时间本身。
+ *
+ * ⚠️ **所以这里刻意用字符串切片，不要"顺手"改成 `new Date(...)` + `toLocaleString()`**：
+ * 后者会把无时区的字面值按**浏览器所在时区**重新解释，于是同一份数据在不同机器/不同时区设置下
+ * 显示成不同的小时数。切片是"原样呈现后端的语义"，**这是有意的，不是偷懒**。
+ * `test/format.spec.ts` 里有用例锁死这条（含"不得随宿主时区漂移"）。
+ *
+ * ## 空值占位符
+ * 全仓统一用 `'—'`（em dash）。历史上 `WorkbenchView` / `DispatchCenterView` 用 `'--'`，
+ * 2026-09-27 一并归一——**空值文案也是一种投影，两套写法就是下一个"同一个状态两种颜色"**。
+ */
+
+/** 空值占位符（全仓唯一；需要别的写法请走参数，不要再各写一份） */
+export const EMPTY_PLACEHOLDER = '—';
+
+/** 非空取文本；`null`/`undefined`/空串/纯空白一律视为空 */
+function toText(value?: string | null): string {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+/**
+ * `2026-09-21T16:42:30.775846` → `2026-09-21 16:42`
+ *
+ * 只有日期（`2026-09-21`）时原样返回——切片天然降级，不会造出假时间。
+ */
+export function formatDateTime(value?: string | null, placeholder: string = EMPTY_PLACEHOLDER): string {
+  const text = toText(value);
+  return text ? text.replace('T', ' ').slice(0, 16) : placeholder;
+}
+
+/** `2026-09-21T16:42:30.775846` → `2026-09-21` */
+export function formatDate(value?: string | null, placeholder: string = EMPTY_PLACEHOLDER): string {
+  const text = toText(value);
+  return text ? text.slice(0, 10) : placeholder;
+}
+
+/**
+ * **本地时区**的"今天"，`YYYY-MM-DD`。
+ *
+ * ⚠️ 不要用 `new Date().toISOString().slice(0, 10)`——`toISOString()` 是 **UTC**，
+ * 在 UTC+8 的 00:00~08:00 之间会给出**昨天**（入库单的「批次日期」默认值曾这样差一天）。
+ */
+export function todayIsoDate(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
  * `repair_order_log.operator_role` 的展示文案。
  *
  * **现行词表（批次 4 起）**：这一列只写**职能码**——`REPORTER` / `WORKER` / `DISPATCHER` /

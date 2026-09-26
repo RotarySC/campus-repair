@@ -379,7 +379,8 @@ import {
   SparePartInboundRequest,
   SparePartInboundVO,
   InventorySummaryVO,
-  SparePartCategoryOptions
+  SparePartCategoryOptions,
+  todayIsoDate
 } from '@campus/shared';
 
 /** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
@@ -581,7 +582,9 @@ function openInboundDialog(row: SparePartVO) {
   inboundForm.partId = row.id;
   inboundForm.quantity = Math.max(10, row.safetyStockThreshold * 2);
   inboundForm.unitPrice = row.guidePrice;
-  inboundForm.batchDate = new Date().toISOString().substring(0, 10);
+  // 本地时区的今天（`todayIsoDate`）。**不要用 `new Date().toISOString().substring(0,10)`**：
+  // 那是 UTC，UTC+8 的 00:00~08:00 之间会填成昨天。
+  inboundForm.batchDate = todayIsoDate();
   inboundForm.remark = '';
   inboundDialogVisible.value = true;
 }

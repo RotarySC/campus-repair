@@ -366,6 +366,12 @@ console.log('================ 工作台：双形态与断点 ================');
     noActionRows.length === 0,
     noActionRows.length ? `空操作行：${noActionRows.map(r => `${r.orderNo}(${r.statusText})`).join(', ')}` : `共 ${allRows.length} 行全部有操作`);
 
+  // --- 时间戳格式化（2026-09-27 第三轮：抽 shared 唯一实现后的回归点）---
+  const slaRows = allRows.filter(r => r.statusText !== '已挂起');
+  check('表格 承诺截止列已格式化（无 T、无微秒，统一走 shared formatDateTime）',
+    slaRows.length > 0 && slaRows.every(r => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(r.slaText || '')),
+    JSON.stringify(slaRows.map(r => r.slaText).slice(0, 3)));
+
   // --- 历史档「查看」抽屉（2026-09-27 新增；只读回看评价 + 流转）---
   console.log('\n================ 工作台：历史单回看抽屉 ================');
   {
@@ -398,6 +404,8 @@ console.log('================ 工作台：双形态与断点 ================');
         tags: [...d.querySelectorAll('.el-tag')].map(t => t.innerText.trim()),
         timelineNodes: d.querySelectorAll('.el-timeline-item').length,
         timelineEmpty: !!d.querySelector('.timeline-empty'),
+        // 时间戳文案：本轮的回归点（曾直接渲染后端原始 ISO，带微秒）
+        timelineStamps: [...d.querySelectorAll('.el-timeline-item__timestamp')].map(x => x.innerText.trim()),
         overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth
       };
     })()`);
@@ -418,6 +426,14 @@ console.log('================ 工作台：双形态与断点 ================');
     check('抽屉 流转时间轴渲染出节点（复用管理端的 WorkOrderTimeline）',
       (drawer?.timelineNodes || 0) > 0 && !drawer?.timelineEmpty,
       `nodes=${drawer?.timelineNodes} empty=${drawer?.timelineEmpty}`);
+    // 本轮重构的回归点：时间戳必须是「YYYY-MM-DD HH:mm」，不是后端原始 ISO
+    // （曾直接渲染 `2026-09-21T16:42:30.775846`——带 T、带微秒）。判据同时排除 'T' 与 6 位小数。
+    const stamps = drawer?.timelineStamps || [];
+    check('抽屉 时间轴时间戳已格式化（无 T、无微秒）',
+      stamps.length > 0 && stamps.every(s => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)),
+      `stamps=${JSON.stringify(stamps.slice(0, 3))}`);
+    check('抽屉 完工时间已格式化（无 T）',
+      !/T/.test(drawer?.byLabel?.['完工时间'] || ''), `完工时间=${drawer?.byLabel?.['完工时间']}`);
     check('抽屉 打开抽屉不引入横向溢出', drawer?.overflowX === 0, `overflowX=${drawer?.overflowX}`);
     if (target?.statusText === '返工待派') {
       check('抽屉 差评返工单：星级已渲染（不是「尚未评价」）+「已触发差评返工流程」+ 评语可读',

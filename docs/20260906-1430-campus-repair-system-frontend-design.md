@@ -192,6 +192,7 @@ campus-repair-frontend/
 | V9 | 状态配色只有一份实现 | `orderStatusTagType()` 在 `packages/shared/src/constants/status.ts`，**全仓唯一**；见 §3.3.1 |
 | V10 | 列表页**宽档必须横向铺开** | 宽档用 `el-table`、窄档用卡片，走 `ResponsiveTable`（**一份列定义**）；**不许把移动端单列卡片拉成全宽**——见 §3.3.2 |
 | V11 | 列表页断点按「表格装得下」定 | `:card-below` = 列宽合计 + 余量 + 312（侧边栏 240 + 页 32 + 卡片 40）；**改列宽必须一起复核** |
+| V12 | 同一件事只有一个投影 | 状态配色 → `orderStatusTagType()`（§3.3.1）；**时间展示 → `formatDateTime`/`formatDate`（§3.3.3）**；空值文案 → `EMPTY_PLACEHOLDER`（`'—'`）。**两套写法就是下一个「同一个状态两种颜色」** |
 
 **V4 的两点澄清**：① EP 的默认主色是 `#409EFF`，而本项目自写 chrome 用 `#1677FF`——**这个"两个蓝"是既有事实**，
 本节不要求消除（消除要改 EP 主题变量，属独立工作），只要求**新代码别再引入第三种蓝**；
@@ -201,6 +202,31 @@ campus-repair-frontend/
 的单列居中，在 1272px 桌面档下表现为"中间一条、两边大片空白"。**§8.3/8.4 的"移动端"定位已被 R1 单树重构取代**
 （两页现挂桌面外壳、走同一套断点）。**注意 V5 只解决"居中"这一半**——把移动端卡片从 900px 居中改成全宽
 只是让空白换了位置，V10/V11 才是列表页的正解，见 §3.3.2。
+
+#### 3.3.1 `orderStatusTagType()` —— 状态配色的唯一来源
+
+```ts
+// packages/shared/src/constants/status.ts（紧挨 OrderStatusLabels：同一件事的两个投影——文案与配色）
+export function orderStatusTagType(status?: string | null): OrderStatusTagType {
+  switch (status) {
+    case 'COMPLETED': return 'success';
+    case 'PENDING_ACCEPTANCE': return 'primary';
+    case 'REWORK_PENDING': return 'danger';
+    case 'IN_PROGRESS':
+    case 'ASSIGNED': return 'warning';
+    default: return 'info';
+  }
+}
+```
+
+**为什么必须只有一份**：2026-09-27 收口前，`StudentOrderListView.vue` 与 `PersonalCenterView.vue` 里各有
+一份**逐字节相同**的 `statusTagType()`；师傅工作台要渲染状态标签时眼看就要出现第三份。三个实现就是
+"同一个状态在不同页显示成不同颜色"的起点——趁第三处出现之前先收成一份。
+
+**已知后果（有意对齐，不是回归）**：`ASSIGNED` 与 `IN_PROGRESS` 都映射到 `warning`（橙）、`SUSPENDED`
+落到 `info`（灰）。师傅工作台旧的自造徽标是「待承接=蓝 / 维修中=绿 / 已挂起=橙」，收口后与
+「我的工单」「个人中心」一致——**判据是"跨页一致"而不是"单页可分辨"**，卡片的挂起信号由
+`.suspended-card` 的琥珀左条与 `.suspend-banner` 横幅承担。
 
 #### 3.3.2 列表页的双形态：宽档表格 / 窄档卡片
 
@@ -247,30 +273,48 @@ campus-repair-frontend/
    空白列问的不是「要不要这列」，而是**「这里本该有什么」**。详见
    `docs/20260912-1351-…-unified-portal-design.md` §15.6。
 
-#### 3.3.1 `orderStatusTagType()` —— 状态配色的唯一来源
+#### 3.3.3 时间展示的唯一来源
+
+`packages/shared/src/utils/format.ts`（2026-09-27 抽取，见 `docs/20260912-1351-…-unified-portal-design.md` §16）：
 
 ```ts
-// packages/shared/src/constants/status.ts（紧挨 OrderStatusLabels：同一件事的两个投影——文案与配色）
-export function orderStatusTagType(status?: string | null): OrderStatusTagType {
-  switch (status) {
-    case 'COMPLETED': return 'success';
-    case 'PENDING_ACCEPTANCE': return 'primary';
-    case 'REWORK_PENDING': return 'danger';
-    case 'IN_PROGRESS':
-    case 'ASSIGNED': return 'warning';
-    default: return 'info';
-  }
-}
+export const EMPTY_PLACEHOLDER = '—';                       // 空值文案全仓唯一
+
+/** 2026-09-21T16:42:30.775846 → 2026-09-21 16:42；只有日期时原样返回 */
+export function formatDateTime(value?: string | null, placeholder = EMPTY_PLACEHOLDER): string;
+/** 2026-09-21T16:42:30.775846 → 2026-09-21 */
+export function formatDate(value?: string | null, placeholder = EMPTY_PLACEHOLDER): string;
+/** 本地时区的今天（不要用 toISOString().slice(0,10)，那是 UTC） */
+export function todayIsoDate(): string;
 ```
 
-**为什么必须只有一份**：2026-09-27 收口前，`StudentOrderListView.vue` 与 `PersonalCenterView.vue` 里各有
-一份**逐字节相同**的 `statusTagType()`；师傅工作台要渲染状态标签时眼看就要出现第三份。三个实现就是
-"同一个状态在不同页显示成不同颜色"的起点——趁第三处出现之前先收成一份。
+抽取前的实际状况——**4 份各自实现 + 3 处裸渲染**：
 
-**已知后果（有意对齐，不是回归）**：`ASSIGNED` 与 `IN_PROGRESS` 都映射到 `warning`（橙）、`SUSPENDED`
-落到 `info`（灰）。师傅工作台旧的自造徽标是「待承接=蓝 / 维修中=绿 / 已挂起=橙」，收口后与
-「我的工单」「个人中心」一致——**判据是"跨页一致"而不是"单页可分辨"**，卡片的挂起信号由
-`.suspended-card` 的琥珀左条与 `.suspend-banner` 横幅承担。
+| 位置 | 实现 | 空值 |
+| :--- | :--- | :--- |
+| `ResponsiveTable.display()` | `String(raw).replace('T',' ').slice(0,16)` | `'—'` |
+| `WorkbenchView.formatTime()` | `replace('T',' ').substring(0,16)` | `'--'` |
+| `DispatchCenterView.formatTime()` | **与上一行逐字节相同** | `'--'` |
+| `PersonalCenterView.formatDateTime()` | `String(value).replace('T',' ').slice(0,16)` | `'—'` |
+| `WorkOrderTimeline` / `NotificationCenterDrawer` / `StudentOrderDetailView` | **无实现——直接把后端原始 ISO 渲染给用户** | — |
+
+**空值文案已经漂移成两套**（`'--'` vs `'—'`）——这正是 V9 那个"同一个状态两种颜色"的同一形态，
+只是换成了"同一个空值两种写法"。
+
+**两条不能违反的实现约束**：
+
+1. **必须用字符串切片，不许改成 `new Date(...)` + `toLocaleString()`**。后端所有时间字段都是
+   `LocalDateTime`（如 `RepairOrderLog.createdAt`），Jackson 序列化成 `2026-09-21T16:42:30.775846`——
+   **没有时区标记**，字面值就是业务时间本身。`Date` 解析会按**浏览器所在时区**重新解释，同一份数据
+   在不同机器上显示成不同小时数。`test/format.spec.ts` 用 `vi.spyOn(globalThis,'Date')` 断言
+   "实现不得调用 `Date` 解析输入"来锁死这条。
+2. **`todayIsoDate()` 不要用 `new Date().toISOString().slice(0,10)`**——那是 **UTC**，UTC+8 的
+   00:00~08:00 之间会给出**昨天**（入库单「批次日期」默认值曾这样差一天）。
+
+**⚠️ 加公共工具函数前先 grep 一遍名字**：`src/index.ts` 是 `export *` 的 barrel，同名导出不会在写代码时
+提示，只会在 typecheck 阶段报 `TS2308` 与一串 `TS2345`。本轮就撞上了 `utils/watermark.ts` 里那个
+**同样叫 `formatDateTime`** 的水印时间戳（已改名 `formatWatermarkStamp`：它精确到秒、输入是 `Date`、
+用途是"给照片盖现场时间戳"，与"把后端时间显示给人看"是两件事）。
 
 ---
 

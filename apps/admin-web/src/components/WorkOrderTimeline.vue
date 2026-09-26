@@ -12,7 +12,7 @@
       <el-timeline-item
         v-for="log in timelineList"
         :key="log.id"
-        :timestamp="log.createdAt"
+        :timestamp="formatDateTime(log.createdAt)"
         placement="top"
         :type="getNodeType(log.operatorRole)"
         :hollow="false"
@@ -71,7 +71,8 @@ import {
   OrderStatusLabels,
   OrderStatusEnum,
   OperatorRoleLabels,
-  parseImageUrls
+  parseImageUrls,
+  formatDateTime
 } from '@campus/shared';
 
 const props = defineProps<{

@@ -87,6 +87,7 @@
 <script setup lang="ts" generic="T extends Record<string, any>">
 import { computed, useSlots } from 'vue';
 import { ArrowRight } from '@element-plus/icons-vue';
+import { formatDate, formatDateTime } from '@campus/shared';
 import { useViewport } from '../composables/useViewport';
 
 /** 卡片标题行里的小标签配色（与 el-tag 的语义色一致） */
@@ -193,10 +194,11 @@ function display(item: T, col: TableColumn<T>): string {
   switch (col.valueType) {
     case 'money':
       return `¥${Number(raw || 0).toFixed(2)}`;
+    // 时间走 shared 的唯一实现（切片、无时区重解释；理由见 utils/format.ts 的文件头注释）
     case 'datetime':
-      return String(raw).replace('T', ' ').slice(0, 16);
+      return formatDateTime(String(raw));
     case 'date':
-      return String(raw).slice(0, 10);
+      return formatDate(String(raw));
     case 'boolean':
       return raw ? '是' : '否';
     default:

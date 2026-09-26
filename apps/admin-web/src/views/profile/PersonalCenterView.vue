@@ -253,7 +253,8 @@ import {
   PASSWORD_PATTERN,
   PASSWORD_RULE_MESSAGE,
   WorkerSkillLabels,
-  orderStatusTagType
+  orderStatusTagType,
+  formatDateTime
 } from '@campus/shared';
 import type { OrgBranch } from '@campus/shared';
 import type {
@@ -401,11 +402,6 @@ const orderColumns: TableColumn<DispatchOrderItemVO>[] = [
   { key: 'spaceFullPath', label: '报修位置', minWidth: 130, showOverflowTooltip: true },
   { key: 'createdAt', label: '提单时间', width: 135, valueType: 'datetime' }
 ];
-
-function formatDateTime(value?: string | null): string {
-  if (!value) return '—';
-  return String(value).replace('T', ' ').slice(0, 16);
-}
 
 function findIdPath(list: any[], id: number, prefix: number[] = []): number[] | null {
   for (const node of list) {

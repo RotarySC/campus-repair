@@ -11,7 +11,16 @@ export interface WatermarkOptions {
   quality?: number;
 }
 
-export function formatDateTime(date: Date = new Date()): string {
+/**
+ * 水印底卡上的**时间戳文案**：`YYYY-MM-DD HH:mm:ss`（本地时区，从 `Date` 取）。
+ *
+ * ⚠️ **刻意不叫 `formatDateTime`**——那个名字属于 `utils/format.ts` 的展示格式化
+ * （`LocalDateTime` 字符串 → `YYYY-MM-DD HH:mm`）。两者输入类型、精度、用途都不同：
+ * 这里是"给照片盖一个精确到秒的现场时间戳"，那里是"把后端时间显示给人看"。
+ * `src/index.ts` 是 `export *` 的 barrel，同名导出不会在写代码时提示，
+ * 只会在 typecheck 阶段报 `TS2308` 与一串 `TS2345`——**加公共工具函数前先 grep 一遍名字**。
+ */
+export function formatWatermarkStamp(date: Date = new Date()): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
   const year = date.getFullYear();
   const month = pad(date.getMonth() + 1);
@@ -28,7 +37,7 @@ export function formatDateTime(date: Date = new Date()): string {
 export function addWatermarkToImage(file: File | Blob, options: WatermarkOptions): Promise<Blob> {
   const maxDimension = options.maxDimension || 1920;
   const quality = options.quality !== undefined ? options.quality : 0.85;
-  const timeText = options.timestamp || formatDateTime();
+  const timeText = options.timestamp || formatWatermarkStamp();
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

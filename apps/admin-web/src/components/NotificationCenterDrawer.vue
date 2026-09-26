@@ -26,7 +26,7 @@
           <div class="card-badge" :class="`badge-${item.category}`">
             {{ NotificationCategoryLabels[item.category] || item.category }}
           </div>
-          <span class="card-time">{{ item.createdAt }}</span>
+          <span class="card-time">{{ formatDateTime(item.createdAt) }}</span>
         </div>
 
         <div class="card-title">
@@ -110,7 +110,8 @@ import { httpClient } from '../stores/auth';
 import {
   NotificationItemVO,
   NotificationCategoryLabels,
-  BroadcastNotificationDTO
+  BroadcastNotificationDTO,
+  formatDateTime
 } from '@campus/shared';
 
 const emit = defineEmits<{

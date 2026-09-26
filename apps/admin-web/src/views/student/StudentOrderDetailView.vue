@@ -13,7 +13,7 @@
         <template #header><span class="block-title">报修基本信息</span></template>
         <el-descriptions :column="isNarrowPhone ? 1 : 2" border>
           <el-descriptions-item label="工单流水号">{{ order.orderNo }}</el-descriptions-item>
-          <el-descriptions-item label="提单时间">{{ order.createdAt }}</el-descriptions-item>
+          <el-descriptions-item label="提单时间">{{ formatDateTime(order.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="报修空间" :span="2">{{ order.spaceFullPath }}</el-descriptions-item>
           <el-descriptions-item label="报修故障">{{ order.categoryFullName }}</el-descriptions-item>
           <el-descriptions-item label="期望预约">{{ order.appointmentPeriod }}</el-descriptions-item>
@@ -179,7 +179,8 @@ import {
   DispatchOrderItemVO,
   WorkOrderEvaluationVO,
   WorkOrderEvaluateRequest,
-  OrderStatusLabels
+  OrderStatusLabels,
+  formatDateTime
 } from '@campus/shared';
 
 const route = useRoute();

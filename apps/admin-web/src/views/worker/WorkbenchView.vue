@@ -73,7 +73,7 @@
           <span v-if="row.status === 'SUSPENDED'" class="sla-frozen" :title="`累计挂起 ${row.suspendCount || 0} 次`">
             ⏸️ 已冻结
           </span>
-          <span v-else-if="row.slaDeadline">{{ formatTime(row.slaDeadline) }}</span>
+          <span v-else-if="row.slaDeadline">{{ formatDateTime(row.slaDeadline) }}</span>
           <span v-else>—</span>
         </template>
 
@@ -232,7 +232,7 @@
             {{ evaluation?.materialCost != null ? `¥ ${Number(evaluation.materialCost).toFixed(2)}` : '—' }}
           </el-descriptions-item>
           <el-descriptions-item label="完工时间">
-            {{ evaluation?.finishReportedAt ? formatTime(evaluation.finishReportedAt) : '—' }}
+            {{ formatDateTime(evaluation?.finishReportedAt) }}
           </el-descriptions-item>
         </el-descriptions>
 
@@ -287,7 +287,8 @@ import {
   DispatchOrderItemVO,
   WorkerWorkbenchCountVO,
   WorkerOrderListResultVO,
-  WorkOrderEvaluationVO
+  WorkOrderEvaluationVO,
+  formatDateTime
 } from '@campus/shared';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
@@ -595,11 +596,6 @@ async function submitTransfer() {
   } finally {
     operatingId.value = null;
   }
-}
-
-function formatTime(isoStr?: string): string {
-  if (!isoStr) return '--';
-  return isoStr.replace('T', ' ').substring(0, 16);
 }
 </script>
 

@@ -120,7 +120,7 @@
                 </el-tag>
                 <el-tag size="small" type="info">{{ OrderStatusLabels[order.status] || order.status }}</el-tag>
               </div>
-              <span class="order-time">{{ formatTime(order.createdAt) }}</span>
+              <span class="order-time">{{ formatDateTime(order.createdAt) }}</span>
             </div>
 
             <div class="card-category">
@@ -465,7 +465,8 @@ import {
   DispatchOrderItemVO,
   DispatchPoolCategoryCountVO,
   DispatchPoolResultVO,
-  WorkerBoardVO
+  WorkerBoardVO,
+  formatDateTime
 } from '@campus/shared';
 
 const route = useRoute();
@@ -770,11 +771,6 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   if (worker.isOverloaded) return 'exception';
   if (worker.loadRate >= 70) return 'warning';
   return 'success';
-}
-
-function formatTime(isoStr?: string): string {
-  if (!isoStr) return '--';
-  return isoStr.replace('T', ' ').substring(0, 16);
 }
 </script>
 

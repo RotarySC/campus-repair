@@ -427,3 +427,101 @@ worker01 那张 `REWORK_PENDING` 单是 **1 星差评**，评语「第二天又�
 不该夹在一个"给历史档补一个动作"的提交里。**建议单独一轮做，并沿用同一套判据**：
 先确认三处行为差异（占位符不同是可见差异），再抽到 `packages/shared`，最后加探针锁死。
 
+> **【已于同日第四轮完成】** 见 §16（`refactor/shared-datetime-format` 分支）。上面那句"三份实现"
+> **低估了**——实际是 **4 份 + 3 处裸渲染**。
+
+---
+
+## 16. 2026-09-27 独立重构：时间展示收敛为唯一来源
+
+> 触发：§15.8 记录的那条"顺带发现"。用户指示「合并到主分支，然后开新分支进行独立重构」。
+> 分支 `refactor/shared-datetime-format`。
+
+### 16.1 先摸清全貌：不是 3 处，是 4 份实现 + 3 处裸渲染
+
+§15.8 只顺着"复用 `WorkOrderTimeline`"这条线看到了 3 处。这一轮先把**所有**时间渲染点捞干净
+（grep `replace('T'`、`substring(0,1x)`、`slice(0,1x)`、`toLocaleDateString`、`function format*`、
+模板里的 `{{ …At }}`），结果：
+
+| # | 位置 | 实现 | 空值 |
+| :-- | :--- | :--- | :--- |
+| 1 | `ResponsiveTable.display()`（`valueType: 'datetime'/'date'`） | `String(raw).replace('T',' ').slice(0,16)` / `String(raw).slice(0,10)` | `'—'` |
+| 2 | `WorkbenchView.formatTime()` | `replace('T',' ').substring(0,16)` | `'--'` |
+| 3 | `DispatchCenterView.formatTime()` | **与 2 逐字节相同** | `'--'` |
+| 4 | `PersonalCenterView.formatDateTime()` | `String(value).replace('T',' ').slice(0,16)` | `'—'` |
+| 5 | `WorkOrderTimeline` `:timestamp="log.createdAt"` | **裸渲染后端 ISO** | — |
+| 6 | `NotificationCenterDrawer` `{{ item.createdAt }}` | **裸渲染后端 ISO** | — |
+| 7 | `StudentOrderDetailView` `{{ order.createdAt }}` | **裸渲染后端 ISO** | — |
+
+**5/6/7 是同一类缺陷**：把 `2026-09-21T16:42:30.775846` 原样端给用户。**只改 §15.8 提到的那 3 处
+（2/3/4）会漏掉 1、5、6、7 四处**——这就是"补丁式统一"和"收敛唯一来源"的区别。
+
+顺带还发现一处**同类但不同性质**的：`InventoryManageView.openInboundDialog()` 用
+`new Date().toISOString().substring(0,10)` 给「批次日期」填默认值——`toISOString()` 是 **UTC**，
+在 UTC+8 的 00:00~08:00 之间会填成**昨天**。一并修掉（新增 `todayIsoDate()`）。
+
+### 16.2 决策
+
+| # | 决策 | 理由 |
+| :-- | :--- | :--- |
+| R3-1 | 抽到 `packages/shared/src/utils/format.ts`：`formatDateTime` / `formatDate` / `todayIsoDate` / `EMPTY_PLACEHOLDER` | 与 `orderStatusTagType()` 同一套做法（§3.3.1）；纯函数放 shared、加 vitest 单测 |
+| R3-2 | **实现用字符串切片，禁止 `new Date(...)` 解析** | 后端时间是 `LocalDateTime`（**无时区**，见 `RepairOrderLog.createdAt`），字面值即业务时间；`Date` 解析会按浏览器时区重解释，同一份数据在不同机器上显示成不同小时数。**这是本轮最重要的一条不变式** |
+| R3-3 | 空值占位符统一 `'—'` | 原 2/3 用 `'--'`、1/4 用 `'—'`——**空值文案也是一种投影，两套写法就是下一个"同一个状态两种颜色"**（V12）。**这是一处可见变化**：工作台/调度中心的空值从 `--` 变 `—` |
+| R3-4 | `watermark.ts` 的 `formatDateTime(Date)` 改名 `formatWatermarkStamp` | 见 §16.3，它**同名冲突** |
+| R3-5 | 验证方式：**纯函数加 vitest 单测**（不是加探针） | `packages/shared` 本来就有 vitest（只是此前只有 5 例）；纯函数跑单测不到 1 秒，探针要起浏览器 + 两个服务 |
+
+### 16.3 一个只有类型检查才抓得到的坑：barrel 同名导出
+
+抽完第一次 typecheck 直接红：
+
+```
+packages/shared/src/index.ts(15,1): error TS2308: Module './utils/watermark' has already
+  exported a member named 'formatDateTime'. Consider explicitly re-exporting to resolve the ambiguity.
+apps/admin-web/src/components/ResponsiveTable.vue(199,29): error TS2345: Argument of type 'string'
+  is not assignable to parameter of type 'Date'.
+```
+
+`utils/watermark.ts` 里**早就有一个 `formatDateTime(date: Date = new Date())`**（水印底卡上的现场时间戳，
+`YYYY-MM-DD HH:mm:ss`，精确到秒）。`src/index.ts` 是 `export *` 的 barrel，所以两个同名导出在写代码时
+**毫无提示**，只会在 typecheck 阶段炸成 `TS2308` + 一串 `TS2345`。
+
+**修法不是加 `as any`，也不是改我的函数名**——而是承认这是两个不同的东西并各自说清：
+水印那个是"给照片盖现场时间戳"（输入 `Date`、到秒），展示那个是"把后端时间显示给人看"（输入字符串、到分）。
+改名 `formatWatermarkStamp` 后冲突消失，且名字本身说明了用途。**它的单测是直接 import 模块路径的**
+（`from '../src/utils/watermark'`），所以不受 barrel 影响。
+
+**推论（已写进 `AGENTS.md` §1）：加公共工具函数前先 grep 一遍名字。**
+
+### 16.4 验证
+
+- **`packages/shared` vitest：5 → 20 例全绿**（新增 `test/format.spec.ts` 14 例）。其中**最重要的一组是
+  时区不变式**：用 `vi.spyOn(globalThis, 'Date')` 断言"实现不得调用 `Date` 解析输入"——**这条比断言输出值
+  更有价值**，因为输出值在 UTC+8 的测试机上恰好是对的，换个时区才错。另用 `vi.stubEnv('TZ', …)` 覆盖
+  `America/Los_Angeles` / `Pacific/Kiritimati` 两档做行为对照。
+- `tsc`（shared）与 `vue-tsc`（admin）**均 exit 0**。
+- **探针全绿**：`assert-worker-ui`（**108 PASS / 0 FAIL**，新增 3 条时间戳断言）、`assert-dual` 10/10、
+  `assert-cards-interact` 3/3、`assert-cockpit-merged` 全通过、`assert-identity-batch1` 22/22、
+  `assert-assistant` 52/52、`assert-profile` ALL PASS。
+- `narrow-walkthrough` admin/student/worker × {390,1272} 共 **30 个页面加载 0 offenders / 0 console error**
+  （覆盖 dispatch / inventory / 学生详情 / 通知抽屉 / 个人中心 / 工作台）。
+- `mvn test` **176/176**（后端未改，作最终门禁）。
+
+### 16.5 过程里踩到的假失败：dev server 的 transform 缓存
+
+探针第一次跑报 `TypeError: _ctx.formatDateTime is not a function`（`WorkOrderTimeline.vue`），
+而 `vue-tsc` 全绿、别的探针也全绿。**根因不在代码**：把**被服务的模块**直接拉下来看
+（`Invoke-WebRequest http://localhost:3000/src/components/WorkOrderTimeline.vue`），它的 import 列表
+是**改动前**那一版（没有 `formatDateTime`），而同一份模块里的模板渲染函数已经是新的
+（`_ctx.formatDateTime(...)` 而非 `$setup.formatDateTime(...)`）——**Vite 只重转了模板、没重转脚本**。
+那个 dev server 已经跑了一天多（`StartTime 2026/9/26 11:54`）。**重启后同一份代码立刻全绿。**
+
+**判据已写进 `AGENTS.md` §2.2**：`<script setup>` 组件里出现 `_ctx.X is not a function` ⇒ 编译器的
+bindingMetadata 是旧的 ⇒ **先怀疑 dev server 缓存，别改业务代码**；而且"再跑一次探针"救不回来
+（每次 `Page.navigate` 拿到的仍是那份半新半旧的模块），**只能重启**。
+
+### 16.6 一条方法论收获
+
+§15.8 那句"全仓有三份实现"是**顺着一条线索看到的局部**。这一轮改法是先 grep 全部渲染点再动手——
+结果从 3 处变成 **7 处**。**"收敛唯一来源"和"修掉我看到的那几处"是两个不同规模的活**；
+凡是做前者，第一步必须是穷举，而不是从已知的那几处出发。
+
