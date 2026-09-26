@@ -43,26 +43,34 @@
 
           <!--
             提问后输入框会清空——把问题留在框里不符合直觉（用户以为已经问过了）。
-            问题不丢：落进「最近提问」，一键重问。
+            问题不丢：落进「最近询问」，一键重问；单条可删、也可整体清空。
           -->
           <div v-if="history.length" class="history">
             <div class="history-head">
-              <span class="history-title">最近提问</span>
+              <span class="history-title">最近询问</span>
               <el-button link size="small" @click="clearHistory">清空</el-button>
             </div>
             <div class="history-list">
-              <button
-                v-for="item in history"
-                :key="item"
-                type="button"
-                class="history-item"
-                :title="`再次判断：${item}`"
-                :aria-label="`再次判断：${item}`"
-                @click="reuseHistory(item)"
-              >
-                <el-icon :size="13"><Clock /></el-icon>
-                <span class="history-text">{{ item }}</span>
-              </button>
+              <div v-for="item in history" :key="item" class="history-chip-wrap">
+                <button
+                  type="button"
+                  class="history-chip"
+                  :title="`再次判断：${item}`"
+                  :aria-label="`再次判断：${item}`"
+                  @click="reuseHistory(item)"
+                >
+                  <span class="history-chip-text">{{ item }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="history-chip-remove"
+                  :title="`删除这条记录：${item}`"
+                  :aria-label="`删除这条记录：${item}`"
+                  @click="removeHistory(item)"
+                >
+                  <el-icon :size="10"><Close /></el-icon>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -172,7 +180,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ChatDotRound, Clock } from '@element-plus/icons-vue';
+import { ChatDotRound, Close } from '@element-plus/icons-vue';
 import {
   ASSISTANT_DEGRADED_LABELS,
   type AssistantCandidate,
@@ -215,13 +223,16 @@ const faqItems = ref<AssistantFaqItem[]>([]);
 const loadedOnce = ref(false);
 
 /**
- * 「最近提问」：提问后输入框清空，问题落在这里，一键重问。
+ * 「最近询问」：提问后输入框清空，问题落在这里，一键重问。
  *
  * 三条约定：
  * 1. **按账号分键**（`…_<userId>`）——同一台机器上换个账号登录不会看到别人的提问；
  * 2. **只在浏览器本地**（localStorage）——提问是自由文本，不上服务端，也就没有"清不掉"的问题；
  * 3. **读写全程 try/catch**——隐私模式/配额满/缓存写坏时，历史退化成本次会话内可用，
  *    但**绝不因为历史记录把助手搞崩**（与"助手整体不可用时提单页照常工作"同一条铁律）。
+ *
+ * 形态是**换行 chip 云**（不是整行列表）：每条只占一个胶囊，长描述截断、原文进 `title`，
+ * 于是 8 条也只占两三行，不会把候选卡片挤下去；单条可删（悬停/聚焦才露出徽标）。
  */
 const HISTORY_STORAGE_PREFIX = 'CAMPUS_REPAIR_ASSISTANT_HISTORY';
 /** 最多留几条：再多多半是想不起来的旧问题，反而把候选挤下去 */
@@ -270,6 +281,21 @@ function clearHistory() {
     localStorage.removeItem(historyKey());
   } catch (_) {
     // 同上：清不掉也不影响助手
+  }
+}
+
+/**
+ * 删掉单条询问。
+ *
+ * <p>删空时**连键一起删**，与 {@link clearHistory} 保持同一状态（`localStorage` 里不留空数组），
+ * 否则探针/运维读缓存时会看到「键还在但没内容」这种第三种状态。
+ */
+function removeHistory(text: string) {
+  history.value = history.value.filter((item) => item !== text);
+  if (history.value.length === 0) {
+    clearHistory();
+  } else {
+    persistHistory();
   }
 }
 
@@ -446,8 +472,7 @@ defineExpose({ notifyCenter: () => emit('open-notifications') });
   margin-top: 10px;
 }
 
-/* 「最近提问」：输入框下方的一小块历史。限高滚动——它是次要入口，
-   不该把候选卡片挤出视野（抽屉里已经叠了五段内容）。 */
+/* 「最近询问」：换行 chip 云。次要入口，不该把候选卡片挤出视野。 */
 .history {
   margin-top: 12px;
 }
@@ -456,7 +481,7 @@ defineExpose({ notifyCenter: () => emit('open-notifications') });
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .history-title {
   font-size: 12px;
@@ -464,44 +489,73 @@ defineExpose({ notifyCenter: () => emit('open-notifications') });
 }
 .history-list {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 108px;
-  overflow-y: auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* 首行 chip 的删除徽标会向上探出 5px，留点余量免得压住标题行 */
+  padding-top: 5px;
 }
-.history-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid transparent;
+.history-chip-wrap {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+.history-chip {
+  max-width: 100%;
+  padding: 6px 12px;
+  border: none;
   border-radius: 6px;
   background: var(--el-fill-color-light);
-  font-size: 12px;
-  line-height: 1.5;
   color: var(--el-text-color-regular);
+  font-size: 13px;
+  line-height: 1.5;
   text-align: left;
   cursor: pointer;
 }
-.history-item:hover {
-  border-color: var(--el-color-primary-light-5);
+.history-chip:hover {
   color: var(--el-color-primary);
 }
-.history-item:focus-visible {
+.history-chip:focus-visible {
   outline: 2px solid var(--el-color-primary-light-3);
   outline-offset: 1px;
 }
-.history-item .el-icon {
-  flex: none;
-}
-.history-text {
-  flex: 1;
-  /* 省略号要生效必须给 flex 子项 min-width:0，否则它按内容宽度撑开、整行溢出 */
-  min-width: 0;
+.history-chip-text {
+  display: block;
+  /* 长描述必须截断：不然一个 chip 就把整行占满，"换行 chip" 的形状就没了。
+     完整原文在 title 里（同时也是「再次判断」的说明）。 */
+  max-width: 11em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/*
+ * 单条删除徽标：默认藏着，只有指针/键盘落在该条上才露出。
+ * **刻意不加 transition**——后台标签里主线程过渡会卡住，探针量不到终态
+ * （`AGENTS.md` §2.2 记过这条：宽度/transform 的过渡在隐藏标签页不推进）。
+ */
+.history-chip-remove {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--el-text-color-placeholder);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+}
+.history-chip-wrap:hover .history-chip-remove,
+.history-chip-wrap:focus-within .history-chip-remove {
+  opacity: 1;
+}
+.history-chip-remove:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-3);
+  outline-offset: 1px;
 }
 .no-match {
   margin-top: 12px;

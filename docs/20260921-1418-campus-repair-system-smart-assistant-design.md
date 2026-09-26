@@ -16,7 +16,7 @@
 | §0.2 验收后修复（大模型信封解包） | **已修复**，160/160（+9 条真实 HTTP 用例） |
 | §0.3 首次接入真实提供方（MiMo `mimo-v2.6-flash`） | **已跑通**：`engine=RULE+LLM`、`degradedReason=null` |
 | §0.4 升级制（规则有把握就不调模型） | **已落地**，169/169；4/8 请求免调模型 |
-| §0.5 候选顺序确定化 + 提问历史 | **已落地**，174/174；真机首候选 3/3 稳定 |
+| §0.5 候选顺序确定化 + 提问历史（含 C 段的 chip 形态与文案调整） | **已落地**，174/174；真机首候选 3/3 稳定；探针 49 条 ALL PASS |
 
 ### 0.1 验收后修复：制度问答曾是「三类账号一模一样」（2026-09-26）
 
@@ -173,7 +173,7 @@ modelReturnOrderDoesNotAffectCandidates candidates[0].categoryId expected:<21> b
 
 **首候选 3/3 稳定**（改之前是在 `301`/`302` 之间随机翻，见 §8 原始记录）。第 3 次模型多补了一条 `311 灯具损坏`，**成员**确实变了——但它的位置不是模型给的：`301`(sortOrder 1) → `311`(sortOrder 1) → `302`(sortOrder 2)，三条同为 5 分，顺序**完全由 `sortOrder` 决定**（`data-demo.sql` 里 311 的 `sort_order=1`、302 是 2）。这正是"顺序确定、成员由模型"的实证。
 
-#### B. 提问后清空输入框 + 「最近提问」
+#### B. 提问后清空输入框 + 「最近询问」
 
 **动机（用户提出）**：提问后输入框仍留着问题——用户容易以为还没问出去。
 
@@ -192,7 +192,16 @@ modelReturnOrderDoesNotAffectCandidates candidates[0].categoryId expected:<21> b
 
 **范围**：只改抽屉（`AssistantWidget.vue`）里那个**提问框**。提单页的助手是**描述框停输自动推荐**，那个框里装的是工单描述、必须保留，两者语义不同、不能一起改。
 
+#### C. 形态与文案（2026-09-26 二次调整，用户给的设计稿）
 
+- **文案**：「最近提问」→ **「最近询问」**（`CONTEXT.md` 的口径条目同步改；概念名仍叫「提问历史」，界面文案以本处为准）。
+- **形态**：**换行 chip 云**，取代原来的整行列表——浅灰圆角胶囊、`flex-wrap` 自动换行、长描述 `max-width:11em` 截断（原文进 `title`），指针所在那条文字转主色。7 条只占 3 行（实测 `chipWidth=167 / listWidth=365`，3 行高 116px），不再像整行列表那样把候选卡片挤下去。
+- **单条删除**：每条右上角一个圆形 × 徽标，**默认藏着**（`opacity:0`），鼠标悬停或键盘聚焦该条才露出（`:hover` / `:focus-within`）。删空时连 `localStorage` 键一起删——与「清空」保持同一状态，不留"键在但空数组"这第三种状态。**刻意不给徽标加 `transition`**：后台标签里主线程过渡不推进，探针量不到终态。
+- 徽标做成 `.history-chip` 的**兄弟** `<button>` 而不是嵌在里面——嵌套 `<button>` 是无效 HTML，键盘与读屏都会出问题。
+
+**这一轮探针暴露了一个一直存在的方法论漏洞**（记在 `AGENTS.md` §2.2）：本探针此前所有断言都是 **DOM/文本级**的（`innerText`、`classList`、宽度），而**后台标签里 Vue 的 `<transition>` 会卡在 `enter-from`——抽屉永久停在 `translateX(100%)`，即完全在屏幕外**（实测 `drawer.left=1272`，视口正好 1272）。内容断言照样全绿，所以一直没发现；直到加了第一条依赖**位置**的断言（hover 要算鼠标坐标）才量出来。修法是量位置前把 `.assistant-drawer{transform:none}` 钉到终态，并新增一条「抽屉在视口内」的前置断言，免得以后再用屏外坐标去量。
+
+## 1. 现状与决策（动手前已核实）
 
 | 事实 | 依据 / 结论 |
 | :--- | :--- |
@@ -388,7 +397,7 @@ noMatch=true   engine=RULE   degradedReason=null   候选=（无）
 | :--- | :--- |
 | `packages/shared/src/types/assistant.ts`（新）+ `index.ts` | 上述契约的 TS 类型 + `AssistantEngine`/`AssistantConfidence` 联合类型 |
 | `apps/admin-web/src/constants/navItems.ts`（新） | 把 `AdminLayout.vue` 里的 `NavItem` + 三个数组 + `visibleNavItems(identity)` **原样搬出**（纯搬移、零行为变化），让导航与助手快捷入口**同源**，杜绝两份清单漂移 |
-| `apps/admin-web/src/components/AssistantWidget.vue`（新） | 右下悬浮气泡 + `el-drawer`（`:size="isNarrowPhone ? '100%' : '420px'"`，与通知抽屉一致）。五段内容：① 推荐（仅报修人）② 自助排查 ③ 快捷入口（`visibleNavItems` + 「通知中心」动作项）④ 我的工单速查（仅报修人）⑤ 制度问答。**2026-09-26 起提问框在提交后清空，问题落进「最近提问」（§0.5 B）**：`localStorage` 键 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`、上限 8 条、同一条去重提前、点条目**直接重问**、带「清空」；读写全程 `try/catch`（存不下就只留内存，绝不把助手搞崩） |
+| `apps/admin-web/src/components/AssistantWidget.vue`（新） | 右下悬浮气泡 + `el-drawer`（`:size="isNarrowPhone ? '100%' : '420px'"`，与通知抽屉一致）。五段内容：① 推荐（仅报修人）② 自助排查 ③ 快捷入口（`visibleNavItems` + 「通知中心」动作项）④ 我的工单速查（仅报修人）⑤ 制度问答。**2026-09-26 起提问框在提交后清空，问题落进「最近询问」（§0.5 B/C）**：`localStorage` 键 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`、上限 8 条、同一条去重提前、点条目**直接重问**、**换行 chip 云**（长描述截断）、**悬停/聚焦才露出单条删除徽标**、带「清空」；读写全程 `try/catch`（存不下就只留内存，绝不把助手搞崩） |
 | `apps/admin-web/src/components/assistant/SuggestionCardList.vue`（新） | 纯展示卡片（分类路径 / 大类 / 工种 / SLA / 置信度 / 命中词 + 「采用并提单」）；**抽屉与提单页共用同一组件** |
 | `apps/admin-web/src/layouts/AdminLayout.vue` | 挂载 `<AssistantWidget />`（紧邻通知抽屉）；nav 数组改 import |
 | `apps/admin-web/src/views/student/StudentSubmitRepairView.vue` | ① 描述停输 600ms、`categoryId` 仍为空且文本 ≥2 字时调 `/suggest`，在「故障细类」上方内联渲染候选（可关闭，按描述哈希记住已忽略，不反复打扰）；② 点「采用」⇒ 填 `categoryId`/`categoryPath`/`categoryFullPathName` + `saveDraft()`；③ 读 `route.query` 预填：**`categoryId` 覆盖草稿**（用户是从助手显式跳来的），**`spaceId` 仅在本页为空时填入**，应用后 `router.replace` 摘掉 query，避免刷新重复应用 |
@@ -410,8 +419,9 @@ noMatch=true   engine=RULE   degradedReason=null   候选=（无）
 | 助手整体不可用 | 提单页捕获异常静默忽略（不弹错、不阻断），表单与提交完全不受影响 |
 | 首登未改密用户 | 被既有 `code=1009` 拦截（与其余业务接口同档，符合预期） |
 | 模型返回顺序与上次不同（思考模型 `temperature` 被强制 1.0） | **候选顺序不变**——合并后一律按 `(分数, sortOrder, id)` 重排，模型序不参与（§0.5 A）。变的是**成员**（模型这次没补那条就没了），这一条无法结构性消除 |
-| 提问失败（助手不可用 / 业务失败） | 输入框已清空但**问题在「最近提问」里**，一键重问；输入内容不会丢 |
+| 提问失败（助手不可用 / 业务失败） | 输入框已清空但**问题在「最近询问」里**，一键重问；输入内容不会丢 |
 | `localStorage` 不可用 / 配额满 / 缓存写坏 | 历史退化成本次会话内可用（只留内存），助手其余功能不受影响；`try/catch` 覆盖读、写、删三处 |
+| 单条删除删空了 | 连 `localStorage` 键一起删（与「清空」同一状态），历史区随之整块不渲染 |
 
 **铁律：助手是纯建议。** 绝不自动提单、绝不自动改写表单，一律要用户点「采用」。
 
@@ -444,7 +454,13 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 
 气泡存在且 `aria-label` 正确；抽屉可开可关；`student02` 五段齐全；`worker01`/`admin` **无**推荐与进度段且**未发起** `/assistant/suggest` 请求；**快捷入口集合 == 侧边栏可见导航集合**（强断言，导航一改即红）；**常见问题按职能裁剪**——报修人/师傅/管理员三套**各自含专属题且不含对方专属题**，`worker02` 取并集 18 条且同题不重复（**教训：只断言条数会漏掉"三套内容一模一样"，条数恰好相同就一直是绿的**）；「水龙头」推荐 ⇒ 采用 ⇒ 跳提单页 ⇒ 分类选择器回显且 `categoryId` 已填；390/1272 两档 `documentElement.scrollWidth - clientWidth === 0`；后台标签下按 `AGENTS.md` §2.2 的规矩轮询 + 补帧。
 
-**2026-09-26 扩到 43 条**（原 33 + 新增 10 条覆盖 §0.5 B 的提问历史）：未提问时**不渲染**「最近提问」；提问后**输入框为空**；问题进入历史且排最前；条目 `title` 是「再次判断：…」；点条目**确实又发了一次** `/assistant/suggest`（CDP `Network` 域取证——候选卡片本来就在，看 DOM 分辨不出有没有重问）；重问后输入框同样为空；同一条**不重复堆积**；**整页刷新后历史仍在**（真持久化，不是组件内存）；键名匹配 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`（按账号分键）；「清空」后区块消失**且本地缓存被删**。最后一条同时让探针**幂等**——同一实例上重跑不会累加历史。
+**2026-09-26 扩到 43 条**（原 33 + 新增 10 条覆盖 §0.5 B 的提问历史）：未提问时**不渲染**「最近询问」；提问后**输入框为空**；问题进入历史且排最前；条目 `title` 是「再次判断：…」；点条目**确实又发了一次** `/assistant/suggest`（CDP `Network` 域取证——候选卡片本来就在，看 DOM 分辨不出有没有重问）；重问后输入框同样为空；同一条**不重复堆积**；**整页刷新后历史仍在**（真持久化，不是组件内存）；键名匹配 `CAMPUS_REPAIR_ASSISTANT_HISTORY_<userId>`（按账号分键）；「清空」后区块消失**且本地缓存被删**。最后一条同时让探针**幂等**——同一实例上重跑不会累加历史。
+
+**同日再扩到 49 条**（§0.5 C 的形态与单条删除）：区块标题口径是「最近询问」；历史是**换行 chip**而不是整行条（`display:flex` + `flex-wrap:wrap` + 胶囊比容器窄 + 圆角）；再问一条后**恰好 2 条**、新的在前、旧的没被顶掉；**抽屉在视口内**（前置自检，见下）；删除徽标**默认 `opacity:0`、鼠标悬停该条变 `1`**（用 CDP `Input.dispatchMouseEvent` 真实移动鼠标取证——页面内合成事件不触发 `:hover`，`AGENTS.md` §2.2 有同源教训）；**单条删除只删那一条**、其余保留并落盘。
+
+**两条探针自身的加固（都是实测踩出来的，不是产品缺陷）**：
+① **探针改为从干净历史开始**（`openAs(..., {clearAssistantHistory:true})` 只在最开头用一次）。此前历史里混进了**人工在浏览器里点出来的**「吊扇坏了」，于是「未提问时不显示历史」「单条删除后只剩一条」这类**精确**断言连带失败——断言写成精确值就必须自己保证前置状态，不能假设上一次运行是干净的。**只在最开头清**：后面的 `openAs` 是「刷新后历史仍在」的用例，清了就自相矛盾。
+② **量位置前必须把抽屉 `transform` 钉到终态**。后台标签里 rAF 暂停 ⇒ Vue 的 `<transition>` 卡在 `enter-from` ⇒ **抽屉永久停在 `translateX(100%)`，完全在屏幕外**（实测 `drawer.left=1272`、视口 1272）。本探针此前全是 DOM/文本级断言所以一直没暴露，直到加了第一条依赖位置的断言才量出来。现在除关过渡外还注入 `.assistant-drawer{transform:none!important}`，并加一条「抽屉在视口内」的前置断言，免得以后再用屏外坐标去量。
 
 ### 6.4 验收命令（**已现跑**）
 
@@ -457,7 +473,7 @@ mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 174/174（两�
 #   Maven 报 `Unknown lifecycle phase ".runOrder=alphabetical"`（实测，2026-09-26）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json                  # exit 0
 node node_modules/.pnpm/vue-tsc@2.2.12_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p apps/admin-web/tsconfig.json  # exit 0
-node .scratch/assert-assistant.mjs               # 43 条 ALL PASS
+node .scratch/assert-assistant.mjs               # 49 条 ALL PASS
 node .scratch/assert-identity-batch1.mjs         # ALL PASS（改了 navItems 所在文件，必跑）
 node .scratch/assert-profile.mjs                 # ALL PASS
 node .scratch/assert-drill.mjs                   # 130/130
@@ -477,14 +493,14 @@ node .scratch/assert-drill.mjs                   # 130/130
 | `worker01` 调 `/status`、`/faq` | 200（全角色开放）；`/faq` 按职能返回**师傅那套 10 条**，数值含 72 |
 | `student02` / `worker01` / `admin` / `worker02` 调 `/faq` | 10 / 10 / 10 / **18** 条；三者交集**只有通用 2 条**；`worker02` = 报修人 ∪ 师傅（§0.1） |
 
-**真机探针覆盖的 43 条**（`assert-assistant.mjs`）：报修人 28 条（气泡 a11y、五段内容、快捷入口与侧边栏同源、候选四要素、自助排查出现、「采用并提单」跳转+预填+query 摘除、**常见问题为报修人那套**、**提问后清空输入框 + 「最近提问」10 条**）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**、**常见问题换成师傅那套且不含报修人专属题**）、管理员 3 条（含常见问题为调度/平台那套）、`worker02` 3 条（**并集 18 条 + 两套专属题同时存在 + 去重**）、390 窄档 3 条。
+**真机探针覆盖的 49 条**（`assert-assistant.mjs`）：报修人 34 条（气泡 a11y、五段内容、快捷入口与侧边栏同源、候选四要素、自助排查出现、「采用并提单」跳转+预填+query 摘除、**常见问题为报修人那套**、**提问后清空输入框 + 「最近询问」16 条**）、师傅 6 条（含**用 CDP Network 域证明一次 `/assistant/suggest` 都没发**、**常见问题换成师傅那套且不含报修人专属题**）、管理员 3 条（含常见问题为调度/平台那套）、`worker02` 3 条（**并集 18 条 + 两套专属题同时存在 + 去重**）、390 窄档 3 条。
 
 **探针自身踩到的三个坑（都不是产品缺陷，已写进 `AGENTS.md` §2.2）**：① 页面上有**两个** `.path-hint`（空间在前、分类在后），`querySelector` 只会拿到空间那个；② `document.querySelector('.el-drawer')` 会命中**常驻 DOM 的通知中心抽屉**（宽度 0），必须从 `#assistant-drawer-panel` 往上 `closest`；③ 窄档抽屉宽度由全局 `responsive.css` 统一收敛为 `min(92vw, …)`（390 → 359），**不能断言 100vw**。
 
 ## 7. 明确不做（Out of Scope）
 
 1. **不做**基于历史工单的空间关联推荐（需跨模块聚合读模型；v1 纯文本匹配，`spaceId` 只回显不参与打分）。
-2. **不做**多轮对话与会话记忆（每次请求无状态，避免引入会话存储与吊销治理成本）。**注意区分**：§0.5 B 的「最近提问」是**浏览器本地的输入历史**（`localStorage`、按账号分键、点一条只是把同一句话重发一次），**不是**会话记忆——服务端仍然完全无状态，模型也看不到上一轮。
+2. **不做**多轮对话与会话记忆（每次请求无状态，避免引入会话存储与吊销治理成本）。**注意区分**：§0.5 B 的「最近询问」是**浏览器本地的输入历史**（`localStorage`、按账号分键、点一条只是把同一句话重发一次），**不是**会话记忆——服务端仍然完全无状态，模型也看不到上一轮。
 3. **不做**助手自动提单 / 自动选分类 / 自动改表单。
 4. **不做**图片识别故障（需视觉模型与新的上传通道，独立议题）。
 5. **不做**提问历史的服务端同步（跨设备/跨浏览器不可见）。提问是自由文本，放本地既省一张表也少一份"清不掉"的隐私面。

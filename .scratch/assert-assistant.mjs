@@ -56,13 +56,19 @@ async function loginAs(username) {
 }
 
 /** 注入登录态并打开指定路径（照 assert-identity-batch1 的写法） */
-async function openAs(path, auth) {
+async function openAs(path, auth, { clearAssistantHistory = false } = {}) {
   await cdp('Page.navigate', { url: `${ORIGIN}/login` });
   await sleep(1200);
   await evalJs(
     `(()=>{localStorage.setItem('access_token',${JSON.stringify(auth.accessToken)});` +
     `localStorage.setItem('refresh_token',${JSON.stringify(auth.refreshToken)});` +
-    `localStorage.setItem('user_info',${JSON.stringify(JSON.stringify(auth.userInfo))});return 1})()`
+    `localStorage.setItem('user_info',${JSON.stringify(JSON.stringify(auth.userInfo))});` +
+    // 只在最开头清一次：后面的 openAs 是「刷新后历史仍在」的用例，清了就自相矛盾
+    (clearAssistantHistory
+      ? `Object.keys(localStorage).filter(k=>k.startsWith('CAMPUS_REPAIR_ASSISTANT_HISTORY'))` +
+        `.forEach(k=>localStorage.removeItem(k));`
+      : '') +
+    `return 1})()`
   );
   await cdp('Page.navigate', { url: ORIGIN + path });
   await sleep(3500);
@@ -70,10 +76,15 @@ async function openAs(path, auth) {
     if (await evalJs(`!!document.querySelector('.nav-item')`)) break;
     await sleep(800);
   }
-  // 后台标签里 rAF 暂停，过渡会卡在起始态；量宽度/截图前必须先关掉过渡
+  // 后台标签里 rAF 暂停，Vue 的 <transition> 会卡在 enter-from —— 抽屉**永久停在
+  // translateX(100%)（屏幕外）**。此前本探针所有断言都是 DOM/文本级的（innerText、
+  // classList、宽度），所以一直没暴露；2026-09-26 加了第一条依赖**位置**的断言
+  // （hover 要算鼠标坐标）才量到 `l=1272`，而视口正好是 1272。
+  // 对策：除关过渡外，再把抽屉的 transform 钉到终态——否则 CDP 的鼠标坐标全落在屏外。
   await evalJs(
     `(()=>{const s=document.createElement('style');s.textContent='.el-drawer,.el-overlay{transition:none!important}'` +
-    `+'.assistant-bubble{transition:none!important}';document.head.appendChild(s);return 1})()`
+    `+'.assistant-bubble{transition:none!important}'` +
+    `+'.assistant-drawer{transform:none!important}';document.head.appendChild(s);return 1})()`
   );
 }
 
@@ -121,7 +132,8 @@ async function drawerSnapshot() {
       faqQuestions: [...p.querySelectorAll('.el-collapse-item__header')].map(e => e.innerText.trim()),
       hasSelfHelp: text.includes('提交前可以先试试'),
       hasHistory: !!p.querySelector('.history-title'),
-      historyItems: [...p.querySelectorAll('.history-item .history-text')].map(e => e.innerText.trim()),
+      historyTitle: p.querySelector('.history-title')?.innerText.trim() || '',
+      historyItems: [...p.querySelectorAll('.history-chip-text')].map(e => e.innerText.trim()),
       drawerWidth: Math.round(w)
     };
   })()`);
@@ -151,7 +163,10 @@ async function waitForCandidateCard() {
 // ===========================================================================
 const student = await loginAs('student02');
 console.log(`\n[student02] roleCodes=${student.userInfo.roleCodes.join(',')}`);
-await openAs('/', student);
+// **从干净的历史开始**：上一次运行、或人工在浏览器里点过的记录都会污染
+// 「未提问时不显示历史」「单条删除后只剩一条」这类精确断言（2026-09-26 实测踩到——
+// 历史里多了人工测试留下的「吊扇坏了」，三条断言连带失败）。
+await openAs('/', student, { clearAssistantHistory: true });
 
 let bubble = await bubbleSnapshot();
 check('报修人页面存在助手气泡', bubble.exists === true, JSON.stringify(bubble));
@@ -171,7 +186,7 @@ check('报修人抽屉含「常见问题」且为报修人那套（10 条 = 通�
   !drawer.faqQuestions.includes('自动派单什么时候会失败？'),
   `faqCount=${drawer?.faqCount} 首条=${drawer?.faqQuestions?.[0]}`);
 check('未提问时不显示自助排查区', drawer?.hasSelfHelp === false);
-check('未提问且无历史时不显示「最近提问」', drawer?.hasHistory === false);
+check('未提问且无历史时不显示「最近询问」', drawer?.hasHistory === false);
 check('快捷入口与侧边栏导航同源',
   JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...navLabels].sort()),
   `快捷入口=${JSON.stringify(drawer.quick)} 侧边栏=${JSON.stringify(navLabels)}`);
@@ -209,19 +224,39 @@ const afterAsk = await evalJs(
   `document.querySelector('#assistant-drawer-panel textarea')?.value ?? null`);
 check('提问后输入框已清空（不再留着刚问过的问题）',
   afterAsk === '', JSON.stringify(afterAsk));
-check('提问进入「最近提问」且排在最前',
+check('提问进入「最近询问」且排在最前',
   drawer?.hasHistory === true && drawer?.historyItems[0] === QUESTION,
   JSON.stringify(drawer?.historyItems));
+check('区块标题的口径是「最近询问」', drawer?.historyTitle === '最近询问', drawer?.historyTitle);
+
+// 形态：换行 chip 云，不是整行列表（对齐设计稿）
+const chipStyle = await evalJs(`(() => {
+  const list = document.querySelector('#assistant-drawer-panel .history-list');
+  const chip = list?.querySelector('.history-chip');
+  if (!list || !chip) return null;
+  const lcs = getComputedStyle(list);
+  return {
+    display: lcs.display,
+    flexWrap: lcs.flexWrap,
+    chipWidth: Math.round(chip.getBoundingClientRect().width),
+    listWidth: Math.round(list.getBoundingClientRect().width),
+    borderRadius: getComputedStyle(chip).borderRadius
+  };
+})()`);
+check('历史是「换行 chip」而不是整行条（flex-wrap + 胶囊比容器窄）',
+  chipStyle?.display === 'flex' && chipStyle?.flexWrap === 'wrap' &&
+  chipStyle.chipWidth < chipStyle.listWidth && parseFloat(chipStyle.borderRadius) >= 4,
+  JSON.stringify(chipStyle));
 
 const historyLabel = await evalJs(
-  `document.querySelector('#assistant-drawer-panel .history-item')?.getAttribute('title') || ''`);
+  `document.querySelector('#assistant-drawer-panel .history-chip')?.getAttribute('title') || ''`);
 check('历史条目的 title 说明「点它 = 再次判断」', historyLabel.startsWith('再次判断'), historyLabel);
 
 // 点历史条目 = 直接重问（不是填回输入框再让用户点一次）。
 // 「到底有没有重问」只能靠网络域取证——候选卡片本来就在，看 DOM 是看不出来的。
 const suggestCount = () => assistantCalls.filter((u) => u === '/assistant/suggest').length;
 const beforeReuse = suggestCount();
-await evalJs(`(() => { document.querySelector('#assistant-drawer-panel .history-item')?.click(); return 1; })()`);
+await evalJs(`(() => { document.querySelector('#assistant-drawer-panel .history-chip')?.click(); return 1; })()`);
 for (let i = 0; i < 30; i++) {
   if (suggestCount() > beforeReuse) break;
   await sleep(300);
@@ -277,6 +312,79 @@ const historyKey = await evalJs(`(() => {
 })()`);
 check('历史按账号分键（键名带 userId，换账号看不到别人的提问）',
   /^CAMPUS_REPAIR_ASSISTANT_HISTORY_\d+$/.test(historyKey || ''), String(historyKey));
+
+// ---------------------------------------------------------------------------
+// 1.7) 单条删除：× 只删那一条（悬停才露出）
+// ---------------------------------------------------------------------------
+const SECOND = '宿舍网线插着但是上不了网';
+await evalJs(`(() => {
+  const ta = document.querySelector('#assistant-drawer-panel textarea');
+  ta.value = ${JSON.stringify(SECOND)};
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  return 1;
+})()`);
+await evalJs(`(() => {
+  const p = document.querySelector('#assistant-drawer-panel');
+  [...p.querySelectorAll('button')].find(b => b.innerText.includes('帮我判断'))?.click();
+  return 1;
+})()`);
+for (let i = 0; i < 30; i++) {
+  drawer = await drawerSnapshot();
+  if (drawer?.historyItems.length === 2) break;
+  await sleep(300);
+}
+check('再问一条后历史恰好 2 条、新的在前、旧的没被顶掉',
+  drawer?.historyItems.length === 2 &&
+  drawer?.historyItems[0] === SECOND && drawer?.historyItems[1] === QUESTION,
+  JSON.stringify(drawer?.historyItems));
+
+// 「悬停才露出徽标」必须用 CDP 真实鼠标移动取证——页面内合成事件不触发 :hover。
+// 前提是抽屉真的在视口里（见 openAs 里为什么要把 transform 钉到终态）。
+const chipBox = await evalJs(`(() => {
+  const c = document.querySelector('#assistant-drawer-panel .history-chip');
+  if (!c) return null;
+  const r = c.getBoundingClientRect();
+  const d = c.closest('.el-drawer')?.getBoundingClientRect();
+  return {
+    x: Math.round(r.left + r.width / 2),
+    y: Math.round(r.top + r.height / 2),
+    drawerLeft: d ? Math.round(d.left) : null,
+    innerWidth: window.innerWidth
+  };
+})()`);
+check('抽屉在视口内（否则下面用 CDP 鼠标坐标的断言是在量屏外）',
+  chipBox !== null && chipBox.drawerLeft >= 0 && chipBox.x < chipBox.innerWidth,
+  JSON.stringify(chipBox));
+const removeOpacity = () => evalJs(
+  `getComputedStyle(document.querySelector('#assistant-drawer-panel .history-chip-remove')).opacity`);
+const hoveredChips = () => evalJs(
+  `document.querySelectorAll('#assistant-drawer-panel .history-chip-wrap:hover').length`);
+const idleOpacity = await removeOpacity();
+await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: chipBox?.x ?? 0, y: chipBox?.y ?? 0 });
+let hoverOpacity = idleOpacity;
+for (let i = 0; i < 20; i++) {
+  hoverOpacity = await removeOpacity();
+  if (hoverOpacity === '1') break;
+  await sleep(200);
+}
+check('删除徽标默认藏着、鼠标悬停该条才露出',
+  idleOpacity === '0' && hoverOpacity === '1',
+  `idle=${idleOpacity} hover=${hoverOpacity} box=${JSON.stringify(chipBox)} :hover命中=${await hoveredChips()}`);
+
+// 点掉 QUESTION 那一条 —— 只该少这一条
+await evalJs(`(() => {
+  const w = [...document.querySelectorAll('#assistant-drawer-panel .history-chip-wrap')]
+    .find(el => el.querySelector('.history-chip-text')?.innerText.trim() === ${JSON.stringify(QUESTION)});
+  w?.querySelector('.history-chip-remove')?.click();
+  return 1;
+})()`);
+await sleep(400);
+drawer = await drawerSnapshot();
+const afterRemove = await evalJs(`localStorage.getItem(${JSON.stringify(historyKey)})`);
+check('单条删除只删那一条，其余保留并落盘',
+  JSON.stringify(drawer?.historyItems) === JSON.stringify([SECOND]) &&
+  (afterRemove || '').includes(SECOND) && !(afterRemove || '').includes(QUESTION),
+  `items=${JSON.stringify(drawer?.historyItems)} storage=${afterRemove}`);
 
 // 清空——顺带让本探针幂等：跑完不留历史，同一实例上重跑不会累加
 await evalJs(`(() => {
