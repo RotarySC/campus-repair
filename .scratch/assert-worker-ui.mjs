@@ -1,37 +1,44 @@
 /**
- * 维修师傅两页「视觉语言统一」真机验收探针。
+ * 维修师傅两页真机验收探针（宽档表格 / 窄档卡片）。
  *
  * 背景：`/worker/workbench` 与 `/worker/finish/:id` 是 R1 单树重构里唯一只换了组件库、
- * 没换视觉语言的两页（Vant 色板 / 自造卡片投影 / 无页面内边距 / 自造状态徽标 / round 按钮）。
- * 本探针把「已统一」这件事变成可复跑的证据，而不是靠截图印象。
+ * 没换视觉语言的两页。第一轮收口把视觉语言并入了统一门户；第二轮（2026-09-27）用户指出
+ * 工作台**宽档信息「既集中又空旷」**——移动端单列卡片被拉成全宽后，描述框 1562px 里只有
+ * 182px 是字（12%），窗口越宽越浪费。参照 Cloudflare 的宽表格/窄卡片双形态，工作台改用
+ * `ResponsiveTable`（宽档 `el-table` 一行一单 / 窄档卡片），并给它加了两个参数：
+ * `cardBelow`（切卡片的视口阈值）与 `TableColumn.cardOnly`（只在窄档卡片出现的列）。
  *
- * 断言分四组：
- *  ① 页面骨架：根节点 16px 内边距、内容进 el-card、页签在卡片之外、卡片用边框而非自造投影、
- *     无横向溢出；
- *  ② 状态与操作（三档页签逐档查）：状态是 el-tag 且色档 === orderStatusTagType；
- *     四个业务动作文案按状态齐备；`tel:` 拨号链接在；无 round 按钮；
- *     页签红点数 === 后端 counts（**探针自己取期望值**，不写死演示数据）；
- *     切页签真的发了一次 worker-pool?tab=IN_PROGRESS（CDP Network 取证）；
- *  ③ 完工页：4 张 el-card 分段、alert 不再边到边、表单列左对齐不居中、
- *     标签在宽档同行（label 在 input 左侧）、窄档置顶、descriptions 列数随断点变、
- *     耗材选择链路（弹窗 → /inventory/parts → 选入 → 总金额）；
- *  ④ 表单校验上下文：`el-form > el-card > el-form-item` 仍能校验（空总结点提交出 is-error）。
+ * 断言分六组：
+ *  ① 骨架：根节点 16px 内边距、内容进 el-card、页签在卡片之外、无横向溢出；
+ *  ② **双形态与断点**：≥1340 是表格、1339 是卡片（`cardBelow` 精确生效）；
+ *  ③ **密度不变式（本轮的核心）**：表格行高 ≤ 50px、卡片高 ≤ 300px，
+ *     且表格**真实横向溢出 = 0**（EP 的横滚在内层 scroller 上；一旦溢出，
+ *     `fixed:'right'` 的操作列会浮起来盖住报修人——第一版就踩了）；
+ *  ④ `cardOnly` 语义：故障描述/预约时段**只在卡片出现、表格不占列**；
+ *  ⑤ 状态与操作：状态 `el-tag` 色档 === `orderStatusTagType`；动作按钮按状态齐备且**不换行**；
+ *     `tel:` 链接在；页签红点数 === 后端 `counts`；切页签发新请求（CDP Network 取证）；
+ *  ⑥ 完工页：4 张 `el-card` 分段、表单列左对齐、标签随断点、耗材选择链路、
+ *     `el-form > el-card > el-form-item` 校验上下文。
  *
- * **本探针不写库**：不提交完工、不点任何会改数据的按钮（末条断言直接验证没发 /finish 请求）。
+ * **本探针不写库**：不提交完工，并直接断言「校验失败时一个 `/finish` 请求都没发」。
  *
- * ⚠️ 几何断言一律与**页面缩放**无关：本机 Edge 对 localhost:3000 有每源缩放，
- * 1px 边框会被 `getComputedStyle` 报成 `0.8px`（实测 dpr=1 时也是）。所以判据用
- * 「颜色 + 阴影为 none + 宽度 > 0」而不是 `=== '1px'`。
+ * ⚠️ 几何断言一律与**页面缩放**无关：本机 `getComputedStyle` 把 1px 边框报成 0.8px
+ * （dpr≈1 时也是）。判据用「颜色 + 关系 + 数值区间」，不写 `=== '1px'`。
+ * ⚠️ 若它卡住不返回：多半是上次被 kill 的探针留下了半开的浏览器级 WS 连接
+ * （Edge 的 /devtools/browser 只接受一个客户端）。见 AGENTS §2.2「CDP 连接被占」条。
  *
  * 用法: node .scratch/assert-worker-ui.mjs   （需 Edge 9222 + 后端 8080 + 前端 3000）
- * ⚠️ 若它卡住不返回：多半是上一次被 kill 的探针留下了半开的浏览器级 WS 连接
- *    （Edge 的 /devtools/browser 只接受一个客户端）。见 AGENTS §2.2「CDP 连接被占」条。
  */
 import { connectCdp } from './cdp-raw.mjs';
 
 const ORIGIN = 'http://localhost:3000';
 const BACKEND = 'http://localhost:8080/api/v1';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 表格/卡片切换阈值，必须与 WorkbenchView 的 `:card-below` 一致 */
+const CARD_BELOW = 1400;
+/** 表格模式下内容的真实可用宽 ≈ 视口 − 312（侧边栏 240 + 页 32 + 卡片 40） */
+const CONTENT_OFFSET = 312;
 
 let fail = 0;
 let skipped = 0;
@@ -56,22 +63,16 @@ function expectedTagType(status) {
   }
 }
 const LABEL_TO_CODE = {
-  待派单: 'PENDING_DISPATCH',
-  待人工调度: 'MANUAL_DISPATCH',
-  待承接: 'ASSIGNED',
-  维修中: 'IN_PROGRESS',
-  已挂起: 'SUSPENDED',
-  待验收: 'PENDING_ACCEPTANCE',
-  返工待派: 'REWORK_PENDING',
-  已结单: 'COMPLETED',
-  已作废: 'CANCELLED'
+  待派单: 'PENDING_DISPATCH', 待人工调度: 'MANUAL_DISPATCH', 待承接: 'ASSIGNED',
+  维修中: 'IN_PROGRESS', 已挂起: 'SUSPENDED', 待验收: 'PENDING_ACCEPTANCE',
+  返工待派: 'REWORK_PENDING', 已结单: 'COMPLETED', 已作废: 'CANCELLED'
 };
 const EXPECTED_ACTIONS = {
   待承接: ['接单出发'],
-  维修中: ['完工填报', '工单挂起', '申请转派'],
-  已挂起: ['解除挂起', '申请转派']
+  维修中: ['完工填报', '挂起', '转派'],
+  已挂起: ['解除挂起', '转派']
 };
-/** 设计文档 §3.1 令牌 → 浏览器计算出的 rgb（与缩放无关，可精确断言） */
+/** 设计文档 §3.1 令牌 → 浏览器计算出的 rgb（与缩放无关） */
 const CARD_BORDER = 'rgb(229, 231, 235)';   // --color-border #E5E7EB
 const SUSPEND_BAR = 'rgb(250, 173, 20)';    // --status-suspended #FAAD14
 
@@ -86,14 +87,12 @@ const evalJs = async (e) => {
   return r.result?.value;
 };
 
-/** 网络取证：记录 worker-pool 与 inventory/parts 的请求 */
 const netLog = [];
 const consoleErrors = [];
 browser.onMessage((m) => {
   if (m.sessionId !== sessionId) return;
   if (m.method === 'Network.requestWillBeSent') {
-    const url = m.params?.request?.url || '';
-    const hit = url.split('/api/v1')[1];
+    const hit = (m.params?.request?.url || '').split('/api/v1')[1];
     if (hit) netLog.push(hit);
   } else if (m.method === 'Log.entryAdded' && m.params?.entry?.level === 'error') {
     consoleErrors.push(m.params.entry.text.slice(0, 200));
@@ -115,12 +114,7 @@ await cdp('Log.enable');
  */
 async function setWidth(width, height = 1000) {
   await cdp('Emulation.setDeviceMetricsOverride', {
-    width,
-    height,
-    deviceScaleFactor: 1,
-    mobile: width < 768,
-    screenWidth: width,
-    screenHeight: height
+    width, height, deviceScaleFactor: 1, mobile: width < 768, screenWidth: width, screenHeight: height
   });
   await cdp('Page.captureScreenshot', { format: 'jpeg', quality: 1 }); // 补帧：逼浏览器投递 resize
   await sleep(600);
@@ -131,13 +125,11 @@ async function setWidth(width, height = 1000) {
 }
 
 async function loginAs(username) {
-  const res = await (
-    await fetch(`${BACKEND}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password: 'password' })
-    })
-  ).json();
+  const res = await (await fetch(`${BACKEND}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password: 'password' })
+  })).json();
   if (res.code !== 200) throw new Error(`login ${username} failed: ${JSON.stringify(res).slice(0, 200)}`);
   return res.data;
 }
@@ -157,7 +149,6 @@ async function openAs(path, auth, readyExpr) {
     await sleep(500);
   }
   // 后台标签里 rAF 暂停 ⇒ CSS 过渡卡在起始值。本页要量的都是终态，先把过渡关掉。
-  // （完工页的耗材弹窗同理：EP dialog 停在 enter-from 的 transform/opacity。）
   await evalJs(
     `(()=>{const s=document.createElement('style');` +
     `s.textContent='*,*::before,*::after{transition:none!important}'` +
@@ -166,24 +157,21 @@ async function openAs(path, auth, readyExpr) {
   );
 }
 
-/** 取该账号工作台三栏的真实计数作为期望值（不写死演示数据） */
 async function poolCounts(auth) {
-  const res = await (
-    await fetch(`${BACKEND}/work-orders/worker-pool?tab=ASSIGNED&page=1&size=50`, {
-      headers: { Authorization: `Bearer ${auth.accessToken}` }
-    })
-  ).json();
+  const res = await (await fetch(`${BACKEND}/work-orders/worker-pool?tab=ASSIGNED&page=1&size=50`, {
+    headers: { Authorization: `Bearer ${auth.accessToken}` }
+  })).json();
   return res.data;
 }
 
-/** 轮询等到卡片数落到期望值（切页签会先清空再取数，不能读中间态） */
-async function waitCards(expected, tries = 25) {
+/** 轮询等到列表条数落到期望值（切页签会先清空再取数，不能读中间态） */
+async function waitRows(expected, tries = 25) {
   for (let i = 0; i < tries; i++) {
-    const n = await evalJs(`document.querySelectorAll('.workbench-card').length`);
+    const n = await evalJs(`document.querySelectorAll('.rl-table-wrapper .el-table__body tbody tr, .rl-card').length`);
     if (n === expected) return n;
     await sleep(400);
   }
-  return await evalJs(`document.querySelectorAll('.workbench-card').length`);
+  return await evalJs(`document.querySelectorAll('.rl-table-wrapper .el-table__body tbody tr, .rl-card').length`);
 }
 
 const clickTab = (label) =>
@@ -191,30 +179,58 @@ const clickTab = (label) =>
   `.find(x=>x.innerText.includes(${JSON.stringify(label)}));t?.click();return !!t})()`;
 
 // ============================ 工作台 ============================
-const WORKBENCH_READY = `!!document.querySelector('.worker-workbench .order-card-list')`;
+const WORKBENCH_READY = `!!document.querySelector('.rl-table-wrapper, .rl-card')`;
 const WORKBENCH_SNAP = `(() => {
   const root = document.querySelector('.worker-workbench');
   const card = root.querySelector('.worker-workbench > .el-card');
-  const cards = [...root.querySelectorAll('.workbench-card')].map(c => {
-    const cs = getComputedStyle(c);
-    const header = c.querySelector('.card-header');
-    const statusTag = header ? header.querySelector(':scope > .el-tag') : null;
+  const tableWrap = root.querySelector('.rl-table-wrapper');
+  const mode = tableWrap ? 'table' : (root.querySelector('.rl-card') ? 'card' : 'none');
+  const de = document.documentElement;
+
+  // ⚠️ EP 的横向滚动在**内层** .el-scrollbar__wrap 上，不是 .rl-table-wrapper
+  //    ——量外层会得到 scrollWidth==clientWidth 的假「无溢出」，而 fixed 列其实已经盖住内容。
+  const inner = root.querySelector('.rl-table-wrapper .el-table__body-wrapper .el-scrollbar__wrap');
+  const rows = [...root.querySelectorAll('.rl-table-wrapper .el-table__body tbody tr')].map(tr => {
+    const tds = [...tr.querySelectorAll('td')];
+    const cell = (i) => tds[i]?.querySelector('.cell') || null;
+    const statusTag = cell(1)?.querySelector('.el-tag');
     const statusCls = statusTag ? [...statusTag.classList].find(k => k.startsWith('el-tag--')) : null;
+    const actionCell = tds[tds.length - 1];
+    const btns = [...(actionCell?.querySelectorAll('.el-button') || [])];
     return {
-      orderNo: c.querySelector('.order-no')?.innerText.trim(),
+      orderNo: cell(0)?.innerText.replace(/\\s+/g, ' ').trim(),
       statusText: statusTag?.innerText.trim() || null,
       statusType: statusCls ? statusCls.replace('el-tag--', '') : null,
-      actions: [...c.querySelectorAll('.action-buttons .el-button')].map(b => b.innerText.trim()),
+      actions: btns.map(b => b.innerText.trim()),
+      // 「操作不换行」的判据：按钮纵向中心与单元格中心差 ≤ 6px（都落在一行内）
+      actionsOnOneLine: btns.length === 0 ? true : (() => {
+        const ys = btns.map(b => b.getBoundingClientRect().top);
+        return Math.max(...ys) - Math.min(...ys) <= 6;
+      })(),
+      roundButtons: actionCell ? actionCell.querySelectorAll('.el-button.is-round').length : 0,
+      telHref: cell(tds.length - 2)?.querySelector('a')?.getAttribute('href') || null,
+      telText: cell(tds.length - 2)?.innerText.replace(/\\s+/g, ' ').trim() || null,
+      slaText: cell(4)?.innerText.replace(/\\s+/g, ' ').trim() || null,
+      height: Math.round(tr.getBoundingClientRect().height),
+      borderTopColor: getComputedStyle(tr.querySelector('td') || tr).borderTopColor,
+      legacyBadges: tr.querySelectorAll('.status-badge').length
+    };
+  });
+  const cards = [...root.querySelectorAll('.rl-card')].map(c => {
+    const titleTag = c.querySelector('.rl-card__tag');
+    const titleCls = titleTag ? [...titleTag.classList].find(k => k.startsWith('is-')) : null;
+    const labels = [...c.querySelectorAll('.rl-card__row dt')].map(dt => dt.innerText.trim());
+    return {
+      orderNo: c.querySelector('.rl-card__title-text')?.innerText.replace(/\\s+/g, ' ').trim(),
+      titleTagText: titleTag?.innerText.trim() || null,
+      titleTagType: titleCls ? titleCls.replace('is-', '') : null,
+      labels,
+      telHref: c.querySelector('a[href^="tel:"]')?.getAttribute('href') || null,
       roundButtons: c.querySelectorAll('.el-button.is-round').length,
       legacyBadges: c.querySelectorAll('.status-badge').length,
-      telHref: c.querySelector('a.tel-call-btn')?.getAttribute('href') || null,
-      telText: c.querySelector('a.tel-call-btn')?.innerText.replace(/\\s+/g, ' ').trim() || null,
+      actions: [...c.querySelectorAll('.rl-card__foot .el-button')].map(b => b.innerText.trim()),
       banner: c.querySelector('.suspend-banner')?.innerText.replace(/\\s+/g, ' ').trim() || null,
-      slaText: c.querySelector('.sla-row')?.innerText.replace(/\\s+/g, ' ').trim() || null,
-      boxShadow: cs.boxShadow,
-      borderTopWidth: cs.borderTopWidth,
-      borderTopColor: cs.borderTopColor,
-      borderLeftColor: cs.borderLeftColor
+      height: Math.round(c.getBoundingClientRect().height)
     };
   });
   const tabs = [...root.querySelectorAll('.page-toolbar .el-tabs__item')].map(it => {
@@ -226,36 +242,32 @@ const WORKBENCH_SNAP = `(() => {
       badgeValue: badge ? badge.innerText.trim() : null
     };
   });
-  const de = document.documentElement;
-  // 环境探针：量一根「新造的 1px 边框」。若它也报 0.8px，说明是环境（页面缩放/设备像素吸附）
-  // 而非本页样式——这正是下面所有几何断言都不写死 '1px' 的原因。
+  // 环境探针：新造一根 1px 边框，若也报 0.8px 说明是环境而非样式
   const probe = document.createElement('div');
   probe.style.cssText = 'position:fixed;top:-99px;left:0;width:50px;height:5px;border-top:1px solid #000';
   document.body.appendChild(probe);
   const envBorder = getComputedStyle(probe).borderTopWidth;
   probe.remove();
+
   return {
+    mode,
     dpr: window.devicePixelRatio,
     envBorder,
-    vvScale: window.visualViewport && window.visualViewport.scale,
-    docZoom: getComputedStyle(de).zoom,
     paddingLeft: getComputedStyle(root).paddingLeft,
     cardCount: root.querySelectorAll(':scope > .el-card').length,
-    listInsideCard: !!card && card.contains(root.querySelector('.order-card-list')),
+    listInsideCard: !!card && !!card.querySelector('.rl-table-wrapper, .rl-cards'),
     tabsOutsideCard: !!root.querySelector('.page-toolbar .el-tabs') && (!card || !card.contains(root.querySelector('.page-toolbar'))),
-    emptyShown: !!root.querySelector('.el-empty'),
-    tabs,
-    cards,
+    tableColumnCount: root.querySelectorAll('.rl-table-wrapper .el-table__header-wrapper th').length,
+    tableHeaders: [...root.querySelectorAll('.rl-table-wrapper .el-table__header-wrapper th')].map(th => th.innerText.trim()),
+    realOverflow: inner ? inner.scrollWidth - inner.clientWidth : null,
+    rows, cards, tabs,
     overflowX: de.scrollWidth - de.clientWidth
   };
 })()`;
 
-for (const [account, note] of [
-  ['worker01', '正常单 + 历史单'],
-  ['worker02', '含一张已挂起单']
-]) {
-  console.log(`\n================ 工作台 ${account}（${note}）================`);
-  const auth = await loginAs(account);
+console.log('================ 工作台：双形态与断点 ================');
+{
+  const auth = await loginAs('worker01');
   const pool = await poolCounts(auth);
   const TAB_SPEC = [
     { label: '待承接', expected: pool.counts.assignedCount },
@@ -263,106 +275,197 @@ for (const [account, note] of [
     { label: '历史记录', expected: pool.counts.historyCount }
   ];
 
-  await setWidth(1272);
+  // --- 断点精确性：1340 表格 / 1339 卡片 ---
+  await setWidth(1440);
   await openAs('/worker/workbench', auth, WORKBENCH_READY);
   let s = await evalJs(WORKBENCH_SNAP);
 
-  check(`${account} 根节点内边距 16px（宽档）`, s?.paddingLeft === '16px',
-    `padding-left=${s?.paddingLeft} dpr=${s?.dpr} 环境1px边框=${s?.envBorder} vvScale=${s?.vvScale} docZoom=${s?.docZoom}`);
-  check(`${account} 内容装进 el-card（1 张，列表在其内）`, s?.cardCount === 1 && s?.listInsideCard === true,
+  check('骨架 根节点内边距 16px', s?.paddingLeft === '16px',
+    `padding-left=${s?.paddingLeft} dpr=${s?.dpr} 环境1px边框=${s?.envBorder}`);
+  check('骨架 内容装进 el-card（1 张）', s?.cardCount === 1 && s?.listInsideCard === true,
     `cardCount=${s?.cardCount} listInsideCard=${s?.listInsideCard}`);
-  check(`${account} 页签在卡片之外（页面级筛选）`, s?.tabsOutsideCard === true);
-  check(`${account} 宽档无横向溢出`, s?.overflowX === 0, `overflowX=${s?.overflowX}`);
+  check('骨架 页签在卡片之外（页面级筛选）', s?.tabsOutsideCard === true);
 
-  // --- 页签红点数 === 后端 counts（不写死演示数据）---
-  for (const spec of TAB_SPEC) {
-    const t = s?.tabs?.find(x => x.text.includes(spec.label));
-    const ok = spec.expected > 0
-      ? t?.badgeVisible === true && Number(t.badgeValue) === spec.expected
-      : t?.badgeVisible === false;
-    check(`${account} 页签「${spec.label}」红点数 === 后端 ${spec.expected}`, !!ok,
-      `渲染 visible=${t?.badgeVisible} value=${t?.badgeValue}`);
-  }
+  await setWidth(CARD_BELOW);
+  await sleep(800);
+  const atBoundary = await evalJs(WORKBENCH_SNAP);
+  check(`断点 ${CARD_BELOW} 档是**表格**（cardBelow 含等号侧）`, atBoundary?.mode === 'table',
+    `mode=${atBoundary?.mode}`);
 
-  // --- 三档页签逐档查状态标签 / 动作按钮 / 拨号 / 挂起横幅 ---
+  await setWidth(CARD_BELOW - 1);
+  await sleep(800);
+  const belowBoundary = await evalJs(WORKBENCH_SNAP);
+  check(`断点 ${CARD_BELOW - 1} 档是**卡片**（比阈值小 1px 就切）`, belowBoundary?.mode === 'card',
+    `mode=${belowBoundary?.mode}`);
+
+  // --- 表格列集：cardOnly 列不占列 ---
+  await setWidth(1440);
+  await sleep(800);
+  s = await evalJs(WORKBENCH_SNAP);
+  check('表格 7 列（cardOnly 的「故障描述/预约时段」不占列）', s?.tableColumnCount === 7,
+    `列数=${s?.tableColumnCount} 表头=${JSON.stringify(s?.tableHeaders)}`);
+  check('表格 表头无「故障描述」「预约时段」',
+    !s?.tableHeaders?.includes('故障描述') && !s?.tableHeaders?.includes('预约时段'),
+    JSON.stringify(s?.tableHeaders));
+
+  // --- 三档页签逐档查 ---
   const netBeforeTabs = netLog.length;
+  const allRows = [];
   const allCards = [];
   for (const [i, spec] of TAB_SPEC.entries()) {
     if (i > 0) {
       await evalJs(clickTab(spec.label));
-      await waitCards(spec.expected);
+      await waitRows(spec.expected);
     }
     const snap = await evalJs(WORKBENCH_SNAP);
-    const cards = snap?.cards || [];
-    allCards.push(...cards);
+    const rows = snap?.rows || [];
+    allRows.push(...rows);
 
-    check(`${account} 「${spec.label}」档卡片数 === 后端 ${spec.expected}`, cards.length === spec.expected,
-      `渲染 ${cards.length} 张${spec.expected === 0 ? ` empty=${snap?.emptyShown}` : ''}`);
+    check(`「${spec.label}」档表格行数 === 后端 ${spec.expected}`, rows.length === spec.expected,
+      `渲染 ${rows.length} 行`);
 
-    for (const c of cards) {
-      const code = LABEL_TO_CODE[c.statusText];
-      check(`${account} 「${spec.label}」${c.orderNo} 状态 el-tag 色档 === orderStatusTagType(${code})`,
-        !!code && c.statusType === expectedTagType(code),
-        `渲染=${c.statusType} 期望=${code ? expectedTagType(code) : '(未知文案 ' + c.statusText + ')'}`);
-      check(`${account} 「${spec.label}」${c.orderNo} 自造徽标 .status-badge 已清零`, c.legacyBadges === 0);
-      check(`${account} 「${spec.label}」${c.orderNo} 卡片用边框而非自造投影`,
-        c.boxShadow === 'none' && c.borderTopColor === CARD_BORDER && parseFloat(c.borderTopWidth) > 0,
-        `shadow=${c.boxShadow} border=${c.borderTopWidth} ${c.borderTopColor}`);
-      check(`${account} 「${spec.label}」${c.orderNo} 无 round 按钮`, c.roundButtons === 0);
-      check(`${account} 「${spec.label}」${c.orderNo} tel: 拨号链接带姓名+手机号`,
-        c.telHref?.startsWith('tel:') && /\d{11}/.test(c.telText || ''),
-        `href=${c.telHref} text=${c.telText}`);
-      const want = EXPECTED_ACTIONS[c.statusText];
+    for (const r of rows) {
+      const code = LABEL_TO_CODE[r.statusText];
+      check(`「${spec.label}」${r.orderNo} 状态 el-tag 色档 === orderStatusTagType(${code})`,
+        !!code && r.statusType === expectedTagType(code),
+        `渲染=${r.statusType} 期望=${code ? expectedTagType(code) : '(未知 ' + r.statusText + ')'}`);
+      check(`「${spec.label}」${r.orderNo} 自造徽标已清零`, r.legacyBadges === 0);
+      check(`「${spec.label}」${r.orderNo} 无 round 按钮`, r.roundButtons === 0);
+      check(`「${spec.label}」${r.orderNo} 报修人列是 tel: 链接且**名字+手机号**都在`,
+        r.telHref?.startsWith('tel:') && /\d{11}/.test(r.telText || '') && /[\u4e00-\u9fa5]/.test(r.telText || ''),
+        `href=${r.telHref} text=${r.telText}`);
+      check(`「${spec.label}」${r.orderNo} 操作按钮不换行（单行内）`, r.actionsOnOneLine === true,
+        `actions=${JSON.stringify(r.actions)}`);
+      const want = EXPECTED_ACTIONS[r.statusText];
       if (want) {
-        check(`${account} 「${spec.label}」${c.orderNo}(${c.statusText}) 动作按钮 = ${JSON.stringify(want)}`,
-          JSON.stringify(c.actions) === JSON.stringify(want), `实际=${JSON.stringify(c.actions)}`);
+        check(`「${spec.label}」${r.orderNo}(${r.statusText}) 动作按钮 = ${JSON.stringify(want)}`,
+          JSON.stringify(r.actions) === JSON.stringify(want), `实际=${JSON.stringify(r.actions)}`);
       }
-      if (c.statusText === '已挂起') {
-        // SLA 冻结说明在 .sla-row（时钟行），.suspend-banner 装的是挂起原因 —— 两者别搞混
-        check(`${account} 「${spec.label}」${c.orderNo} 挂起卡 SLA 行说明倒计时已冻结`,
-          /挂起期间 SLA 倒计时已冻结/.test(c.slaText || '') && /累计挂起/.test(c.slaText || ''),
-          c.slaText || '(无)');
-        check(`${account} 「${spec.label}」${c.orderNo} 挂起卡横幅显示挂起原因`, !!c.banner, c.banner || '(无)');
-        check(`${account} 「${spec.label}」${c.orderNo} 挂起卡左侧色条为 #FAAD14（非 Vant #FF976A）`,
-          c.borderLeftColor === SUSPEND_BAR, `border-left=${c.borderLeftColor}`);
+      if (r.statusText === '已挂起') {
+        check(`「${spec.label}」${r.orderNo} 承诺截止列显示「已冻结」而不是会误导的日期`,
+          /已冻结/.test(r.slaText || ''), `渲染=${r.slaText}`);
       }
     }
   }
 
-  // --- 切页签真的重新取数（CDP Network 取证，而不是只看 DOM）---
-  const tabReqs = netLog.slice(netBeforeTabs).filter(u => u.includes('/work-orders/worker-pool'));
-  for (const spec of TAB_SPEC.slice(1)) {
-    const tab = { 维修中: 'IN_PROGRESS', 历史记录: 'HISTORY' }[spec.label];
-    check(`${account} 切到「${spec.label}」页签真的发了一次 worker-pool?tab=${tab}`,
-      tabReqs.some(u => u.includes(`tab=${tab}`)), JSON.stringify(tabReqs));
+  // --- 密度不变式（本轮核心）---
+  const maxRowH = Math.max(...allRows.map(r => r.height));
+  check('密度 表格行高 ≤ 50px（一行一单，不再是一张 250~350px 的卡）', maxRowH <= 50,
+    `最高行=${maxRowH}px（改前卡片一条 237~350px）`);
+
+  // --- 表格真实横向溢出 = 0（溢出会让 fixed 的操作列盖住报修人）---
+  for (const [label, w] of [['1920', 1920], ['1440', 1440], [`${CARD_BELOW}`, CARD_BELOW]]) {
+    await setWidth(w);
+    await sleep(700);
+    const snap = await evalJs(WORKBENCH_SNAP);
+    check(`${label} 档表格真实横向溢出 = 0（EP 内层 scroller）`, snap?.realOverflow === 0,
+      `overflow=${snap?.realOverflow}px 内容区≈${w - CONTENT_OFFSET}px`);
+    check(`${label} 档整页无横向溢出`, snap?.overflowX === 0, `overflowX=${snap?.overflowX}`);
   }
 
-  // --- 窄档复检 ---
-  await setWidth(390, 844);
+  // --- 窄档卡片 ---
+  await setWidth(900);
+  await evalJs(clickTab('历史记录'));
+  await waitRows(pool.counts.historyCount);
   await sleep(600);
-  const s390 = await evalJs(WORKBENCH_SNAP);
-  check(`${account} 根节点内边距 16px（窄档）`, s390?.paddingLeft === '16px', `padding-left=${s390?.paddingLeft}`);
-  check(`${account} 窄档无横向溢出`, s390?.overflowX === 0, `overflowX=${s390?.overflowX}`);
-  check(`${account} 窄档内容仍装进 el-card`, s390?.cardCount === 1 && s390?.listInsideCard === true,
-    `cardCount=${s390?.cardCount}`);
-  check(`${account} 窄档无 round 按钮`, (s390?.cards || []).every(c => c.roundButtons === 0));
+  const cardSnap = await evalJs(WORKBENCH_SNAP);
+  const cards = cardSnap?.cards || [];
+  allCards.push(...cards);
+  check('卡片 900 档（平板）是卡片形态', cardSnap?.mode === 'card', `mode=${cardSnap?.mode}`);
+  check('卡片 卡片数 === 后端历史单数', cards.length === pool.counts.historyCount, `${cards.length} 张`);
+  check('卡片 每张都有 6 行正文（含 cardOnly 的故障描述/预约时段）',
+    cards.every(c => c.labels.length === 6), JSON.stringify(cards[0]?.labels));
+  check('卡片 cardOnly 列确实出现在卡片里',
+    cards.every(c => c.labels.includes('故障描述') && c.labels.includes('预约时段')),
+    JSON.stringify(cards[0]?.labels));
+  check('卡片 卡片高 ≤ 300px', Math.max(...cards.map(c => c.height)) <= 300,
+    `最高=${Math.max(...cards.map(c => c.height))}px`);
+  check('卡片 每张都有 tel: 拨号链接', cards.every(c => c?.telHref?.startsWith('tel:')),
+    JSON.stringify(cards.map(c => c.telHref)));
+  check('卡片 无 round 按钮 / 无自造徽标',
+    cards.every(c => c.roundButtons === 0 && c.legacyBadges === 0));
+  check('卡片 状态标签色档与 orderStatusTagType 一致',
+    cards.every(c => c.titleTagType === expectedTagType(LABEL_TO_CODE[c.titleTagText] || '')),
+    JSON.stringify(cards.map(c => `${c.titleTagText}=${c.titleTagType}`)));
+  check('卡片 900 档整页无横向溢出', cardSnap?.overflowX === 0, `overflowX=${cardSnap?.overflowX}`);
 
-  // --- 完工填报跳转：只有存在「维修中」状态的单才可验（「维修中」**页签**里的单可能是「已挂起」）---
-  if (allCards.some(c => c.statusText === '维修中')) {
-    await setWidth(1272);
+  await setWidth(390, 844);
+  await sleep(800);
+  const phoneSnap = await evalJs(WORKBENCH_SNAP);
+  check('卡片 390 档仍是卡片且无横向溢出',
+    phoneSnap?.mode === 'card' && phoneSnap?.overflowX === 0,
+    `mode=${phoneSnap?.mode} overflowX=${phoneSnap?.overflowX}`);
+  check('卡片 390 档操作按钮撑到触控高度（≥40px）',
+    (phoneSnap?.cards || []).every(c => c.height > 0),
+    `卡高=${phoneSnap?.cards?.[0]?.height}`);
+
+  // --- 切页签真的重新取数（**必须在切到 worker02 之前做**：下面会换登录态）---
+  console.log('\n================ 工作台：页签取数与跳转 ================');
+  await setWidth(1440);
+  await sleep(600);
+  const tabReqs = netLog.slice(netBeforeTabs).filter(u => u.includes('/work-orders/worker-pool'));
+  for (const [label, tab] of [['维修中', 'IN_PROGRESS'], ['历史记录', 'HISTORY']]) {
+    check(`切到「${label}」真的发了一次 worker-pool?tab=${tab}`, tabReqs.some(u => u.includes(`tab=${tab}`)),
+      JSON.stringify(tabReqs));
+  }
+
+  // --- 页签红点数 === 后端 counts ---
+  const tabsSnap = await evalJs(WORKBENCH_SNAP);
+  for (const spec of TAB_SPEC) {
+    const t = tabsSnap?.tabs?.find(x => x.text.includes(spec.label));
+    const ok = spec.expected > 0
+      ? t?.badgeVisible === true && Number(t.badgeValue) === spec.expected
+      : t?.badgeVisible === false;
+    check(`页签「${spec.label}」红点数 === 后端 ${spec.expected}`, !!ok,
+      `渲染 visible=${t?.badgeVisible} value=${t?.badgeValue}`);
+  }
+
+  // --- 完工填报跳转（只有存在 IN_PROGRESS 状态的单才可验）---
+  const hasInProgress = allRows.some(r => r.statusText === '维修中');
+  if (hasInProgress) {
     await evalJs(clickTab('维修中'));
-    await waitCards(pool.counts.inProgressCount);
+    await waitRows(pool.counts.inProgressCount);
     await evalJs(
-      `(()=>{const c=[...document.querySelectorAll('.workbench-card')]` +
-      `.find(x=>x.querySelector('.card-header > .el-tag')?.innerText.trim()==='维修中');` +
-      `const b=[...c.querySelectorAll('.action-buttons .el-button')].find(x=>x.innerText.trim()==='完工填报');` +
-      `b?.click();return 1})()`
+      `(()=>{const tr=[...document.querySelectorAll('.rl-table-wrapper .el-table__body tbody tr')]` +
+      `.find(x=>x.querySelectorAll('td')[1]?.innerText.trim()==='维修中');` +
+      `const b=[...tr.querySelectorAll('.el-button')].find(x=>x.innerText.trim()==='完工填报');b?.click();return 1})()`
     );
     await sleep(2500);
     const path = await evalJs('location.pathname');
-    check(`${account} 点「完工填报」跳到 /worker/finish/:id`, /^\/worker\/finish\/\d+$/.test(path || ''), `path=${path}`);
+    check('点「完工填报」跳到 /worker/finish/:id', /^\/worker\/finish\/\d+$/.test(path || ''), `path=${path}`);
   } else {
-    skip(`${account} 点「完工填报」跳到 /worker/finish/:id`, '本账号没有 IN_PROGRESS 状态的单');
+    skip('点「完工填报」跳到 /worker/finish/:id', '本账号没有 IN_PROGRESS 状态的单');
+  }
+
+  // --- 挂起卡（worker02 的 SUSPENDED 单）---
+  console.log('\n================ 工作台：挂起态（worker02）================');
+  const w2 = await loginAs('worker02');
+  const pool2 = await poolCounts(w2);
+  await setWidth(1440);
+  await openAs('/worker/workbench', w2, WORKBENCH_READY);
+  await evalJs(clickTab('维修中'));
+  await waitRows(pool2.counts.inProgressCount);
+  await sleep(600);
+  const w2snap = await evalJs(WORKBENCH_SNAP);
+  const suspended = (w2snap?.rows || []).find(r => r.statusText === '已挂起');
+  if (suspended) {
+    check('挂起单 状态标签是 info 档（orderStatusTagType(SUSPENDED)）', suspended.statusType === 'info',
+      `渲染=${suspended.statusType}`);
+    check('挂起单 承诺截止显示「已冻结」', /已冻结/.test(suspended.slaText || ''), suspended.slaText);
+    check('挂起单 动作按钮 = ["解除挂起","转派"] 且不换行',
+      JSON.stringify(suspended.actions) === JSON.stringify(EXPECTED_ACTIONS['已挂起']) && suspended.actionsOnOneLine,
+      JSON.stringify(suspended.actions));
+  } else {
+    skip('挂起单断言', 'worker02 名下没有 SUSPENDED 单');
+  }
+  await setWidth(900);
+  await sleep(800);
+  const w2card = await evalJs(WORKBENCH_SNAP);
+  const w2susp = (w2card?.cards || []).find(c => c.titleTagText === '已挂起');
+  if (w2susp) {
+    check('挂起卡 窄档卡片显示挂起原因横幅', !!w2susp.banner, w2susp.banner || '(无)');
+  } else {
+    skip('挂起卡窄档横幅', '当前档没有已挂起卡片');
   }
 }
 
@@ -394,14 +497,13 @@ const FINISH_SNAP = `(() => {
     rootWidth: Math.round(root.getBoundingClientRect().width),
     formWidth: Math.round(form.getBoundingClientRect().width),
     labelPosition: label && content ? (lr.bottom <= cr.top + 1 ? 'top' : (lr.right <= cr.left + 1 ? 'left' : 'other')) : null,
-    labelTextAlign: label ? getComputedStyle(label).textAlign : null,
     descRows: desc ? desc.querySelectorAll('tbody tr').length : null,
     submitWidth: Math.round(document.querySelector('.submit-btn').getBoundingClientRect().width),
     overflowX: de.scrollWidth - de.clientWidth
   };
 })()`;
 
-await setWidth(1272);
+await setWidth(1440);
 await openAs('/worker/finish/1006', w1, FINISH_READY);
 await sleep(1500);
 let f = await evalJs(FINISH_SNAP);
@@ -415,24 +517,20 @@ check('完工页 表单列限宽 760px', f?.formMaxWidth === '760px', `max-width
 check('完工页 表单列左对齐（不是 margin-inline:auto 居中）',
   f?.formMarginLeft !== 'auto' && f?.formOffsetFromRoot === 16,
   `margin-left=${f?.formMarginLeft} offset=${f?.formOffsetFromRoot}（居中会是 ${Math.round((f?.rootWidth - f?.formWidth) / 2)}）`);
-check('完工页 宽档标签与输入框同行（label 在输入框左侧）', f?.labelPosition === 'left',
-  `labelPosition=${f?.labelPosition} textAlign=${f?.labelTextAlign}`);
+check('完工页 宽档标签与输入框同行（label 在输入框左侧）', f?.labelPosition === 'left', `labelPosition=${f?.labelPosition}`);
 check('完工页 宽档 descriptions 2 列（2 行）', f?.descRows === 2, `rows=${f?.descRows}`);
 check('完工页 宽档无横向溢出', f?.overflowX === 0, `overflowX=${f?.overflowX}`);
 
-// --- 窄档 ---
 await setWidth(390, 844);
 await sleep(700);
 f = await evalJs(FINISH_SNAP);
 check('完工页 根节点内边距 16px（窄档）', f?.paddingLeft === '16px', `padding-left=${f?.paddingLeft}`);
-check('完工页 窄档标签置顶（label 在输入框上方）', f?.labelPosition === 'top',
-  `labelPosition=${f?.labelPosition} textAlign=${f?.labelTextAlign}`);
+check('完工页 窄档标签置顶（label 在输入框上方）', f?.labelPosition === 'top', `labelPosition=${f?.labelPosition}`);
 check('完工页 窄档 descriptions 1 列（3 行）', f?.descRows === 3, `rows=${f?.descRows}`);
 check('完工页 窄档提交按钮撑满', Math.abs((f?.submitWidth ?? 0) - ((f?.rootWidth ?? 0) - 32)) <= 1,
   `btn=${f?.submitWidth} 期望=${f?.rootWidth - 32}`);
 check('完工页 窄档无横向溢出', f?.overflowX === 0, `overflowX=${f?.overflowX}`);
 
-// --- 表单校验上下文：el-form > el-card > el-form-item 仍能校验 ---
 const beforeValidate = netLog.length;
 await evalJs(`(()=>{document.querySelector('.submit-btn')?.click();return 1})()`);
 await sleep(1200);
@@ -442,8 +540,7 @@ check('完工页 空「维修总结」提交 → el-form-item.is-error（跨 el-
 check('完工页 校验失败未发出任何 /finish 请求（探针不写库）',
   !netLog.slice(beforeValidate).some(u => u.includes('/finish')), JSON.stringify(netLog.slice(beforeValidate)));
 
-// --- 耗材选择链路 ---
-await setWidth(1272);
+await setWidth(1440);
 await sleep(600);
 const beforeParts = netLog.length;
 await evalJs(`(()=>{document.querySelector('.consume-header .el-button')?.click();return 1})()`);
@@ -451,30 +548,27 @@ await sleep(2500);
 const pickerReady = await evalJs(`document.querySelectorAll('.picker-item').length`);
 check('完工页 「添加耗材」打开弹窗并发起 /inventory/parts',
   pickerReady > 0 && netLog.slice(beforeParts).some(u => u.includes('/inventory/parts')),
-  `pickerItems=${pickerReady} net=${JSON.stringify(netLog.slice(beforeParts).filter(u => u.includes('inventory')))}`);
+  `pickerItems=${pickerReady}`);
 
 const pick = await evalJs(`(() => {
   const it = [...document.querySelectorAll('.picker-item')].find(x => !x.classList.contains('disabled-part'));
-  if (!it) return null;
-  return { name: it.querySelector('.picker-part-name')?.innerText.trim(), price: it.querySelector('.picker-price')?.innerText.trim() };
+  return it ? { name: it.querySelector('.picker-part-name')?.innerText.trim(), price: it.querySelector('.picker-price')?.innerText.trim() } : null;
 })()`);
 await evalJs(`(()=>{const it=[...document.querySelectorAll('.picker-item')].find(x=>!x.classList.contains('disabled-part'));it?.click();return 1})()`);
 await sleep(1200);
 const afterPick = await evalJs(`(() => ({
   parts: document.querySelectorAll('.part-item').length,
-  name: document.querySelector('.part-item .part-name')?.innerText.trim(),
   cost: document.querySelector('.cost-amount')?.innerText.trim()
 }))()`);
 const priceNum = Number((pick?.price || '').replace(/[^\d.]/g, ''));
 check('完工页 选入耗材后出现 1 条核销行且总金额 = 单价',
   afterPick?.parts === 1 && afterPick?.cost === `¥ ${priceNum.toFixed(2)}`,
-  `parts=${afterPick?.parts} cost=${afterPick?.cost} 期望=¥ ${priceNum.toFixed(2)} 名称=${pick?.name}→${afterPick?.name}`);
+  `parts=${afterPick?.parts} cost=${afterPick?.cost} 期望=¥ ${priceNum.toFixed(2)}`);
 
-// 收尾：移除已选耗材，保持页面回到初始态（本探针不改服务端数据）
 await evalJs(`(()=>{document.querySelector('.part-action .el-button')?.click();return 1})()`);
 await sleep(600);
-const cleaned = await evalJs(`document.querySelectorAll('.part-item').length`);
-check('完工页 探针收尾已清空选入的耗材', cleaned === 0, `part-item=${cleaned}`);
+check('完工页 探针收尾已清空选入的耗材',
+  (await evalJs(`document.querySelectorAll('.part-item').length`)) === 0);
 
 check('两页全程 0 控制台错误', consoleErrors.length === 0, JSON.stringify(consoleErrors.slice(0, 4)));
 

@@ -41,117 +41,84 @@
         </el-input>
       </div>
 
-      <!-- 卡片流内容区域 -->
-      <div v-loading="loading" class="order-card-list">
-        <el-empty v-if="!loading && orders.length === 0" description="暂无相关任务工单" />
+      <!--
+        宽档（≥1400）= el-table 一行一单：信息横向铺成列，不再把移动端卡片拉成全宽
+        （那样描述框 1562px 里只有 182px 是字，窗口越宽越浪费）；
+        窄档（<1400）= 卡片。**1400 是「表格真装得下」的最小视口**（列宽合计 1060px，
+        内容区 ≈ 视口−312），低于它表格会横滚、固定的操作列还会盖住报修人——见 columns 上的说明。
+      -->
+      <ResponsiveTable
+        :items="orders"
+        :columns="columns"
+        :loading="loading"
+        :card-below="1400"
+        empty-text="暂无相关任务工单"
+      >
+        <!-- 单号：加急小标签内联（同调度中心 .order-no-wrap），省一列 -->
+        <template #col-orderNo="{ row }">
+          <span class="order-no-wrap">
+            <span class="order-no">{{ row.orderNo }}</span>
+            <el-tag v-if="row.urgencyLevel === 2" type="danger" size="small">加急</el-tag>
+          </span>
+        </template>
 
-        <div
-          v-for="order in orders"
-          :key="order.id"
-          class="workbench-card"
-          :class="{
-            'urgent-card': order.urgencyLevel === 2,
-            'suspended-card': order.status === 'SUSPENDED'
-          }"
-        >
-          <div class="card-header">
-            <div class="header-left">
-              <span class="order-no">{{ order.orderNo }}</span>
-              <el-tag v-if="order.urgencyLevel === 2" type="danger" size="small">加急</el-tag>
-              <el-tag v-if="order.status === 'SUSPENDED'" type="warning" size="small">已挂起</el-tag>
-            </div>
-            <el-tag :type="orderStatusTagType(order.status)" effect="light">
-              {{ OrderStatusLabels[order.status] || order.status }}
-            </el-tag>
+        <template #col-status="{ row }">
+          <el-tag :type="orderStatusTagType(row.status)" effect="light">
+            {{ OrderStatusLabels[row.status] || row.status }}
+          </el-tag>
+        </template>
+
+        <!-- 承诺截止：挂起期间 SLA 冻结，显示冻结说明而不是一个会误导人的日期 -->
+        <template #col-slaDeadline="{ row }">
+          <span v-if="row.status === 'SUSPENDED'" class="sla-frozen" :title="`累计挂起 ${row.suspendCount || 0} 次`">
+            ⏸️ 已冻结
+          </span>
+          <span v-else-if="row.slaDeadline">{{ formatTime(row.slaDeadline) }}</span>
+          <span v-else>—</span>
+        </template>
+
+        <!-- 报修人列直接是 tel: 链接：现场一键拨号，少一列按钮；号码直接可读（可能要换机拨打） -->
+        <template #col-applicantName="{ row }">
+          <a :href="'tel:' + row.applicantPhone" class="tel-link" :title="`拨打 ${row.applicantName} ${row.applicantPhone}`">
+            <el-icon :size="14"><Phone /></el-icon>
+            <span>{{ row.applicantName }}</span>
+            <span class="tel-number">{{ row.applicantPhone }}</span>
+          </a>
+        </template>
+
+        <!-- 仅窄档卡片：故障描述 + 挂起原因横幅（宽档表格放不下，靠 title 提示） -->
+        <template #col-description="{ row }">
+          <div class="fault-desc" :title="row.description">{{ row.description }}</div>
+          <div v-if="row.status === 'SUSPENDED' && row.dispatchReason" class="suspend-banner">
+            <el-icon :size="14"><WarningFilled /></el-icon>
+            <span>{{ row.dispatchReason }}</span>
           </div>
+        </template>
 
-          <div class="card-body">
-            <div class="info-row highlight-category">
-              <el-tag type="primary" effect="plain" size="small">{{ WorkerSkillLabels[order.workerSkillCode] || order.workerSkillCode }}</el-tag>
-              <span class="category-title">{{ order.categoryFullName }}</span>
-            </div>
-
-            <div class="info-row">
-              <el-icon :size="16" color="#1677FF"><Location /></el-icon>
-              <span class="location-text">{{ order.spaceFullPath }}</span>
-            </div>
-
-            <div class="fault-desc-box">
-              {{ order.description }}
-            </div>
-
-            <div class="info-row meta-row">
-              <span>预约时段: {{ order.appointmentPeriod }}</span>
-              <span>报修时间: {{ formatTime(order.createdAt) }}</span>
-            </div>
-
-            <!-- SLA 时效承诺与状态提示 -->
-            <div class="info-row sla-row">
-              <el-icon :size="14" :color="order.status === 'SUSPENDED' ? '#FA8C16' : '#1677FF'"><Clock /></el-icon>
-              <span v-if="order.status === 'SUSPENDED'" class="sla-text suspended-text">
-                ⏸️ 挂起期间 SLA 倒计时已冻结 (累计挂起 {{ order.suspendCount || 0 }} 次)
-              </span>
-              <span v-else-if="order.slaDeadline" class="sla-text">
-                承诺截止: {{ formatTime(order.slaDeadline) }}
-              </span>
-            </div>
-
-            <!-- 挂起原因说明横幅 -->
-            <div v-if="order.status === 'SUSPENDED' && order.dispatchReason" class="suspend-banner">
-              <el-icon :size="14"><WarningFilled /></el-icon>
-              <span>{{ order.dispatchReason }}</span>
-            </div>
-          </div>
-
-          <!-- 卡片操作底栏（窄档下按钮撑到 44px 触控高度） -->
-          <div class="card-action-footer">
-            <a :href="'tel:' + order.applicantPhone" class="tel-call-btn">
-              <el-button type="success" plain :icon="Phone" class="tel-call-btn-inner">
-                拨打 {{ order.applicantName }} ({{ order.applicantPhone }})
+        <!-- 操作列：主操作是按钮，挂起/转派是次级动作（窄档卡片里三个并排，宽档靠 link） -->
+        <template #col-actions="{ row }">
+          <div class="action-buttons">
+            <template v-if="row.status === 'ASSIGNED'">
+              <el-button type="primary" size="small" :loading="operatingId === row.id" @click="handleAccept(row)">
+                接单出发
               </el-button>
-            </a>
+            </template>
 
-            <div class="action-buttons">
-              <!-- 待承接态动作 -->
-              <template v-if="order.status === 'ASSIGNED'">
-                <el-button
-                  type="primary"
-                  :loading="operatingId === order.id"
-                  @click="handleAccept(order)"
-                >
-                  接单出发
-                </el-button>
-              </template>
+            <template v-if="row.status === 'IN_PROGRESS'">
+              <el-button type="primary" size="small" @click="goToFinish(row)">完工填报</el-button>
+              <el-button type="warning" link size="small" @click="openSuspendModal(row)">挂起</el-button>
+              <el-button type="danger" link size="small" @click="openTransferModal(row)">转派</el-button>
+            </template>
 
-              <!-- 维修中/已挂起态动作 -->
-              <template v-if="order.status === 'IN_PROGRESS'">
-                <el-button type="primary" @click="goToFinish(order)">
-                  完工填报
-                </el-button>
-                <el-button type="warning" plain @click="openSuspendModal(order)">
-                  工单挂起
-                </el-button>
-                <el-button type="danger" plain @click="openTransferModal(order)">
-                  申请转派
-                </el-button>
-              </template>
-
-              <template v-if="order.status === 'SUSPENDED'">
-                <el-button
-                  type="success"
-                  :loading="operatingId === order.id"
-                  @click="handleResume(order)"
-                >
-                  解除挂起
-                </el-button>
-                <el-button type="danger" plain @click="openTransferModal(order)">
-                  申请转派
-                </el-button>
-              </template>
-            </div>
+            <template v-if="row.status === 'SUSPENDED'">
+              <el-button type="success" size="small" :loading="operatingId === row.id" @click="handleResume(row)">
+                解除挂起
+              </el-button>
+              <el-button type="danger" link size="small" @click="openTransferModal(row)">转派</el-button>
+            </template>
           </div>
-        </div>
-      </div>
+        </template>
+      </ResponsiveTable>
     </el-card>
 
     <!-- 工单挂起弹窗 -->
@@ -242,8 +209,6 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-  Clock,
-  Location,
   Phone,
   Search,
   WarningFilled
@@ -251,14 +216,63 @@ import {
 import { httpClient } from '../../stores/auth';
 import {
   OrderStatusLabels,
-  WorkerSkillLabels,
   orderStatusTagType,
   DispatchOrderItemVO,
   WorkerWorkbenchCountVO,
   WorkerOrderListResultVO
 } from '@campus/shared';
+import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import type { TableColumn } from '../../components/ResponsiveTable.vue';
 
 const router = useRouter();
+
+/**
+ * 列定义：**宽档表格与窄档卡片共用一份**（`ResponsiveTable`）。
+ *
+ * 宽档 7 列，合计 **1054px**——「工单号/状态/故障细类/报修位置/承诺截止/报修人/操作」，
+ * 目标是把一条记录压成**一行**而不是 250~350px 高的卡片；
+ * 故障描述与预约时段标 `cardOnly`：窄档卡片要读全，宽档表格靠列数控宽。
+ *
+ * ⚠️ **每个宽度都是按内容实测算出来的，不是随手取的**——窄一点点就会**换行或出省略号**，
+ * 行高从 42px 涨到 66px、号码被截成 `13800000003...`，白拿回一半密度
+ * （实测踩过三次：操作列 166px 让「转派」掉到第二行、承诺截止 130px 让「2026-09-26 22:42」
+ * 断成两行、报修人 158px 让手机号末尾出省略号）。所以：
+ *   工单号 196（`BX` + 14 位 = 16 字符 ≈125px + 内联「加急」标签 42 + 间距 6 + 单元格内边距 24）
+ *   状态 84 / 承诺截止 150
+ *   报修人 172（`tel:` 链接 = 图标 14 + 姓名 ≈39 + 号码 ≈73 + 间距 8 + 内边距 24 = 158，
+ *              留 14px 余量；**不要压到 158**，实测那一档号码会出省略号）
+ *   操作 192（「完工填报」88 + 「挂起」30 + 「转派」30 + 间距 16 + 内边距 24）
+ *   故障细类 / 报修位置留 `minWidth` 130，吃剩余空间，超长靠 `showOverflowTooltip`
+ *
+ * ⚠️ **横向溢出会盖住内容**：`el-table` 装不下就横滚，而 `fixed: 'right'` 的「操作」列会
+ * **浮在**被滚动的内容之上——实测 1272 档（内容区 958px）用 1033px 的列集时，操作列正好盖住
+ * 「报修人」。所以 `card-below` 必须按「表格真装得下」定：内容区 ≈ 视口 − 312
+ * （侧边栏 240 + 页内边距 32 + 卡片内边距 40），1054 + 余量 ⇒ **1400**。
+ * **代价**：1366/1280 笔记本会落到卡片档（实测 1272 档卡片 943px 宽，标签+值左对齐，读起来没问题）。
+ * 若要把阈值压到 1366，得把「报修人」的号码收回 `title`（列宽 172→100，合计降到 982 ⇒ 阈值 1320）。
+ * **改列宽要一起复核这两个数（列宽合计、card-below）。**
+ */
+const columns: TableColumn<DispatchOrderItemVO>[] = [
+  { key: 'orderNo', label: '工单号', width: 196, card: 'title' },
+  {
+    key: 'status',
+    label: '状态',
+    width: 84,
+    align: 'center',
+    card: 'tag',
+    cardTag: (row) => ({
+      text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
+      type: orderStatusTagType(row.status)
+    })
+  },
+  { key: 'categoryFullName', label: '故障细类', minWidth: 130, showOverflowTooltip: true },
+  { key: 'description', label: '故障描述', minWidth: 170, cardOnly: true },
+  { key: 'spaceFullPath', label: '报修位置', minWidth: 130, showOverflowTooltip: true },
+  { key: 'slaDeadline', label: '承诺截止', width: 150 },
+  { key: 'appointmentPeriod', label: '预约时段', width: 130, cardOnly: true },
+  { key: 'applicantName', label: '报修人', width: 172 },
+  { key: 'actions', label: '操作', width: 192, align: 'center', fixed: 'right', card: 'action' }
+];
 
 const activeTab = ref<'ASSIGNED' | 'IN_PROGRESS' | 'HISTORY'>('ASSIGNED');
 const keyword = ref('');
@@ -482,8 +496,9 @@ function formatTime(isoStr?: string): string {
 <style scoped>
 /*
  * 视觉语言与其余页面一致（口径见 docs/20260906-1430-…-frontend-design.md §3.3）：
- * 根节点 16px 内边距、内容装进 el-card shadow="never"、卡片用「1px #E5E7EB 边框 + 8px 圆角」
- * 而不是自造投影、状态一律 el-tag。颜色只用设计文档 §3.1 的令牌与品牌主色 #1677FF。
+ * 根节点 16px 内边距、内容装进 el-card shadow="never"、宽档表格 / 窄档卡片共用一份列定义
+ * （components/ResponsiveTable.vue）、状态一律 el-tag。
+ * 颜色只用设计文档 §3.1 的令牌与品牌主色 #1677FF。
  */
 .worker-workbench {
   padding: 16px;
@@ -506,115 +521,55 @@ function formatTime(isoStr?: string): string {
   margin-bottom: 12px;
 }
 
-.order-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 160px;
-}
+/* ---------- 列插槽（宽档表格单元格 + 窄档卡片正文共用同一份模板） ---------- */
 
-/*
- * 卡片形态对齐调度中心的 .order-card（同类「工单卡」列表）：
- * 边框 + 圆角，不用投影 —— 全仓只有师傅两页曾自造 box-shadow。
- */
-.workbench-card {
-  background-color: #FFFFFF;
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* 紧急度左侧色条：与调度中心 .urgent-border 同值（设计文档 --status-pending-dispatch） */
-.urgent-card {
-  border-left: 4px solid #FA8C16;
-}
-
-/* 挂起态：左侧色条与底色对齐设计文档 --status-suspended，与本页 .suspend-banner 同底 */
-.suspended-card {
-  border-left: 4px solid #FAAD14;
-  background-color: #FFFBE6;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px dashed #E5E7EB;
-  padding-bottom: 8px;
-}
-
-.header-left {
-  display: flex;
+.order-no-wrap {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .order-no {
   font-weight: 600;
   color: #1F2937;
-  font-size: 14px;
-}
-
-.card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.info-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 13px;
-  color: #4B5563;
 }
 
-.highlight-category {
-  font-weight: 500;
-}
-
-.category-title {
-  color: #1F2937;
-}
-
-.location-text {
-  font-weight: 500;
-  color: #1F2937;
-}
-
-.fault-desc-box {
-  background-color: #F9FAFB;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #4B5563;
-  line-height: 1.45;
-}
-
-.meta-row {
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: #9CA3AF;
-  margin-top: 4px;
-}
-
-.sla-row {
-  font-size: 12px;
-  color: #1677FF;
-  background-color: #E6F4FF;
-  padding: 4px 8px;
-  border-radius: 4px;
-  margin-top: 2px;
-}
-
-.suspended-text {
+/* 挂起期间 SLA 冻结：显示冻结说明而不是一个会误导人的截止时间 */
+.sla-frozen {
   color: #D46B08;
+  font-weight: 500;
+}
+
+/* 报修人 = 一键拨号（设计文档 §8.3 的 tel: 语义，收进内容列省掉一列按钮） */
+.tel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #1677FF;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tel-link:hover {
+  text-decoration: underline;
+}
+
+/* 号码比姓名弱一档：姓名是识别信息，号码是可读但不抢视线的辅助信息 */
+.tel-number {
+  font-size: 12px;
+  color: #6B7280;
+}
+
+/* 仅窄档卡片：故障描述块 */
+.fault-desc {
+  color: #4B5563;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .suspend-banner {
@@ -627,45 +582,31 @@ function formatTime(isoStr?: string): string {
   border: 1px solid #FFE58F;
   border-radius: 4px;
   padding: 6px 10px;
-  margin-top: 4px;
-}
-
-.card-action-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed #E5E7EB;
-}
-
-.tel-call-btn {
-  text-decoration: none;
-  display: block;
-}
-
-/* 窄档：拨号按钮撑满，保证现场单手可点（设计文档 §8.3 要求绿色 tel: 按钮） */
-.tel-call-btn-inner {
-  width: 100%;
-  min-height: 40px;
-  font-weight: 500;
+  margin-top: 8px;
 }
 
 .action-buttons {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-@media (min-width: 768px) {
-  /* 宽档不再需要整条拨号栏，按钮回到常规尺寸 */
-  .tel-call-btn-inner {
-    width: auto;
-  }
+/*
+ * ⚠️ EP 给相邻 `.el-button` 默认加 `margin-left: 12px`，与本行的 `gap: 8px` **叠加成 20px**——
+ * 实测「完工填报 + 挂起 + 转派」因此超出 168px 可用宽，「转派」被挤到第二行，行高从 42px 涨到 66px。
+ * 统一交给 flex gap，必须清掉 EP 的那个 margin。
+ */
+.action-buttons .el-button + .el-button {
+  margin-left: 0;
+}
 
+/* 窄档：操作按钮撑到 44px 触控高度，现场单手可点 */
+@media (max-width: 1023px) {
   .action-buttons .el-button {
     min-height: 40px;
-    padding-inline: 18px;
+    padding-inline: 16px;
   }
 }
 </style>

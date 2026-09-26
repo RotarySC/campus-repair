@@ -1,7 +1,7 @@
 <template>
-  <div class="responsive-list" :class="{ 'is-narrow': isNarrowPhone }">
+  <div class="responsive-list" :class="{ 'is-card-mode': isCardMode }">
     <!-- 宽档：保持既有 el-table 交互（固定列/行点击等全部不变） -->
-    <div v-if="!isNarrowPhone" class="rl-table-wrapper">
+    <div v-if="!isCardMode" class="rl-table-wrapper">
       <el-table
         v-loading="loading"
         :data="items"
@@ -13,7 +13,7 @@
         @row-click="onRowClick"
       >
         <el-table-column
-          v-for="col in columns"
+          v-for="col in tableColumns"
           :key="col.key || col.label"
           :prop="col.key"
           :label="col.label"
@@ -30,7 +30,7 @@
       </el-table>
     </div>
 
-    <!-- 窄档（<768px）：改为卡片列表，一屏可读全部字段，不再依赖表格横向滚动 -->
+    <!-- 窄档：改为卡片列表，一屏可读全部字段，不再依赖表格横向滚动 -->
     <div v-else v-loading="loading" class="rl-cards">
       <el-empty v-if="!items.length && !loading" :description="emptyText" />
       <article
@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts" generic="T extends Record<string, any>">
-import { useSlots } from 'vue';
+import { computed, useSlots } from 'vue';
 import { ArrowRight } from '@element-plus/icons-vue';
 import { useViewport } from '../composables/useViewport';
 
@@ -123,6 +123,12 @@ export interface TableColumn<T = any> {
   cardTag?: (row: T) => CardTag;
   /** 值为空时不渲染该正文行（如尚未派单的技师列） */
   cardHideEmpty?: boolean;
+  /**
+   * **只在窄档卡片正文出现，宽档表格不占列**。
+   * 给「窄档需要看、宽档放不下」的长文本字段用（如故障描述、预约时段）——
+   * 卡片模式本来就是"把一条记录读全"，而宽档表格要靠列数控制宽度。
+   */
+  cardOnly?: boolean;
 }
 
 const props = withDefaults(
@@ -137,21 +143,37 @@ const props = withDefaults(
     itemKey?: string;
     /** 榜单类列表：卡片标题前显示序号徽标（第 1~3 名高亮） */
     ranked?: boolean;
+    /**
+     * 切换为卡片布局的**视口宽度阈值（px）**：`viewportWidth < cardBelow` 即用卡片。
+     * 默认 **768**——仓库既有 6 处调用方的行为**完全不变**。
+     *
+     * 为什么需要它：现场作业页（师傅工作台）的主要设备是平板，768~1023 档下内容区只有
+     * ~710~960px，多列表格必然横向滚动、操作按钮被推出视口；那一档就该用卡片。
+     * 桌面管理页保持默认 768 即可（平板档也看表格）。
+     */
+    cardBelow?: number;
   }>(),
   {
     loading: false,
     emptyText: '暂无数据',
     clickable: false,
     itemKey: 'id',
-    ranked: false
+    ranked: false,
+    cardBelow: 768
   }
 );
 
 const emit = defineEmits<{ (e: 'row-click', row: T): void }>();
-const { isNarrowPhone } = useViewport();
+const { viewportWidth } = useViewport();
 const slots = useSlots();
 
+/** 卡片模式判据（唯一的）：用 `cardBelow` 而不是写死 `isNarrowPhone` */
+const isCardMode = computed(() => viewportWidth.value < props.cardBelow);
+
 const isSlotted = (col?: TableColumn<T>) => !!col?.key && !!slots[`col-${col.key}`];
+
+/** 宽档表格的列 = 全部列 − `cardOnly` 列；窄档卡片正文仍用 `bodyColumns`（含 `cardOnly`） */
+const tableColumns = computed(() => props.columns.filter((c) => !c.cardOnly));
 
 const titleColumn: TableColumn<T> | undefined =
   props.columns.find((c) => c.card === 'title') ?? props.columns[0];
