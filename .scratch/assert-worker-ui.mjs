@@ -70,7 +70,13 @@ const LABEL_TO_CODE = {
 const EXPECTED_ACTIONS = {
   待承接: ['接单出发'],
   维修中: ['完工填报', '挂起', '转派'],
-  已挂起: ['解除挂起', '转派']
+  已挂起: ['解除挂起', '转派'],
+  // 历史档四种状态对师傅**没有业务动作**，只给只读的「查看」
+  // （见 HISTORY_STATUSES；否则这一列在行数最多的历史档里是纯空白，实测 192px/1126px = 17%）
+  待验收: ['查看'],
+  已结单: ['查看'],
+  返工待派: ['查看'],
+  已作废: ['查看']
 };
 /** 设计文档 §3.1 令牌 → 浏览器计算出的 rgb（与缩放无关） */
 const CARD_BORDER = 'rgb(229, 231, 235)';   // --color-border #E5E7EB
@@ -149,10 +155,11 @@ async function openAs(path, auth, readyExpr) {
     await sleep(500);
   }
   // 后台标签里 rAF 暂停 ⇒ CSS 过渡卡在起始值。本页要量的都是终态，先把过渡关掉。
+  // 抽屉同样要带上：`el-drawer` 滑入卡住时元素会停在 `translateX(100%)`（截图里什么都看不到）。
   await evalJs(
     `(()=>{const s=document.createElement('style');` +
     `s.textContent='*,*::before,*::after{transition:none!important}'` +
-    `+'.el-dialog,.el-overlay{transform:none!important;opacity:1!important}';` +
+    `+'.el-dialog,.el-drawer,.el-overlay{transform:none!important;opacity:1!important}';` +
     `document.head.appendChild(s);return 1})()`
   );
 }
@@ -353,6 +360,76 @@ console.log('================ 工作台：双形态与断点 ================');
   check('密度 表格行高 ≤ 50px（一行一单，不再是一张 250~350px 的卡）', maxRowH <= 50,
     `最高行=${maxRowH}px（改前卡片一条 237~350px）`);
 
+  // --- 「操作」列不允许有整列空白（2026-09-27 用户截图指出的缺陷）---
+  const noActionRows = allRows.filter(r => r.actions.length === 0);
+  check('操作列 没有任何一行的操作是空的（历史档曾整列空白 192px/1126px = 17%）',
+    noActionRows.length === 0,
+    noActionRows.length ? `空操作行：${noActionRows.map(r => `${r.orderNo}(${r.statusText})`).join(', ')}` : `共 ${allRows.length} 行全部有操作`);
+
+  // --- 历史档「查看」抽屉（2026-09-27 新增；只读回看评价 + 流转）---
+  console.log('\n================ 工作台：历史单回看抽屉 ================');
+  {
+    const target = allRows.find(r => r.statusText === '返工待派') || allRows[0];
+    check('抽屉 历史档存在可点「查看」的行', !!target,
+      target ? `${target.orderNo}(${target.statusText})` : '无');
+    const netBeforeDrawer = netLog.length;
+    const noOf = (target?.orderNo || '').split(' ')[0];
+    await evalJs(
+      `(()=>{const tr=[...document.querySelectorAll('.rl-table-wrapper .el-table__body tbody tr')]` +
+      `.find(x=>x.querySelector('.order-no')?.innerText.trim()===${JSON.stringify(noOf)});` +
+      `const b=[...tr.querySelectorAll('.el-button')].find(x=>x.innerText.trim()==='查看');b?.click();return 1})()`
+    );
+    await sleep(2600);
+    const drawer = await evalJs(`(() => {
+      const d = document.querySelector('.el-drawer');
+      if (!d) return { open: false };
+      const labels = [...d.querySelectorAll('.el-descriptions__label')].map(x => x.innerText.trim());
+      const vals = [...d.querySelectorAll('.el-descriptions__content')].map(x => x.innerText.replace(/\\s+/g,' ').trim());
+      const byLabel = {};
+      labels.forEach((k, i) => { byLabel[k] = vals[i]; });
+      return {
+        open: true,
+        header: d.querySelector('.el-drawer__title')?.innerText.trim() || '',
+        width: Math.round(d.getBoundingClientRect().width),
+        titles: [...d.querySelectorAll('.drawer-section-title')].map(x => x.innerText.trim()),
+        byLabel,
+        ratePresent: !!d.querySelector('.el-rate'),
+        rateActive: d.querySelectorAll('.el-rate__icon.is-active').length,
+        tags: [...d.querySelectorAll('.el-tag')].map(t => t.innerText.trim()),
+        timelineNodes: d.querySelectorAll('.el-timeline-item').length,
+        timelineEmpty: !!d.querySelector('.timeline-empty'),
+        overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    })()`);
+    check('抽屉 点「查看」打开回看抽屉且标题带单号',
+      drawer?.open === true && drawer.header.includes(noOf), `header=${drawer?.header}`);
+    check('抽屉 宽度不超 520px（窄档走 min(520px, 94vw)）', (drawer?.width || 0) <= 520,
+      `width=${drawer?.width}px`);
+    check('抽屉 三个分区齐备（完工信息 / 服务质检评价 / 全流程审计时间轴）',
+      JSON.stringify(drawer?.titles) === JSON.stringify(['完工信息', '服务质检评价', '全流程审计时间轴']),
+      JSON.stringify(drawer?.titles));
+    check('抽屉 评价字段齐备（星级/确认方式/满意标签/返工督办/用户评语）',
+      ['综合评价星级', '确认方式', '满意标签', '返工督办', '用户评语'].every(k => k in (drawer?.byLabel || {})),
+      JSON.stringify(Object.keys(drawer?.byLabel || {})));
+    check('抽屉 发起了 /evaluation-detail 与 /timeline 两个请求',
+      netLog.slice(netBeforeDrawer).some(u => u.includes('/evaluation-detail')) &&
+      netLog.slice(netBeforeDrawer).some(u => u.includes('/timeline')),
+      JSON.stringify(netLog.slice(netBeforeDrawer)));
+    check('抽屉 流转时间轴渲染出节点（复用管理端的 WorkOrderTimeline）',
+      (drawer?.timelineNodes || 0) > 0 && !drawer?.timelineEmpty,
+      `nodes=${drawer?.timelineNodes} empty=${drawer?.timelineEmpty}`);
+    check('抽屉 打开抽屉不引入横向溢出', drawer?.overflowX === 0, `overflowX=${drawer?.overflowX}`);
+    if (target?.statusText === '返工待派') {
+      check('抽屉 差评返工单：星级已渲染（不是「尚未评价」）+「已触发差评返工流程」+ 评语可读',
+        drawer?.ratePresent === true &&
+        !/尚未评价/.test(drawer?.byLabel?.['综合评价星级'] || '') &&
+        /已触发差评返工流程/.test(drawer?.byLabel?.['返工督办'] || ''),
+        `rate=${drawer?.ratePresent} 亮星=${drawer?.rateActive} 返工督办=${drawer?.byLabel?.['返工督办']} 评语=${drawer?.byLabel?.['用户评语']}`);
+    }
+    await evalJs(`(()=>{document.querySelector('.el-drawer__close-btn')?.click();return 1})()`);
+    await sleep(900);
+  }
+
   // --- 表格真实横向溢出 = 0（溢出会让 fixed 的操作列盖住报修人）---
   for (const [label, w] of [['1920', 1920], ['1440', 1440], [`${CARD_BELOW}`, CARD_BELOW]]) {
     await setWidth(w);
@@ -384,6 +461,9 @@ console.log('================ 工作台：双形态与断点 ================');
     JSON.stringify(cards.map(c => c.telHref)));
   check('卡片 无 round 按钮 / 无自造徽标',
     cards.every(c => c.roundButtons === 0 && c.legacyBadges === 0));
+  check('卡片 每张历史卡都有真操作（不再是一条无内容的虚线底栏）',
+    cards.every(c => c.actions.length > 0),
+    JSON.stringify(cards.map(c => c.actions)));
   check('卡片 状态标签色档与 orderStatusTagType 一致',
     cards.every(c => c.titleTagType === expectedTagType(LABEL_TO_CODE[c.titleTagText] || '')),
     JSON.stringify(cards.map(c => `${c.titleTagText}=${c.titleTagType}`)));

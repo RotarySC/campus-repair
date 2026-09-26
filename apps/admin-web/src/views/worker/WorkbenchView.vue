@@ -116,6 +116,16 @@
               </el-button>
               <el-button type="danger" link size="small" @click="openTransferModal(row)">转派</el-button>
             </template>
+
+            <!--
+              历史档（待验收/已结单/返工待派/已作废）：师傅侧**没有业务动作**，
+              但闭环后仍需回看「为什么被差评、流转到哪一步」——给一个只读的「查看」，
+              否则这一列在行数最多的历史档里是纯空白（实测 192px/1126px = 17% 死宽，
+              窄档还会在每张卡底部留一条无内容的虚线）。
+            -->
+            <template v-if="isHistoryStatus(row.status)">
+              <el-button type="primary" link size="small" @click="openDetail(row)">查看</el-button>
+            </template>
           </div>
         </template>
       </ResponsiveTable>
@@ -201,6 +211,63 @@
         <el-button type="danger" :loading="operatingId !== null" @click="submitTransfer">确认申请转派</el-button>
       </template>
     </el-dialog>
+
+    <!--
+      历史单回看抽屉（只读）：评价（星级/标签/评语/返工督办）+ 全流程审计时间轴。
+      后端零改动——`GET /work-orders/{id}/evaluation-detail` 与 `/{id}/timeline` 的放行集合
+      本来就是「报修人本人 ∨ **当前指派师傅** ∨ 调度/平台管理」（`WorkOrderController:58-80`、`:200-206`，
+      判定在 Service 的 `assertReadable`）；时间轴直接复用管理端那个 `WorkOrderTimeline.vue`。
+    -->
+    <el-drawer
+      v-model="detailDrawerVisible"
+      :title="`工单回看 - ${detailOrder?.orderNo || ''}`"
+      size="min(520px, 94vw)"
+      direction="rtl"
+    >
+      <div v-loading="evaluationLoading" class="detail-drawer">
+        <div class="drawer-section-title">完工信息</div>
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="维修总结">{{ evaluation?.repairSummary || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="耗材费用">
+            {{ evaluation?.materialCost != null ? `¥ ${Number(evaluation.materialCost).toFixed(2)}` : '—' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="完工时间">
+            {{ evaluation?.finishReportedAt ? formatTime(evaluation.finishReportedAt) : '—' }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="drawer-section-title">服务质检评价</div>
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="综合评价星级">
+            <el-rate v-if="evaluation?.ratingStar" :model-value="evaluation.ratingStar" disabled />
+            <span v-else class="muted">尚未评价</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="确认方式">
+            {{ evaluation?.evaluatedAt
+              ? (evaluation.isAutoConfirmed === 1 ? '72h 超时自动闭环结单' : '师生主动验收评价')
+              : '—' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="满意标签">
+            <template v-if="evaluation?.ratingTags && evaluation.ratingTags.length">
+              <el-tag v-for="tag in evaluation.ratingTags" :key="tag" class="tag-gap">{{ tag }}</el-tag>
+            </template>
+            <span v-else class="muted">—</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="返工督办">
+            {{ evaluation?.reworkFlag === 1 ? '已触发差评返工流程' : '无' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="用户评语">
+            {{ evaluation?.evaluationComment || '未填写评语' }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="evaluation?.arbitrationNote" label="主管仲裁说明">
+            {{ evaluation.arbitrationNote }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="drawer-section-title">全流程审计时间轴</div>
+        <WorkOrderTimeline v-if="detailOrder" :order-id="detailOrder.id" />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -219,12 +286,25 @@ import {
   orderStatusTagType,
   DispatchOrderItemVO,
   WorkerWorkbenchCountVO,
-  WorkerOrderListResultVO
+  WorkerOrderListResultVO,
+  WorkOrderEvaluationVO
 } from '@campus/shared';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
+import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 
 const router = useRouter();
+
+/**
+ * 「历史记录」档的状态集合——**必须与后端 HISTORY 查询一致**（`WorkOrderService:547`：
+ * `PENDING_ACCEPTANCE / COMPLETED / REWORK_PENDING / CANCELLED`）。
+ * 这四种状态对师傅**没有业务动作**，所以「操作」列给的是只读的「查看」而不是命令按钮。
+ */
+const HISTORY_STATUSES: readonly string[] = ['PENDING_ACCEPTANCE', 'COMPLETED', 'REWORK_PENDING', 'CANCELLED'];
+
+function isHistoryStatus(status: string): boolean {
+  return HISTORY_STATUSES.includes(status);
+}
 
 /**
  * 列定义：**宽档表格与窄档卡片共用一份**（`ResponsiveTable`）。
@@ -313,6 +393,36 @@ const skillOptions = [
   { label: '弱电网络 (NETWORK)', value: 'NETWORK' },
   { label: '综合维修 (GENERAL)', value: 'GENERAL' }
 ];
+
+// 历史单回看抽屉（只读）
+const detailDrawerVisible = ref(false);
+const detailOrder = ref<DispatchOrderItemVO | null>(null);
+const evaluation = ref<WorkOrderEvaluationVO | null>(null);
+const evaluationLoading = ref(false);
+
+/**
+ * 打开历史单回看抽屉。
+ *
+ * `evaluation-detail` 对「没有评价记录」的单**不会报错**——Service 走 `else` 分支返回
+ * `ratingTags/repairImages = []` 且评价字段全 `null`（`WorkOrderService:1103-1106`），
+ * 所以已作废、待验收这类单也能安全打开，界面显示「尚未评价」即可。
+ */
+async function openDetail(row: DispatchOrderItemVO) {
+  detailOrder.value = row;
+  evaluation.value = null;
+  detailDrawerVisible.value = true;
+  evaluationLoading.value = true;
+  try {
+    const res = await httpClient.get<WorkOrderEvaluationVO>(`/work-orders/${row.id}/evaluation-detail`);
+    if (res.code === 200 && res.data) {
+      evaluation.value = res.data;
+    }
+  } catch (err: any) {
+    ElMessage.error(err.message || '获取工单评价详情失败');
+  } finally {
+    evaluationLoading.value = false;
+  }
+}
 
 // 站内通知统一由外壳顶栏承载，本页不再自带通知入口
 
@@ -519,6 +629,31 @@ function formatTime(isoStr?: string): string {
 
 .search-container {
   margin-bottom: 12px;
+}
+
+/* ---------- 历史单回看抽屉 ---------- */
+
+.detail-drawer {
+  min-height: 120px;
+}
+
+/* 与完工页 .section-title 同口径（600 字重），抽屉里没有 el-card #header 可用 */
+.drawer-section-title {
+  font-weight: 600;
+  color: #1F2937;
+  margin: 16px 0 10px;
+}
+
+.drawer-section-title:first-child {
+  margin-top: 0;
+}
+
+.muted {
+  color: #9CA3AF;
+}
+
+.tag-gap {
+  margin-right: 6px;
 }
 
 /* ---------- 列插槽（宽档表格单元格 + 窄档卡片正文共用同一份模板） ---------- */
