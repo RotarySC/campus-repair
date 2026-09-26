@@ -8,7 +8,15 @@
       title="上传现场照片自动压制防伪防篡改时间与单号水印，领用耗材实时校验物理库存。"
     />
 
-    <el-form ref="finishFormRef" :model="finishForm" :rules="finishRules" label-position="top" class="finish-form" @submit.prevent>
+    <el-form
+      ref="finishFormRef"
+      :model="finishForm"
+      :rules="finishRules"
+      :label-width="isNarrowPhone ? undefined : '110px'"
+      :label-position="isNarrowPhone ? 'top' : 'right'"
+      class="finish-form"
+      @submit.prevent
+    >
       <!-- 返回工作台 -->
       <div class="back-row">
         <el-button link type="primary" :icon="ArrowLeft" @click="router.push('/worker/workbench')">
@@ -17,18 +25,18 @@
       </div>
 
       <!-- 1. 工单信息摘要卡片 -->
-      <section class="finish-section">
-        <h3 class="section-title">工单信息</h3>
-        <el-descriptions :column="1" border>
+      <el-card shadow="never" class="finish-section">
+        <template #header><span class="section-title">工单信息</span></template>
+        <el-descriptions :column="isNarrowPhone ? 1 : 2" border>
           <el-descriptions-item label="工单单号">{{ orderInfo.orderNo || `BX-${orderId}` }}</el-descriptions-item>
           <el-descriptions-item label="报修位置">{{ orderInfo.spaceFullPath || '空间位置加载中...' }}</el-descriptions-item>
-          <el-descriptions-item label="报修描述">{{ orderInfo.description || '现场排查处置' }}</el-descriptions-item>
+          <el-descriptions-item label="报修描述" :span="2">{{ orderInfo.description || '现场排查处置' }}</el-descriptions-item>
         </el-descriptions>
-      </section>
+      </el-card>
 
       <!-- 2. 现场完工拍照 (带防伪水印) -->
-      <section class="finish-section">
-        <h3 class="section-title">完工照片 (1~3张，自动合成防伪水印)</h3>
+      <el-card shadow="never" class="finish-section">
+        <template #header><span class="section-title">完工照片 (1~3张，自动合成防伪水印)</span></template>
         <el-upload
           v-model:file-list="fileList"
           list-type="picture-card"
@@ -45,11 +53,11 @@
         <div class="watermark-tip">
           * 拍照或选择图片后，客户端将自动压制包含【工单单号】、【师傅姓名】及【当前时间戳】的高清防篡改水印。
         </div>
-      </section>
+      </el-card>
 
       <!-- 3. 维修处理总结文本框 -->
-      <section class="finish-section">
-        <h3 class="section-title">维修总结</h3>
+      <el-card shadow="never" class="finish-section">
+        <template #header><span class="section-title">维修总结</span></template>
         <el-form-item label="处理说明" prop="repairSummary">
           <el-input
             v-model="finishForm.repairSummary"
@@ -60,16 +68,18 @@
             placeholder="请详细描述维修处置过程、更换配件及最终测验结果（如：更换冷水角阀，缠绕生料带，闭水打压测试5分钟无渗漏）"
           />
         </el-form-item>
-      </section>
+      </el-card>
 
       <!-- 4. 耗材备件领用核销面板 -->
-      <section class="finish-section">
-        <div class="consume-header">
-          <h3 class="section-title">物料核销 (若无消耗可不添加)</h3>
-          <el-button type="primary" size="small" plain round :icon="Plus" @click="openMaterialPicker">
-            添加耗材
-          </el-button>
-        </div>
+      <el-card shadow="never" class="finish-section">
+        <template #header>
+          <div class="consume-header">
+            <span class="section-title">物料核销 (若无消耗可不添加)</span>
+            <el-button type="primary" size="small" plain :icon="Plus" @click="openMaterialPicker">
+              添加耗材
+            </el-button>
+          </div>
+        </template>
 
         <el-empty
           v-if="selectedParts.length === 0"
@@ -110,7 +120,7 @@
           <span>直接耗材总金额：</span>
           <span class="cost-amount">¥ {{ totalMaterialCost.toFixed(2) }}</span>
         </div>
-      </section>
+      </el-card>
 
       <!-- 5. 提交按钮 -->
       <div class="submit-row">
@@ -183,6 +193,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions } from 'element-plus';
 import { ArrowLeft, Delete, Plus, Search } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../../stores/auth';
+import { useViewport } from '../../composables/useViewport';
 import {
   DispatchOrderItemVO,
   SparePartVO,
@@ -193,6 +204,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const { isNarrowPhone } = useViewport();
 
 const orderId = Number(route.params.id);
 const orderInfo = ref<Partial<DispatchOrderItemVO>>({});
@@ -399,44 +411,40 @@ async function onSubmitFinish() {
 </script>
 
 <style scoped>
+/*
+ * 视觉语言与其余页面一致（口径见 docs/20260906-1430-…-frontend-design.md §3.3）：
+ * 根节点 16px 内边距；分段用 el-card shadow="never" + #header（同工单详情页 .block）；
+ * 表单列限宽但**左对齐**——页面级不做 margin-inline:auto 居中；
+ * 颜色只用设计文档 §3.1 令牌与品牌主色 #1677FF。
+ */
 .finish-container {
-  min-height: 100%;
-  padding-bottom: 40px;
+  padding: 16px;
 }
 
 .finish-notice {
-  border-radius: 0;
+  margin-bottom: 14px;
 }
 
 .back-row {
   margin-bottom: 10px;
 }
 
-/* 表单主体限宽居中：手机档自然满宽，桌面档不无限拉伸 */
+/* 表单主体限宽：手机档自然满宽，桌面档不无限拉伸（与提单页 .submit-form 同法） */
 .finish-form {
   max-width: 760px;
-  margin-inline: auto;
-  padding: 12px 16px 0;
 }
 
 .finish-section {
-  background-color: #FFFFFF;
-  border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-  padding: 14px 16px;
   margin-bottom: 14px;
 }
 
 .section-title {
-  margin: 0 0 12px;
-  font-size: 15px;
   font-weight: 600;
-  color: #1F2937;
 }
 
 .watermark-tip {
   font-size: 12px;
-  color: #969799;
+  color: #9CA3AF;
   line-height: 1.5;
   margin-top: 8px;
 }
@@ -445,10 +453,8 @@ async function onSubmitFinish() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.consume-header .section-title {
-  margin-bottom: 12px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .part-list {
@@ -463,7 +469,7 @@ async function onSubmitFinish() {
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 0;
-  border-bottom: 1px solid #EBEDF0;
+  border-bottom: 1px solid #E5E7EB;
 }
 
 .part-info {
@@ -474,27 +480,27 @@ async function onSubmitFinish() {
 .part-name {
   font-size: 14px;
   font-weight: 600;
-  color: #323233;
+  color: #1F2937;
 }
 
 .part-meta {
   font-size: 12px;
-  color: #646566;
+  color: #4B5563;
   margin-top: 4px;
 }
 
 .part-stock {
   font-size: 12px;
-  color: #07c160;
+  color: #52C41A;
   margin-top: 2px;
 }
 
 .part-stock.low-stock {
-  color: #ed6a0c;
+  color: #FA8C16;
 }
 
 .over-warning {
-  color: #ee0a24;
+  color: #F5222D;
   font-weight: 600;
 }
 
@@ -510,13 +516,13 @@ async function onSubmitFinish() {
   align-items: baseline;
   padding: 12px 0 0;
   font-size: 13px;
-  color: #646566;
+  color: #4B5563;
 }
 
 .cost-amount {
   font-size: 16px;
   font-weight: bold;
-  color: #ee0a24;
+  color: #F5222D;
   margin-left: 4px;
 }
 
@@ -525,8 +531,14 @@ async function onSubmitFinish() {
 }
 
 .submit-btn {
-  width: 100%;
   min-height: 44px;
+}
+
+/* 窄档：提交按钮撑满，现场单手可点 */
+@media (max-width: 767px) {
+  .submit-btn {
+    width: 100%;
+  }
 }
 
 /* 耗材选择弹窗列表 */
@@ -546,8 +558,8 @@ async function onSubmitFinish() {
   gap: 8px;
   padding: 12px;
   border-radius: 8px;
-  background-color: #fff;
-  border: 1px solid #EBEDF0;
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
@@ -558,14 +570,14 @@ async function onSubmitFinish() {
 
 .picker-item.disabled-part {
   opacity: 0.5;
-  background-color: #f7f8fa;
+  background-color: #F9FAFB;
   cursor: not-allowed;
 }
 
 .picker-part-name {
   font-size: 14px;
   font-weight: 600;
-  color: #323233;
+  color: #1F2937;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -573,7 +585,7 @@ async function onSubmitFinish() {
 
 .picker-part-sub {
   font-size: 12px;
-  color: #969799;
+  color: #9CA3AF;
   margin-top: 4px;
 }
 
@@ -585,7 +597,7 @@ async function onSubmitFinish() {
 }
 
 .picker-price {
-  color: #ee0a24;
+  color: #F5222D;
   font-weight: 600;
 }
 

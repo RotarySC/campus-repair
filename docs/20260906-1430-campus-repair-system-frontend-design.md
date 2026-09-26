@@ -171,6 +171,60 @@ campus-repair-frontend/
   - 次要说明/辅助时间戳：`12px`。
 - **移动端触控目标**：所有按钮、选择项及外呼图标的点击命中区域（Hit Area）保证 **≥ 44 × 44 pt**，输入框高度统一设为 `48px`，防止现场工人误触。
 
+### 3.3 已落地的视觉语言约束（2026-09-27 补，收口师傅两页时沉淀）
+
+§3.1 的令牌此前只是"文档里的约定"——各页各自硬编码同一批十六进制值，于是**漂移是必然的**：
+`views/worker/WorkbenchView.vue` 与 `views/worker/WorkerFinishView.vue` 在 2026-09-12 的单树重构里
+只被换成了 Element Plus，**视觉语言仍是从移动端 Vant 版带过来的**（Vant 调色板、页面级居中限宽、
+自造卡片投影、自造状态徽标、`round` 按钮）。两页因此成了全仓唯一风格不统一的两页。
+本节把"什么算统一"写成可验证的硬约束——**新页面照此写，改动前先跑 `.scratch/assert-worker-ui.mjs` 的同类断言**。
+
+| # | 约束 | 判据 |
+| :-- | :--- | :--- |
+| V1 | 页面根节点有内边距 | `padding: 16px`（数据密集型页可用 `20px 24px`）；**不许 0 内边距** |
+| V2 | 页面内容装进卡片 | `el-card shadow="never"`；分段卡片用 `#header` + `<span class="block-title">` |
+| V3 | 卡片靠**边框**而非投影分层 | `border: 1px solid #E5E7EB` + `border-radius: 8px`；**不许自造 `box-shadow`** |
+| V4 | 颜色只取 §3.1 令牌 + 品牌主色 | 自写 chrome 用 `#1677FF` / `#E5E7EB` / `#1F2937` / `#4B5563` / `#9CA3AF` / `#F5F7FA` / `#F9FAFB` / `#E6F4FF` 与 `--status-*`；**EP 组件保留 EP 语义色**（`el-tag`/`el-button` 的 `type` 由组件决定，不要手动染色） |
+| V5 | 页面级禁止居中限宽 | **不许** `max-width + margin-inline: auto`（那是移动端单列布局的写法）；只有**表单列**可 `max-width: 760px` 且**左对齐** |
+| V6 | 按钮形状统一 | **不许 `round`**；主操作用 `type="primary"`，次级用 `plain` |
+| V7 | 状态一律用 `el-tag` | `el-tag :type="orderStatusTagType(status)" effect="light"`；**不许自造 `.status-badge` 之类的彩色 span** |
+| V8 | 表单标签随断点走 | `:label-position="isNarrowPhone ? 'top' : 'right'"` + `:label-width="isNarrowPhone ? undefined : '110px'"`（弹窗内可固定 `top`） |
+| V9 | 状态配色只有一份实现 | `orderStatusTagType()` 在 `packages/shared/src/constants/status.ts`，**全仓唯一**；见 §3.3.1 |
+
+**V4 的两点澄清**：① EP 的默认主色是 `#409EFF`，而本项目自写 chrome 用 `#1677FF`——**这个"两个蓝"是既有事实**，
+本节不要求消除（消除要改 EP 主题变量，属独立工作），只要求**新代码别再引入第三种蓝**；
+② 数据可视化例外见 §7（大屏深色模式有自己的一套 `--cockpit-*`）。
+
+**V5 的由来**：师傅两页原本是移动端 H5（§8.3/8.4），改成 EP 后仍留着 `max-width:900px/760px + margin-inline:auto`
+的单列居中，在 1272px 桌面档下表现为"中间一条、两边大片空白"。**§8.3/8.4 的"移动端"定位已被 R1 单树重构取代**
+（两页现挂桌面外壳、走同一套断点），但两页的**信息架构刻意保留**（单列卡片流、`tel:` 拨号、≥44pt 触控目标）——
+收口的是视觉语言，不是信息架构。详见 `docs/20260912-1351-…-unified-portal-design.md` §14。
+
+#### 3.3.1 `orderStatusTagType()` —— 状态配色的唯一来源
+
+```ts
+// packages/shared/src/constants/status.ts（紧挨 OrderStatusLabels：同一件事的两个投影——文案与配色）
+export function orderStatusTagType(status?: string | null): OrderStatusTagType {
+  switch (status) {
+    case 'COMPLETED': return 'success';
+    case 'PENDING_ACCEPTANCE': return 'primary';
+    case 'REWORK_PENDING': return 'danger';
+    case 'IN_PROGRESS':
+    case 'ASSIGNED': return 'warning';
+    default: return 'info';
+  }
+}
+```
+
+**为什么必须只有一份**：2026-09-27 收口前，`StudentOrderListView.vue` 与 `PersonalCenterView.vue` 里各有
+一份**逐字节相同**的 `statusTagType()`；师傅工作台要渲染状态标签时眼看就要出现第三份。三个实现就是
+"同一个状态在不同页显示成不同颜色"的起点——趁第三处出现之前先收成一份。
+
+**已知后果（有意对齐，不是回归）**：`ASSIGNED` 与 `IN_PROGRESS` 都映射到 `warning`（橙）、`SUSPENDED`
+落到 `info`（灰）。师傅工作台旧的自造徽标是「待承接=蓝 / 维修中=绿 / 已挂起=橙」，收口后与
+「我的工单」「个人中心」一致——**判据是"跨页一致"而不是"单页可分辨"**，卡片的挂起信号由
+`.suspended-card` 的琥珀左条与 `.suspend-banner` 横幅承担。
+
 ---
 
 ## 4. 核心底层基础设施与通用设计

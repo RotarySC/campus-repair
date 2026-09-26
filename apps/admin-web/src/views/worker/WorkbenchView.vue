@@ -1,8 +1,8 @@
 <template>
   <div class="worker-workbench">
-    <div class="workbench-body">
-      <!-- 三栏任务切换 -->
-      <el-tabs v-model="activeTab" class="workbench-tabs" @tab-change="handleTabChange">
+    <!-- 三栏任务切换：页面级筛选，与「我的工单」同法放在卡片之外 -->
+    <div class="page-toolbar">
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane name="ASSIGNED">
           <template #label>
             待承接
@@ -22,7 +22,9 @@
           </template>
         </el-tab-pane>
       </el-tabs>
+    </div>
 
+    <el-card shadow="never">
       <!-- 搜索栏 -->
       <div class="search-container">
         <el-input
@@ -58,9 +60,9 @@
               <el-tag v-if="order.urgencyLevel === 2" type="danger" size="small">加急</el-tag>
               <el-tag v-if="order.status === 'SUSPENDED'" type="warning" size="small">已挂起</el-tag>
             </div>
-            <span class="status-badge" :class="getStatusClass(order.status)">
+            <el-tag :type="orderStatusTagType(order.status)" effect="light">
               {{ OrderStatusLabels[order.status] || order.status }}
-            </span>
+            </el-tag>
           </div>
 
           <div class="card-body">
@@ -101,10 +103,10 @@
             </div>
           </div>
 
-          <!-- 卡片操作底栏 (严格触控尺寸 >= 44pt) -->
+          <!-- 卡片操作底栏（窄档下按钮撑到 44px 触控高度） -->
           <div class="card-action-footer">
             <a :href="'tel:' + order.applicantPhone" class="tel-call-btn">
-              <el-button type="success" plain round :icon="Phone" class="tel-call-btn-inner">
+              <el-button type="success" plain :icon="Phone" class="tel-call-btn-inner">
                 拨打 {{ order.applicantName }} ({{ order.applicantPhone }})
               </el-button>
             </a>
@@ -114,7 +116,6 @@
               <template v-if="order.status === 'ASSIGNED'">
                 <el-button
                   type="primary"
-                  round
                   :loading="operatingId === order.id"
                   @click="handleAccept(order)"
                 >
@@ -124,13 +125,13 @@
 
               <!-- 维修中/已挂起态动作 -->
               <template v-if="order.status === 'IN_PROGRESS'">
-                <el-button type="primary" round @click="goToFinish(order)">
+                <el-button type="primary" @click="goToFinish(order)">
                   完工填报
                 </el-button>
-                <el-button type="warning" plain round @click="openSuspendModal(order)">
+                <el-button type="warning" plain @click="openSuspendModal(order)">
                   工单挂起
                 </el-button>
-                <el-button type="danger" plain round @click="openTransferModal(order)">
+                <el-button type="danger" plain @click="openTransferModal(order)">
                   申请转派
                 </el-button>
               </template>
@@ -138,13 +139,12 @@
               <template v-if="order.status === 'SUSPENDED'">
                 <el-button
                   type="success"
-                  round
                   :loading="operatingId === order.id"
                   @click="handleResume(order)"
                 >
                   解除挂起
                 </el-button>
-                <el-button type="danger" plain round @click="openTransferModal(order)">
+                <el-button type="danger" plain @click="openTransferModal(order)">
                   申请转派
                 </el-button>
               </template>
@@ -152,7 +152,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </el-card>
 
     <!-- 工单挂起弹窗 -->
     <el-dialog
@@ -252,6 +252,7 @@ import { httpClient } from '../../stores/auth';
 import {
   OrderStatusLabels,
   WorkerSkillLabels,
+  orderStatusTagType,
   DispatchOrderItemVO,
   WorkerWorkbenchCountVO,
   WorkerOrderListResultVO
@@ -472,16 +473,6 @@ async function submitTransfer() {
   }
 }
 
-function getStatusClass(status: string): string {
-  switch (status) {
-    case 'ASSIGNED': return 'badge-assigned';
-    case 'IN_PROGRESS': return 'badge-progress';
-    case 'SUSPENDED': return 'badge-suspended';
-    case 'COMPLETED': return 'badge-completed';
-    default: return 'badge-default';
-  }
-}
-
 function formatTime(isoStr?: string): string {
   if (!isoStr) return '--';
   return isoStr.replace('T', ' ').substring(0, 16);
@@ -489,19 +480,21 @@ function formatTime(isoStr?: string): string {
 </script>
 
 <style scoped>
+/*
+ * 视觉语言与其余页面一致（口径见 docs/20260906-1430-…-frontend-design.md §3.3）：
+ * 根节点 16px 内边距、内容装进 el-card shadow="never"、卡片用「1px #E5E7EB 边框 + 8px 圆角」
+ * 而不是自造投影、状态一律 el-tag。颜色只用设计文档 §3.1 的令牌与品牌主色 #1677FF。
+ */
 .worker-workbench {
-  min-height: 100%;
-  padding-bottom: 24px;
+  padding: 16px;
 }
 
-.workbench-body {
-  max-width: 900px;
-  margin-inline: auto;
-}
-
-.workbench-tabs {
-  background-color: #FFFFFF;
-  padding-inline: 8px;
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
 .tab-badge {
@@ -510,41 +503,47 @@ function formatTime(isoStr?: string): string {
 }
 
 .search-container {
-  padding: 10px 12px 0;
+  margin-bottom: 12px;
 }
 
 .order-card-list {
-  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 160px;
 }
 
+/*
+ * 卡片形态对齐调度中心的 .order-card（同类「工单卡」列表）：
+ * 边框 + 圆角，不用投影 —— 全仓只有师傅两页曾自造 box-shadow。
+ */
 .workbench-card {
   background-color: #FFFFFF;
-  border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
+/* 紧急度左侧色条：与调度中心 .urgent-border 同值（设计文档 --status-pending-dispatch） */
 .urgent-card {
-  border-left: 4px solid #EE0A24;
+  border-left: 4px solid #FA8C16;
 }
 
+/* 挂起态：左侧色条与底色对齐设计文档 --status-suspended，与本页 .suspend-banner 同底 */
 .suspended-card {
-  border-left: 4px solid #FF976A;
-  background-color: #FFFDF8;
+  border-left: 4px solid #FAAD14;
+  background-color: #FFFBE6;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #F3F4F6;
+  gap: 8px;
+  border-bottom: 1px dashed #E5E7EB;
   padding-bottom: 8px;
 }
 
@@ -560,39 +559,6 @@ function formatTime(isoStr?: string): string {
   font-size: 14px;
 }
 
-.status-badge {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
-.badge-assigned {
-  background-color: #E6F4FF;
-  color: #1677FF;
-}
-
-.badge-progress {
-  background-color: #E8FFEA;
-  color: #07C160;
-}
-
-.badge-suspended {
-  background-color: #FFF7E6;
-  color: #FA8C16;
-}
-
-.badge-completed {
-  background-color: #F6FFED;
-  color: #52C41A;
-}
-
-.badge-default {
-  background-color: #F3F4F6;
-  color: #6B7280;
-}
-
 .card-body {
   display: flex;
   flex-direction: column;
@@ -604,7 +570,7 @@ function formatTime(isoStr?: string): string {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #374151;
+  color: #4B5563;
 }
 
 .highlight-category {
@@ -617,7 +583,7 @@ function formatTime(isoStr?: string): string {
 
 .location-text {
   font-weight: 500;
-  color: #111827;
+  color: #1F2937;
 }
 
 .fault-desc-box {
@@ -641,7 +607,7 @@ function formatTime(isoStr?: string): string {
 .sla-row {
   font-size: 12px;
   color: #1677FF;
-  background-color: #F0F7FF;
+  background-color: #E6F4FF;
   padding: 4px 8px;
   border-radius: 4px;
   margin-top: 2px;
@@ -669,7 +635,7 @@ function formatTime(isoStr?: string): string {
   flex-direction: column;
   gap: 8px;
   padding-top: 8px;
-  border-top: 1px solid #F3F4F6;
+  border-top: 1px dashed #E5E7EB;
 }
 
 .tel-call-btn {
@@ -677,9 +643,10 @@ function formatTime(isoStr?: string): string {
   display: block;
 }
 
+/* 窄档：拨号按钮撑满，保证现场单手可点（设计文档 §8.3 要求绿色 tel: 按钮） */
 .tel-call-btn-inner {
   width: 100%;
-  min-height: 40px; /* 触控体验 >= 44pt 视觉近似 */
+  min-height: 40px;
   font-weight: 500;
 }
 
@@ -691,6 +658,11 @@ function formatTime(isoStr?: string): string {
 }
 
 @media (min-width: 768px) {
+  /* 宽档不再需要整条拨号栏，按钮回到常规尺寸 */
+  .tel-call-btn-inner {
+    width: auto;
+  }
+
   .action-buttons .el-button {
     min-height: 40px;
     padding-inline: 18px;

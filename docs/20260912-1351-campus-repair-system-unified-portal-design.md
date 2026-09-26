@@ -216,3 +216,85 @@ D3（草稿 key 双端共享——单树后仅剩一份提单页，约束自然�
 - 分支 `feat/single-tree-responsive`，提交序列：① useViewport+AppShell 三档 → ② 师傅两页+注册页 EP 重写 → ③ 路由合一+遗留清除+Vant 摘除 → ④ 桌面九页流式加固 → ⑤ vant 依赖清理 → ⑥ 文档。
 - 已验证：vue-tsc/tsc 全绿；`mvn test` 67/67；真机（CDP）：admin 七页渲染无溢出、守卫矩阵（admin→师生/师傅页 403、worker→/inventory 403）、旧路径重定向、师傅工作台/完工填报（单号 1006）渲染、外壳三档形态（宽档/平板自动折叠/手机抽屉全链路）。
 - 遗留：≤630 窄档的逐页视觉走查（截图级）因验证时段用户占用浏览器未完成，规则已由 P4 媒体查询落地，待下次会话静默补验。
+
+---
+
+## 14. 2026-09-27 增补：师傅两页视觉收口（R1-5 的遗留）
+
+> 触发：用户指出「维修师傅 UI 是目前唯一一个风格不统一的页面」。
+> 复核后确认这不是主观印象，而是 R1-5 的半量落地——**只换了组件库、没换视觉语言**。
+
+### 14.1 问题：R1-5 只换了组件库
+
+R1-5 的原文是「师傅工作台/完工填报以 EP 重写并挂入外壳」，执行时完成了"EP 重写"与"挂入外壳"，
+但两页的**视觉语言仍是从移动端 Vant 版逐行带过来的**（§8.3/8.4 的定位就是"移动端 H5"）。
+§13.3 的验收只到"渲染无溢出"，没有任何一条断言约束配色、容器与卡片形态——所以它一路绿到现在。
+
+**实测证据（2026-09-27，全仓对照）**：
+
+| # | 现象 | 师傅两页 | 其余 13 页 |
+| :-- | :--- | :--- | :--- |
+| 1 | `el-card` 用量 | **0** | 1~6 |
+| 2 | 页面根节点内边距 | **无** | `16px` 或 `20px 24px` |
+| 3 | 自造卡片投影 `0 1px 4px rgba(0,0,0,.04)` | **全仓仅这两处** | 无 |
+| 4 | Vant 调色板残留 | `#EE0A24`×3 `#07C160`×2 `#969799`×3 `#646566`×3 `#323233`×2 `#EBEDF0`×3 `#FF976A`×1 `#ed6a0c`×1 | 无 |
+| 5 | 自造状态徽标 | `.status-badge` + `.badge-*` 共 7 条样式 | `el-tag :type="statusTagType(...)"` |
+| 6 | 状态配色实现份数 | 工作台即将成为**第 3 份** | 2 份逐字节拷贝 |
+| 7 | `round` 按钮 | **全仓 8 处全在这两页** | 0 |
+| 8 | 页面级居中限宽 | `.workbench-body{max-width:900px;margin-inline:auto}`、`.finish-form{margin-inline:auto}` | 全宽；仅表单列限宽且左对齐 |
+| 9 | 表单标签是否随断点 | finish 页写死 `label-position="top"` | `isNarrowPhone ? 'top' : 'right'` + `label-width=110px` |
+| 10 | 边到边 alert | `.finish-notice{border-radius:0}` | `margin-bottom:14px`，圆角保留 |
+| 11 | 分段标题 | `h3.section-title` + 自造白卡 | `el-card` + `#header` + `.block-title` |
+
+**根因**：`docs/20260906-1430-…-frontend-design.md` §3.1 早就定义了设计令牌，但**令牌只是文档约定、
+代码里各页硬编码**——没有一条"什么算统一"的可验证约束，于是从移动端继承下来的那一套就留了下来。
+本轮把约束写成 §3.3 的 V1~V9，并落成探针断言。
+
+### 14.2 决策
+
+| # | 决策 | 理由 |
+| :-- | :--- | :--- |
+| R1-7 | **工作台宽档保留单列卡片流（全宽），不改 `el-table` 双档** | 卡片要承载 `tel:` 拨号按钮与最多 4 个业务动作（接单出发/完工填报/工单挂起/解除挂起/申请转派），`ResponsiveTable` 的操作列装不下；且这是现场作业页，触控语义优先。**收口的是视觉语言，不是信息架构** |
+| R1-8 | **`statusTagType` 抽到 `packages/shared` 供三处共用** | 见 §3.3.1；会改到师傅页之外的 `StudentOrderListView.vue` / `PersonalCenterView.vue`（各删本地副本改 import，映射表逐条不变） |
+| R1-9 | **表单分段用多张 `el-card shadow="never"` + `#header`** | 与工单详情页 `.block`、个人中心 `.pc-card` 同法；比"单卡 + `el-divider`"更贴合"每段一个独立关注点"（完工页 4 段里有一段自带工具栏） |
+
+### 14.3 实现
+
+- **提交 ①（`af76512`）**：`packages/shared/src/constants/status.ts` 新增 `OrderStatusTagType` 与
+  `orderStatusTagType()`；两个旧调用点删本地副本改 import。
+- **提交 ②**：`WorkbenchView.vue` —— 根节点 `padding:16px`、删 `.workbench-body` 居中限宽、页签移到
+  `.page-toolbar`（卡片之外，同「我的工单」）、搜索与列表进 `el-card shadow="never"`、卡片改
+  `1px solid #E5E7EB` + `8px` 圆角（去自造投影）、状态徽标 → `el-tag`、删 `getStatusClass()`、
+  7 条 `.badge-*` 样式整块删除、紧急左条 `#EE0A24`→`#FA8C16`、挂起左条 `#FF976A`→`#FAAD14` 且底色
+  `#FFFDF8`→`#FFFBE6`（与本页 `.suspend-banner` 同底）、卡内分隔线 `1px solid #F3F4F6`→`1px dashed #E5E7EB`
+  （对齐 `ResponsiveTable` 与调度中心）、8 处 `round` 去掉、宽档拨号按钮回常规尺寸（窄档仍撑满）。
+  `WorkerFinishView.vue` —— 根节点 `padding:16px`、alert 恢复圆角 + `margin-bottom:14px`、
+  4 段改 `el-card` + `#header`、删 `.finish-form` 的 `margin-inline:auto`（保留 `max-width:760px` 左对齐）、
+  标签改断点响应式、`el-descriptions` 列数改 `isNarrowPhone ? 1 : 2` 且「报修描述」`:span="2"`、
+  Vant 色板逐值换成 §3.1 令牌、`round` 去掉、提交按钮窄档撑满。
+
+### 14.4 验证
+
+- **新增真机探针 `.scratch/assert-worker-ui.mjs`：105 PASS / 0 FAIL / 1 SKIP**（SKIP 是刻意的：
+  `worker02` 名下没有 `IN_PROGRESS` 状态的单，无法验「点完工填报跳转」）。它是"改师傅两页或改
+  `orderStatusTagType`"必跑的回归探针。
+- 既有探针回归：`assert-identity-batch1.mjs` 22/22、`assert-assistant.mjs` 52/52、
+  `narrow-walkthrough.mjs worker 390/600/1272` 三档 0 offenders / 0 console error。
+- 类型检查：`tsc -p packages/shared`、`vue-tsc -p apps/admin-web` 均 exit 0。
+- 后端：`mvn test` **176/176**（默认顺序与 `-Dsurefire.runOrder=alphabetical` 两种顺序）。纯前端改动，
+  计数应无变化，跑一次取证。
+- 静态：两页 `grep -nE '#(EE0A24|ee0a24|07C160|07c160|969799|646566|323233|EBEDF0|FF976A|ed6a0c)'` 与
+  `grep -nE '\bround\b'` 均 **0 命中**。
+- 人工看图：390 / 1272 × 工作台（三档页签）/ 完工页（含耗材弹窗与已选入一行）共 8 张截图确认观感。
+
+### 14.5 本轮暴露的两条环境陷阱（已沉淀到 `AGENTS.md` §2.2）
+
+1. **沙箱拒绝 JVM 写 `%TEMP%`** ⇒ `mvn test` 里凡用 `ImageIO` 的用例全红（`DemoImageSeederTest` ×3、
+   `UserIntegrationTest#testImportUsersWithExcel`、`AuthIntegrationTest#testGetCaptchaSuccess` 期望
+   `code=200` 实得 `500`），**5 个红看着像大面积回归，其实同一个根因**。把 `TEMP`/`TMP` 指到工作区内
+   即恢复 176/176。**注意 PowerShell 自己写 `%TEMP%` 是成功的，被拒的是 JVM 子进程。**
+2. **几何断言必须与页面缩放无关**：本机 `getComputedStyle(el).borderTopWidth` 把 `1px` 报成 `0.8px`
+   （`dpr≈1`、`visualViewport.scale=1`、`zoom=1`）。判据是在同页新造一个 1px 边框的 div 再量——
+   它也报 `0.8px`，说明是环境而非样式。所以断言写「颜色精确 + `boxShadow==='none'` + `parseFloat>0`」，
+   **不要写 `=== '1px'`**。
+
