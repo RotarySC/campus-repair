@@ -14,6 +14,8 @@
 | §6 测试与验收 | **已验收**：真机探针 33 条 ALL PASS |
 | §0.1 验收后修复（制度问答按职能裁剪） | **已修复**，149/149 |
 | §0.2 验收后修复（大模型信封解包） | **已修复**，160/160（+9 条真实 HTTP 用例） |
+| §0.3 首次接入真实提供方（MiMo `mimo-v2.6-flash`） | **已跑通**：`engine=RULE+LLM`、`degradedReason=null` |
+| §0.4 升级制（规则有把握就不调模型） | **已落地**，169/169；4/8 请求免调模型 |
 
 ### 0.1 验收后修复：制度问答曾是「三类账号一模一样」（2026-09-26）
 
@@ -55,6 +57,81 @@
 **为什么不选 `MockRestServiceServer`**：它会**替换掉请求工厂**，socket 超时根本不会发生——而"助手永远不能拖住提单页"这条不变式恰恰靠 `SimpleClientHttpRequestFactory` 的**真超时**来保证。回环服务端能同时验报文与真超时，因此比 mock 请求工厂**更强**，且不需要引入新依赖。
 
 **这次修复的普适教训**：**只要测试替身替换了真实边界，就必须有一个用例让真实边界也跑一遍**。本轮的信封、上一轮的 FAQ 条数，都是"断言只覆盖了替身的行为、没覆盖真实契约"的同一类错误。
+
+### 0.3 首次接入真实提供方：MiMo `mimo-v2.6-flash`（2026-09-26 实测）
+
+§0.2 修好信封之后，用真实网关（小米 MiMo 开放平台）跑通了**第一次成功的大模型调用**。以下全部是实测数据，不是文档推断。
+
+**接入配置（两层开关都要）**：`ASSISTANT_LLM_ENABLED=true` + `BASE_URL`/`API_KEY`/`MODEL` 齐全，**且** `sys_config.assistant_llm_enabled=1`。
+
+| 项 | 值 | 备注 |
+| :--- | :--- | :--- |
+| `ASSISTANT_LLM_BASE_URL` | `https://api.xiaomimimo.com/v1` | **必须带 `/v1`**——代码自己拼 `/chat/completions` |
+| `ASSISTANT_LLM_MODEL` | `mimo-v2.6-flash` | 在官方 `/v1/models` 返回列表内 |
+| 鉴权 | `Authorization: Bearer <key>` | 官方同时支持 `api-key:` 头；我们发的是 Bearer，**兼容、无需改代码** |
+
+**`base_url` 少一段 `/v1` 会让每一次调用静默全灭（A/B 实测，用无效 key 探路径）**：
+
+| `base_url` | 结果 |
+| :--- | :--- |
+| `https://api.xiaomimimo.com/v1` | **401 Unauthorized** —— 路径对，仅凭据被拒 |
+| `https://api.xiaomimimo.com` | **404 Not Found**（openresty） |
+
+**两个默认值被实测推翻，已上调**
+
+| 参数 | 原默认 | 新默认 | 证据 |
+| :--- | ---: | ---: | :--- |
+| `app.assistant.llm.max-tokens` | 64 | **512** | 同 7 条描述：64 时 **3 条失败**（`LLM_INVALID_RESPONSE`——思考模型的推理 token 把 64 的额度吃光，`content` 返回空）；提到 1024 后 **0 条失败**。它是**上限而不是预留**，对不推理的模型零成本 |
+| `app.assistant.llm.timeout-ms` | 3000 | **8000** | 实测端到端延迟 **1.8~4.9s**；3000ms 打掉将近一半请求（`LLM_TIMEOUT`） |
+
+两者都可环境变量覆盖（`ASSISTANT_LLM_MAX_TOKENS` / `ASSISTANT_LLM_TIMEOUT_MS`）。
+
+**大模型的增益是真实的**：规则引擎对「教室投影仪没有画面」给出 `noMatch=true`（零候选），大模型补出 `312 插座跳闸 | 311 灯具损坏 | 341 网络不通`；「宿舍天花板往下渗水」规则只命中 301，大模型补出 `302 下水道堵塞`。
+
+**未解决**：**排序不确定**——同一输入的首候选会变。本轮**只记录不修**，见 §8「排序不确定」条（含实测证据与建议修法）。
+
+**接入方式（本地）**：工作区根 `.env` 存 `ASSISTANT_LLM_*`。**Spring Boot 不读 `.env`**——它只认进程环境变量，所以启动前必须把键导出到环境里；或改用 `spring.config.import=optional:file:.env[.properties]`，但那样**值里的双引号会被当成值的一部分**（本轮实测该 key 是带引号的），需先去引号。`.env` 已加入 `.gitignore`：**含密钥的文件绝不入库**。
+
+### 0.4 验收后改进：升级制——规则有把握就不调模型（2026-09-26）
+
+**动机（用户提出）**：升级制之前，只要大模型开着，**每一次** `/assistant/suggest` 都会调模型——哪怕规则引擎已经用 4 个关键词命中了。用户的原话是"所有提问都会经过模型"，并提出"先经过常态判断，若无法处理再由模型进行判断"。
+
+**机制**：新增 `sys_config.assistant_llm_escalate_below`（默认 **10**）与纯函数 `AssistantRuleEngine.shouldEscalate(ranked, threshold)`：
+
+```
+升级 ⇔ ranked 为空 ∨ max(规则得分) < threshold
+```
+
+| 值 | 语义 |
+| ---: | :--- |
+| `0` | 每次都调（升级制之前的行为，向后兼容） |
+| `1` | 只有一条都没命中（`noMatch`）才升级 |
+| **`10`** | **非 HIGH 就升级（默认）** |
+
+**为什么默认是 10、而不是"只 noMatch"**：实测 8 条描述，严格 `noMatch` 会漏掉唯一一处"弱命中但有更好答案"——「宿舍天花板往下渗水」只命中 1 个词（MEDIUM/5），按 `noMatch` 口径**不会**调模型，用户就只看到「水龙头漏水」；而模型能补出「下水道堵塞」，对天花板渗水明显更贴。`10` 保住这一档，同时仍省掉一半调用。
+
+**真机实测（真实提供方，阈值 10）**：
+
+| 描述 | engine | 升级制前 | 升级制后 |
+| :--- | :--- | ---: | ---: |
+| 卫生间水龙头一直滴水 | `RULE` | 1917ms | **66ms** |
+| 插座冒烟跳闸 | `RULE` | 2044ms | **45ms** |
+| 门锁坏了 | `RULE` | 1992ms | **37ms** |
+| 空调开着不制冷 | `RULE` | 1826ms | **36ms** |
+| 宿舍天花板往下渗水 | `RULE+LLM` | 4046ms | 4834ms |
+| 门框坏了，怎么处理? | `RULE+LLM` | 2044ms | 2229ms |
+| 教室投影仪没有画面 | `RULE+LLM` | 4883ms | 3575ms |
+| 三楼走廊的灯一闪一闪 | `RULE+LLM` | 2863ms | 1913ms |
+
+**4/8 升级、4/8 瞬时**（36~66ms，约 30~50 倍）。阈值**热生效、无需重启**（`SysConfigService` 无缓存，实测 10→1 立即改变行为）。
+
+**顺带解决了 §8 的「排序不确定」**：HIGH 路径现在**根本不经过模型**，那条路径 100% 确定。仍会抖的只有升级路径，而那里**没有规则命中可被挤掉**——危害从"首候选随机翻"降到"新增候选之间的顺序随机"。这比改 `merge()` 更彻底。
+
+**不变式没有放松，反而收紧了**：原来「大模型只能追加或重排，不得淘汰规则命中」，现在是「规则有把握时模型**连看都看不到**」。
+
+**顺带白拿两条**：**隐私**（只有本地判不了的描述才离开系统）；**成本/配额**（省一半调用）。
+
+**新增测试 9 例（160 → 169）**：`AssistantRuleEngineTest` 12 → 16（阈值边界 10/1/0、取最高分而不依赖列表顺序）；新增 `AssistantLlmEscalationTest` 5 例，用 `@Primary` 的**计数传输层**断言"到底有没有发请求"——只看响应体会得到**恒真**的测试（规则命中时 `engine` 本来就是 `RULE`，模型调没调都一样），所以 `@BeforeEach` 先断言注入到的确实是计数实现，并内置负向对照（同一 HIGH 输入 + 阈值 0 ⇒ `calls == 1`）。
 
 ## 1. 现状与决策（动手前已核实）
 
@@ -121,15 +198,16 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
 
 5 个大类也带同义词（命中权重最低，用于兜底）：`水暖管道`、`电气照明`、`暖通空调`、`门窗锁具`、`弱电网络`。
 
-### 2.3 系统参数（三个新键，**都带代码级默认值**）
+### 2.3 系统参数（四个新键，**都带代码级默认值**）
 
 | 键 | 默认 | 含义 |
 | :--- | :--- | :--- |
 | `assistant_enabled` | `1` | 总开关：`0` ⇒ 前端不渲染入口、推荐接口防御性返回空 |
 | `assistant_llm_enabled` | `0` | 大模型增强的运行期开关（默认关） |
 | `assistant_max_candidates` | `3` | 一次最多返回的候选数 |
+| `assistant_llm_escalate_below` | `10` | 大模型**升级阈值**：规则最高分低于它才调模型（§0.4；`0`=每次都调，`1`=只 noMatch） |
 
-测试 profile 不种 `sys_config`，所以三个键**必须**在代码里带默认值，否则助手测试全靠种子而本地/生产行为不一致。
+测试 profile 不种 `sys_config`，所以四个键**必须**在代码里带默认值，否则助手测试全靠种子而本地/生产行为不一致。**生产升级记得跑 `sql/migration-20260921-assistant.sql`**——否则管理页看不到这个键，只能改 SQL。
 
 ### 2.4 迁移脚本
 
@@ -195,13 +273,14 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
 ### 3.4 大模型增强（默认关）
 
 - **就绪判定**：`app.assistant.llm.enabled=true` ∧ `base-url`/`api-key`/`model` 均非空 ∧ `sys_config.assistant_llm_enabled=1`。缺任一 ⇒ 纯规则（`engine=RULE`，且**不算降级**、`degradedReason=null`）。
-- **调用**：OpenAI 兼容 `POST {base-url}/chat/completions`，`temperature=0`、`max_tokens=64`、超时 `app.assistant.llm.timeout-ms`（默认 3000ms）。system prompt 里给出**封闭候选清单**（`id|叶子名|大类|工种`）并要求只返回 `{"categoryIds":[...]}`。
+- **升级制（§0.4）**：规则**有把握时不调模型**。`sys_config.assistant_llm_escalate_below`（默认 `10`）= 规则最高分低于它才升级；`0` 即"每次都调"。判定是纯函数 `AssistantRuleEngine.shouldEscalate`（**取最高分**，与列表顺序无关）。**"没调模型"不是降级**：`engine` 保持 `RULE`、`degradedReason` 保持 `null`。
+- **调用**：OpenAI 兼容 `POST {base-url}/chat/completions`——**`base-url` 必须到 `/v1` 为止**（代码自己拼 `/chat/completions`；填裸域名返回 404，实测见 §0.3）。`temperature=0`、`max_tokens` 默认 **512**、超时默认 **8000ms**，两者都可环境变量覆盖（`ASSISTANT_LLM_MAX_TOKENS` / `ASSISTANT_LLM_TIMEOUT_MS`）——**默认值由 64/3000 上调的实测依据见 §0.3：思考模型的推理 token 也占 `max-tokens`，调小会把 `content` 挤空**。system prompt 里给出**封闭候选清单**（`id|叶子名|大类|工种`）并要求只返回 `{"categoryIds":[...]}`。
 - **解析**：先 `extractAssistantContent(响应体)` 从 chat/completions **信封**里取出 `choices[0].message.content`（拿不到就原样回落，见 §0.2），再交给 `filterAllowedIds(rawJson, allowedIds)`——**静态纯函数**，丢弃未知 id、去重、截断至上限、容忍 ```` ```json ```` 围栏。不合法即 `LLM_INVALID_RESPONSE`。
 - **传输层边界**：`AssistantLlmTransport.postJson` 返回的是**原始响应体（完整信封）**，不是模型 content；解包属客户端职责。这条边界写错会让**每一次**真实调用都降级为 `LLM_INVALID_RESPONSE`（§0.2 即为此）。
 - **合并策略（不变式）**：大模型结果**只能追加/重排**，不能淘汰规则命中。最终列表 = 模型序在前，规则命中按原序补足（去重），总数仍受限；`engine="RULE+LLM"`。模型返回空 ⇒ 纯规则且 `degradedReason` 保持 `null`（「模型也没把握」不是故障）。
 - **异常一律吞掉并降级**：超时/非 2xx/JSON 解析失败 ⇒ `degradedReason` 取对应值 + 返回纯规则结果，**HTTP 仍 200**。
 - **隐私边界**：只发**自由文本描述 + 封闭分类清单**；不发姓名、手机号、单位路径、历史工单。
-- **提示注入**：描述是用户输入，会被拼进 prompt。防线有三层——封闭候选集、服务端 `filterAllowedIds` 只认已知 id、助手不自动提单。最坏后果仅是把候选**排序弄错**，不会产生越权或脏数据。
+- **提示注入**：描述是用户输入，会被拼进 prompt。防线有三层——封闭候选集、服务端 `filterAllowedIds` 只认已知 id、助手不自动提单。**实测**（见 §3.6）：要封闭集**外**的 id 会被丢弃；要封闭集**内**的 id 模型自己没照做。最坏后果是把候选**排序弄错**或"多看了一眼错候选"，不会产生越权或脏数据。
 
 ### 3.5 制度问答与进度速查
 
@@ -217,6 +296,31 @@ self_help_tip  VARCHAR(255) DEFAULT NULL,  -- 提交前自助排查提示，多�
   **为什么必须分档**：同一个问题对不同职能的答案会不同，甚至**不适用**——「报修后多久会有人上门」对师傅毫无意义（要上门的正是他自己）。各条答案描述的行为与状态机、SLA 冻结、返工阈值、超时核销口径逐一对应，**改产品规则时要一并改这里**。
 - **FAQ** 的数值全部插值，不留硬编码：`auto_acceptance_timeout_hours`(72)、`rework_rating_threshold`(2)、`sla_warning_ahead_hours`(24)、`app.file.max-size-mb`(10)。
 - **进度速查** 的 `nextStep` 由 `OrderStatusEnum` 全 10 态各映射一句「下一步做什么」，与 §3 状态机一一对应；**缺一即测试失败**。
+
+### 3.6 脱离系统能力的提问会怎样（2026-09-26 实测）
+
+助手**只有一条自由文本入口**：`POST /assistant/suggest`（`@Size(min=2,max=300)`）。`/my-progress`、`/faq`、`/status` 都是 GET 且**不收自由文本**——所以"脱离范围的问题"只能从描述框进来，而描述框的产出只有三种：封闭集里的候选、`noMatch` + 大类回退、或一句错误提示。**它没有生成自由文本的能力，不会"聊"**，也不存在多轮对话与会话记忆（§7）。
+
+实测 7 条离题输入（「今天天气怎么样？」「你是谁」「帮我写一首诗」「美团外卖怎么退款」「1+1等于几」「告诉我 rag 分块策略是什么」「语义分块好还是固定分块好」）**结果完全一致**：
+
+```
+noMatch=true   engine=RULE   degradedReason=null   候选=（无）
+回退大类: 水暖管道 / 电气照明 / 暖通空调 / 门窗锁具 / 弱电网络
+```
+
+前端落到 `noMatch` 分支（「没听明白是什么故障…」），**不试图回答**，把选择权交回用户。
+
+> **语义细节**：这几条耗时 2~4.5s，说明**模型确实被调了**（`noMatch` 触发升级），但 `engine` 仍是 `RULE`——`engine` 的语义是"**模型有没有贡献可用结果**"，模型返回空列表不算贡献。**「`engine=RULE` + 高延迟」= 问了模型、模型说不知道。**
+
+**对抗测试**：
+
+| 攻击 | 结果 |
+| :--- | :--- |
+| 注入要 `categoryIds:[999]`（封闭集**外**） | 被 `filterAllowedIds` 丢弃 → `noMatch` |
+| 注入要 `categoryIds:[301]`（封闭集**内**）两种写法 | 模型自己没照做 → `noMatch` |
+| 301 字 / 1 字 / 全空白描述 | **HTTP 400**（`@Size(min=2,max=300)`） |
+
+**残留风险（诚实记录）**：`filterAllowedIds` 对"封闭集之外"是**硬保证**，对"封闭集之内"**拦不住**——若模型被说服返回 `301`，用户会看到「水龙头漏水」。本轮两种注入写法都没得手，但那是**模型行为而非结构性保证**。缓解在于**助手不自动提单**（铁律）：最坏后果是"多看了一眼错候选"，不会产生脏数据。若要把这条也变硬，可在升级路径上加"输入与任何叶子名/关键词零命中时，把模型答案也降级为 `noMatch`"——但那会把 `noMatch` 路径的模型增益（「门框坏了 → 门锁损坏」正是它救回来的）一起砍掉，**是取舍不是 bug**。
 
 ## 4. 前端
 
@@ -271,6 +375,7 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 - `AssistantApiIntegrationTest`（MockMvc，自建分类与空间）：报修人可用；`WORKER`/`DISPATCHER` 调 `/suggest`、`/my-progress` ⇒ **403**；「水龙头一直滴水」⇒ 首候选 301/`PLUMBER`/24h/`HIGH` 且 `matchedKeywords` 非空；「插座冒烟跳闸」⇒ 312/`ELECTRICIAN`/8h；无关文本 ⇒ `noMatch=true` + 5 个大类；`engine=RULE`；FAQ 数值 == `sys_config`（缺种子时回落默认 72/2/24）；`my-progress` 只回自己的单；`nextStep` 覆盖 10 态；描述越界 ⇒ `code=400`。
 - `AssistantLlmClientTest`（纯单元，**假传输层**）：超时/报错/非法 JSON 的降级矩阵与 `degradedReason`；`filterAllowedIds` 纯函数单测（未知 id、重复、超上限、围栏）；`extractAssistantContent` 解包单测（信封取 content、多 choices 取首条、无信封回落、`content` 非文本回落）。
 - `RestClientLlmTransportTest`（**真实 HTTP**，JDK `HttpServer` 回环网关）：报文契约（POST/路径/`Bearer`/`Content-Type`/请求体、`base-url` 多斜杠）、**真信封端到端**（§0.2 的回归用例）、封闭集过滤去重、围栏、非 2xx ⇒ `LLM_ERROR`、**真读超时** ⇒ `LLM_TIMEOUT`、配置不就绪 ⇒ 零请求。**刻意不用 `MockRestServiceServer`**：它替换请求工厂，socket 超时不会发生（理由见 §0.2）。
+- `AssistantLlmEscalationTest`（**升级制**，`@SpringBootTest` + `@Primary` 计数传输层）：HIGH 命中 ⇒ `engine=RULE` 且**零请求**（§0.4 的回归用例）；`noMatch` 与弱命中 ⇒ 各升级 1 次；阈值 `0` ⇒ HIGH 也调；阈值 `1` ⇒ 只有 `noMatch` 升级。**断言对象是"到底有没有发请求"**——只看响应体会得到恒真测试（规则命中时 `engine` 本来就是 `RULE`）。
 
 ### 6.3 前端真机探针 `.scratch/assert-assistant.mjs`
 
@@ -281,8 +386,8 @@ cmd /c "copy /b server\src\main\resources\schema-test.sql+server\src\main\resour
 ```powershell
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
-mvn test -f server/pom.xml                       # 160/160 BUILD SUCCESS（基线 112 + 智能助手 48）
-mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 160/160（两种顺序都全绿）
+mvn test -f server/pom.xml                       # 169/169 BUILD SUCCESS（基线 112 + 智能助手 57）
+mvn test -f server/pom.xml '-Dsurefire.runOrder=alphabetical'   # 169/169（两种顺序都全绿）
 # ↑ 引号是必须的：不加引号 PowerShell 会把它拆成 `.runOrder=alphabetical`，
 #   Maven 报 `Unknown lifecycle phase ".runOrder=alphabetical"`（实测，2026-09-26）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json                  # exit 0
@@ -293,7 +398,7 @@ node .scratch/assert-profile.mjs                 # ALL PASS
 node .scratch/assert-drill.mjs                   # 130/130
 ```
 
-**用例数拆分（160 = 112 + 48）**：`AssistantRuleEngineTest` 12 + `AssistantLlmClientTest` 10 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 + **`RestClientLlmTransportTest` 9** = **48**（FAQ 按职能裁剪 +2；大模型信封解包修复 +11）。
+**用例数拆分（169 = 112 + 57）**：`AssistantRuleEngineTest` 16 + `AssistantLlmClientTest` 10 + `OrderStatusNarrativeTest` 3 + `AssistantApiIntegrationTest` 14 + `RestClientLlmTransportTest` 9 + **`AssistantLlmEscalationTest` 5** = **57**（FAQ 按职能裁剪 +2；大模型信封解包 +11；升级制 +9）。
 
 **接口级实测（真机 8080，演示数据）**：
 
@@ -326,8 +431,10 @@ node .scratch/assert-drill.mjs                   # 130/130
 | :--- | :--- |
 | 规则命中率取决于同义词表质量 | 字典页可自助维护（用户已选此方案）；后续可用演示库的 20 张单描述做一轮抽样回归，命中不了的记入「待补词」清单 |
 | 大模型提供方需兼容 OpenAI `/chat/completions` | 不兼容时只需改 `AssistantLlmClient` 的请求与解析两处（**含响应信封形状**，见 §0.2），规则路径与前端零改动 |
-| 大模型链路**从未对真实提供方端到端跑过** | 现有用例全部走本地回环网关（真实 HTTP，但响应是造的）。要接真网关，需注入 `ASSISTANT_LLM_*` 后实跑一次，核对真实返回形状与 `max_tokens=64` 是否够用 |
+| 大模型链路**只对一家真实提供方验证过** | 2026-09-26 已对 MiMo `mimo-v2.6-flash` 实跑通过（§0.3），不再是「从未跑过」。但其它提供方的信封细节（如 `content` 是数组、或与 `reasoning_content` 并存）仍未经实测；回归用例走的是本地回环网关（真实 HTTP、响应是造的），**换提供方时先重跑 §0.3 那套描述** |
 | `keywords` 列 255 上限 | 现 7 个叶子的同义词串最长约 70 个汉字（UTF-8 约 210 字节），够用；越界已由服务层显式拒绝 |
 | 无助手相关的运营看板 | 「助手推荐了多少次、采纳率多少」尚未埋点，后续若要看效果需新增事件与聚合 |
 | 「最近一张单」的同毫秒并列 | `getMyOrders` 只按 `created_at` 倒序，两张单时间戳相同时顺序未定义（写测试时实测踩到，已在测试里显式错开时间戳）。若要严格，需改成 `created_at desc, id desc`——那是「我的工单」共用方法的排序口径，本轮刻意不动 |
 | 关键词同义词表需人工维护 | 规则命中率取决于词表质量。已提供字典页编辑入口；后续可用演示库的 20 张单描述做一轮抽样，把命中不了的词补进「待补词」清单 |
+| **排序不确定：同一输入的首候选会变**（2026-09-26 实测；**已由 §0.4 升级制大幅缓解，`merge()` 本身仍未改**） | **模型侧**：MiMo 文档明确「思考模式下 `mimo-v2.6-flash`/`pro`/`pro-ultraspeed`/`v2.5-pro`/`v2.5` 不支持自定义 `temperature`/`top_p`，即使传入也会被强制为 `1.0`/`0.95`」——我们传的 `temperature=0` **不生效**。**客户端侧**：`merge()` 是「模型序在前、规则命中按原序补足」，于是模型可以**把规则 HIGH 命中挤到第二位**。**实测**：同一句「宿舍天花板往下渗水」连打 6 次，首候选在 `301 水龙头漏水` / `302 下水道堵塞` 之间随机翻，第 4 次第二候选还变成 `灯具损坏`。**不变式「不淘汰规则命中」仍成立**（只是顺序变），但首候选正是 UI 高亮、用户最可能点「采用」的那一个。**建议修法**：`merge()` 改为**按分数降序、模型序只在同分内做 tiebreak**——规则 HIGH 永远压得住模型新增项（首候选恢复确定性），模型仍能在"规则也没把握"处追加；改完补一条「同输入 N 次首候选一致」的用例。**§0.4 升级制落地后的现状**：HIGH 路径**根本不经过模型**，那条路径已 100% 确定；仍会抖的只剩升级路径，而那里**没有规则命中可被挤掉**，危害从"首候选随机翻"降到"新增候选之间的顺序随机"。 |
+| **提示注入：封闭集「之内」拦不住**（2026-09-26 实测） | `filterAllowedIds` 对封闭集**之外**是硬保证（要 `999` 会被丢弃）；但对封闭集**之内**只是"模型没被说服"——若模型返回 `301`，用户会看到「水龙头漏水」。本轮两种注入写法都没得手（§3.6），但那是模型行为而非结构性保证。要变硬需在升级路径加"零命中则把模型答案也降级为 `noMatch`"，代价是砍掉 `noMatch` 路径的全部模型增益（「门框坏了 → 门锁损坏」正是它救的），**是取舍不是 bug** |

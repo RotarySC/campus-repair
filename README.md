@@ -95,6 +95,7 @@
    - **快捷入口**与侧边栏导航**同源**（同一份 `navItems`），不会出现"导航里没有、助手还推荐"的漂移；
    - **我的工单进度速查**：最近一张单的当前状态 + 「下一步该做什么」（状态机全 10 态各有专属文案）；
    - **制度问答**：上门时效、预约时段、加急规则、防重单、72 小时超时自动核销、返工阈值等，数值全部取自系统参数；**内容按职能裁剪**——报修人（时效/验收/评价）、维修作业（接单/挂起/转派/完工/备件核销/负荷上限）、调度与平台管理（派单失败/指派改派/作废/返工仲裁/参数影响面）三套各不相同，多职能账号（如 `worker02`）取并集；
+   - **规则有把握时不调模型**（升级制）：`sys_config.assistant_llm_escalate_below`（默认 `10`）控制"把握度阈值"——规则最高分低于它才升级给大模型，`0` 即每次都调。实测 4/8 请求免调模型，那 4 条从 ~1.9s 降到 **36~66ms**；阈值热生效、不必重启；
    - **铁律：助手只出建议**——不自动提单、不自动改表单；助手整体不可用时提单页照常工作。
    - 助手知识（同义词 + 自助排查提示）落在 `repair_category` 的 `keywords`/`self_help_tip` 两列，在「空间与分类字典」页可编辑；生产库升级用 `sql/migration-20260921-assistant.sql`。
 
@@ -206,7 +207,7 @@ pnpm run dev:admin
 | :--- | :--- | :--- |
 | `JWT_SECRET` | JWT 双令牌签名密钥，**生产必填**。不设置时启动打 WARN 并沿用内置默认密钥——任何拿到源码的人都能离线伪造令牌 | 内置开发密钥（启动告警） |
 | `APP_CORS_ALLOWED_ORIGINS` | 跨域精确来源白名单（逗号分隔，非通配符）。白名单外来源的预检与实际请求一律 403 | `http://localhost:3000` |
-| `ASSISTANT_LLM_*` | **智能助手的大模型增强，默认全关**。需同时满足：`ASSISTANT_LLM_ENABLED=true` + `ASSISTANT_LLM_BASE_URL`/`ASSISTANT_LLM_API_KEY`/`ASSISTANT_LLM_MODEL` 三项齐全（OpenAI 兼容的 `/chat/completions`），**且** `sys_config.assistant_llm_enabled=1`。密钥只从环境变量注入，不落库、不进日志；缺任一即退回本地规则引擎 | 关闭（纯规则） |
+| `ASSISTANT_LLM_*` | **智能助手的大模型增强，默认全关**。需同时满足：`ASSISTANT_LLM_ENABLED=true` + `ASSISTANT_LLM_BASE_URL`/`ASSISTANT_LLM_API_KEY`/`ASSISTANT_LLM_MODEL` 三项齐全（OpenAI 兼容；**`base-url` 到 `/v1` 为止**——代码自己拼 `/chat/completions`），**且** `sys_config.assistant_llm_enabled=1`（填 `1`，**不是 `true`**）。可选调优：`ASSISTANT_LLM_MAX_TOKENS`（默认 **512**）、`ASSISTANT_LLM_TIMEOUT_MS`（默认 **8000**）——**思考模型的推理 token 也占 `max-tokens`**，调小会把 `content` 挤空（表现为 `degradedReason=LLM_INVALID_RESPONSE`）。密钥只从环境变量注入，不落库、不进日志；缺任一即退回本地规则引擎 | 关闭（纯规则） |
 
 ```powershell
 # 生产启动示例（密钥长度至少 32 字节，否则 JJWT HS256 拒绝签名）
@@ -221,7 +222,7 @@ $env:ASSISTANT_LLM_MODEL    = "<模型名>"
 mvn spring-boot:run
 ```
 
-> **智能助手的两个运行期开关**（改 `sys_config` 即可，不必重启）：`assistant_enabled=0` 让前端整块不渲染入口（回滚用）；`assistant_llm_enabled=0/1` 控制大模型增强。
+> **智能助手的三个运行期开关**（改 `sys_config` 即可，不必重启）：`assistant_enabled=0` 让前端整块不渲染入口（回滚用）；`assistant_llm_enabled=0/1` 控制大模型增强；`assistant_llm_escalate_below`（默认 `10`）控制**升级阈值**——规则最高分低于它才把判断交给模型（`1` = 只有一条都没命中才调，`0` = 每次都调）。
 
 > 前端以同源相对路径 `/api/v1` 访问后端，推荐生产采用**同源反向代理**同时转发 `/api` 与 `/uploads`（见 AGENTS.md 部署约束）；跨域白名单只服务于前后端分域部署的场景。
 
@@ -293,6 +294,7 @@ mvn test -f server/pom.xml
 ### 核心测试套件分布
 - `AssistantRuleEngineTest` / `AssistantApiIntegrationTest` / `AssistantLlmClientTest` / `OrderStatusNarrativeTest`：智能助手的规则打分与确定性排序（叶子名 +10 > 关键词 +5 > 大类名 +3、<2 字的词忽略、同分按 `sortOrder`/`id`）、无命中不硬猜、按职能分档鉴权（推荐与进度仅报修人，`WORKER`/`PLATFORM_ADMIN` 落 403）、总开关关闭时返回空结果、FAQ 数值取自系统参数、大模型降级矩阵（超时/报错/非法 JSON 一律回退纯规则且 HTTP 仍 200）、响应信封解包与封闭集过滤；
 - `RestClientLlmTransportTest`：**真实 HTTP**（JDK `HttpServer` 回环网关，不 mock 请求工厂）——报文契约（路径/`Bearer`/`Content-Type`/请求体、`base-url` 多斜杠）、**真实 chat/completions 信封端到端**、非 2xx 与**真读超时**降级、配置不就绪时零请求；
+- `AssistantLlmEscalationTest`：**升级制**——用 `@Primary` 的**计数传输层**断言"到底有没有发请求"（只看响应体会得到恒真测试）；HIGH 命中 ⇒ `engine=RULE` 且零请求，`noMatch`/弱命中 ⇒ 各升级一次，阈值 `0`/`1` 的边界行为；
 - `AuthIntegrationTest`：双 Token 鉴权、密码错输 3 次图形验证码、Token 静默刷新拦截、Redis 不可用时的内存降级兜底（登录成功 + 失败计数兜底）；
 - `FirstLoginEnforcementIntegrationTest`：首登未改密时业务端点被拦成 `1009`、改密端点/本人资料/换票仍放行、改密后新票放行而旧票仍被拦；
 - `LogoutRevocationIntegrationTest`：登出吊销双令牌（Access 立即 401、Refresh 换票报 1005）、吊销只作用于被出示的令牌、登出幂等不抛错、Refresh Token 走查询参数兜底；

@@ -203,4 +203,63 @@ class AssistantRuleEngineTest {
         List<Scored> net = AssistantRuleEngine.rank("宿舍网线插着但是上不了网", leaves, 3);
         assertThat(net.get(0).leaf().id()).isEqualTo(341L);
     }
+
+    // ------------------------------------------------------------------
+    // shouldEscalate：升级制的触发条件
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("升级阈值=10（默认）：HIGH 不升级；弱命中与 noMatch 都升级")
+    void escalateAtThresholdTen() {
+        List<Scored> high = AssistantRuleEngine.rank("水龙头漏水",
+                List.of(leaf(301, "水龙头漏水", "水暖管道", 1, null)), 3);
+        assertThat(high.get(0).score()).isEqualTo(10);
+        assertThat(AssistantRuleEngine.shouldEscalate(high, 10)).isFalse();
+
+        // 只命中一个关键词 = MEDIUM/5 —— 实测这正是模型能补出更好答案的那一档，必须升级
+        List<Scored> medium = AssistantRuleEngine.rank("滴水",
+                List.of(leaf(301, "水龙头漏水", "水暖管道", 1, "滴水")), 3);
+        assertThat(medium.get(0).score()).isEqualTo(5);
+        assertThat(AssistantRuleEngine.shouldEscalate(medium, 10)).isTrue();
+
+        // 只命中大类名 = LOW/3
+        List<Scored> low = AssistantRuleEngine.rank("水暖管道那边有点问题",
+                List.of(leaf(301, "水龙头漏水", "水暖管道", 1, "滴水")), 3);
+        assertThat(low.get(0).score()).isEqualTo(3);
+        assertThat(AssistantRuleEngine.shouldEscalate(low, 10)).isTrue();
+
+        assertThat(AssistantRuleEngine.shouldEscalate(List.of(), 10)).isTrue();
+        assertThat(AssistantRuleEngine.shouldEscalate(null, 10)).isTrue();
+    }
+
+    @Test
+    @DisplayName("升级阈值=1：只有一条都没命中才升级（弱命中自己扛）")
+    void escalateAtThresholdOne() {
+        assertThat(AssistantRuleEngine.shouldEscalate(List.of(), 1)).isTrue();
+
+        List<Scored> low = AssistantRuleEngine.rank("水暖管道那边有点问题",
+                List.of(leaf(301, "水龙头漏水", "水暖管道", 1, "滴水")), 3);
+        assertThat(low.get(0).score()).isEqualTo(3);
+        assertThat(AssistantRuleEngine.shouldEscalate(low, 1)).isFalse();
+    }
+
+    @Test
+    @DisplayName("阈值 <=0 = 每次都升级（关掉升级制，回到升级制之前的行为）")
+    void thresholdZeroAlwaysEscalates() {
+        List<Scored> high = AssistantRuleEngine.rank("水龙头漏水",
+                List.of(leaf(301, "水龙头漏水", "水暖管道", 1, null)), 3);
+        assertThat(AssistantRuleEngine.shouldEscalate(high, 0)).isTrue();
+        assertThat(AssistantRuleEngine.shouldEscalate(high, -1)).isTrue();
+        assertThat(AssistantRuleEngine.shouldEscalate(List.of(), 0)).isTrue();
+    }
+
+    @Test
+    @DisplayName("升级判定取最高分，与列表顺序无关（不要求调用方先排好序）")
+    void escalateUsesMaxScoreNotFirstElement() {
+        List<Scored> lowestFirst = List.of(
+                new Scored(leaf(302, "乙类", "大类", 2, "漏水"), 5, Confidence.MEDIUM, List.of("漏水")),
+                new Scored(leaf(301, "甲类", "大类", 1, "甲类"), 10, Confidence.HIGH, List.of("甲类")));
+        // 若实现取 get(0)，这里会误判成"要升级"
+        assertThat(AssistantRuleEngine.shouldEscalate(lowestFirst, 10)).isFalse();
+    }
 }

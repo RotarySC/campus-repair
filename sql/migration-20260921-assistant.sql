@@ -92,13 +92,14 @@ UPDATE `repair_category`
  WHERE `level` = 2 AND `name` = '网络不通';
 
 -- ---------------------------------------------------------------------------
--- 4. 助手三个系统参数（幂等：INSERT IGNORE 依赖 sys_config.config_key 的唯一键）
---    代码侧对这三个键都带默认值（1 / 0 / 3），所以即使这里没插进去，功能也照常可用
+-- 4. 助手四个系统参数（幂等：INSERT IGNORE 依赖 sys_config.config_key 的唯一键）
+--    代码侧对这四个键都带默认值（1 / 0 / 3 / 10），所以即使这里没插进去，功能也照常可用
 -- ---------------------------------------------------------------------------
 INSERT IGNORE INTO `sys_config` (`config_key`, `config_value`, `description`) VALUES
 ('assistant_enabled',        '1', '智能助手总开关：0=前端不渲染入口且推荐接口返回空'),
 ('assistant_llm_enabled',    '0', '助手的大模型增强开关（默认关）：需同时注入 ASSISTANT_LLM_* 才生效'),
-('assistant_max_candidates', '3', '助手一次最多返回的故障候选数量');
+('assistant_max_candidates', '3', '助手一次最多返回的故障候选数量'),
+('assistant_llm_escalate_below', '10', '大模型升级阈值：规则最高分低于它才调模型（10=非HIGH就升级，1=只noMatch，0=每次都调）');
 
 -- ---------------------------------------------------------------------------
 -- 5. 迁移后自检（预期值见每行注释）

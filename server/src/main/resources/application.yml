@@ -39,6 +39,12 @@ app:
       base-url: ${ASSISTANT_LLM_BASE_URL:}
       api-key: ${ASSISTANT_LLM_API_KEY:}
       model: ${ASSISTANT_LLM_MODEL:}
-      # 连接与读取超时：超时即降级为纯规则，绝不拖住提单页
-      timeout-ms: ${ASSISTANT_LLM_TIMEOUT_MS:3000}
-      max-tokens: 64
+      # 连接与读取超时：超时即降级为纯规则，绝不拖住提单页。
+      # 默认 8000（2026-09-26 由 3000 上调）：接思考模型实测延迟 1.8~4.9s，
+      # 3000ms 会打掉将近一半请求（degradedReason=LLM_TIMEOUT）。快模型可下调。
+      timeout-ms: ${ASSISTANT_LLM_TIMEOUT_MS:8000}
+      # 生成上限。**思考模型的推理 token 也占这个额度**，太小会把 content 挤空
+      # （表现为 degradedReason=LLM_INVALID_RESPONSE）。
+      # 默认 512（2026-09-26 由 64 上调）：实测 64 时 7 条描述错 3 条、512 级别 0 条。
+      # 这是**上限不是预留**，对不推理的模型零成本。
+      max-tokens: ${ASSISTANT_LLM_MAX_TOKENS:512}

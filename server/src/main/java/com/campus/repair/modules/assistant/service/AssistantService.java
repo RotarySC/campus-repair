@@ -42,10 +42,14 @@ public class AssistantService {
     static final String CFG_ENABLED = "assistant_enabled";
     static final String CFG_LLM_ENABLED = "assistant_llm_enabled";
     static final String CFG_MAX_CANDIDATES = "assistant_max_candidates";
+    /** 升级阈值：规则最高分低于它才把判断交给大模型（见 AssistantRuleEngine.shouldEscalate） */
+    static final String CFG_LLM_ESCALATE_BELOW = "assistant_llm_escalate_below";
 
     private static final int DEFAULT_ENABLED = 1;
     private static final int DEFAULT_LLM_ENABLED = 0;
     private static final int DEFAULT_MAX_CANDIDATES = 3;
+    /** 默认 10 = 非 HIGH 就升级；设 0 即"每次都调模型"（升级制之前的行为） */
+    private static final int DEFAULT_LLM_ESCALATE_BELOW = 10;
 
     /** 大类回退最多给几个 */
     private static final int FALLBACK_CATEGORY_LIMIT = 5;
@@ -76,8 +80,11 @@ public class AssistantService {
     /**
      * 判断故障细类。
      *
-     * <p>流程：本地规则先算 → 若大模型可用则**追加/重排**（不淘汰规则命中）→ 组装 VO。
-     * 关掉总开关时返回空结果（前端本来就不该调，这里只是防御）。
+     * <p>流程：本地规则先算 → **规则没把握时**才升级给大模型做追加/重排（不淘汰规则命中）
+     * → 组装 VO。关掉总开关时返回空结果（前端本来就不该调，这里只是防御）。
+     *
+     * <p>"有没有把握"由 {@code sys_config.assistant_llm_escalate_below} 决定（默认 10 = 非 HIGH 就升级）：
+     * 规则已经给出 HIGH 命中时**一次模型调用都不发**——那条路径瞬时、免费、且完全确定。
      */
     public AssistantSuggestionVO suggest(String description) {
         AssistantSuggestionVO result = new AssistantSuggestionVO();
@@ -100,7 +107,9 @@ public class AssistantService {
         List<Scored> ranked = AssistantRuleEngine.rank(description, dict.leaves(), limit);
 
         String degradedReason = null;
-        if (isLlmEnabled()) {
+        // 升级制：规则有把握（最高分 ≥ 阈值）时**根本不调模型**。
+        // 注意"没调模型"不是降级——degradedReason 保持 null、engine 保持 RULE，语义正确。
+        if (isLlmEnabled() && AssistantRuleEngine.shouldEscalate(ranked, escalateBelow())) {
             AssistantLlmClient.Outcome outcome = llmClient.pickCategoryIds(description, dict.leaves(), limit);
             degradedReason = outcome.degradedReason();
             if (!outcome.categoryIds().isEmpty()) {
@@ -344,5 +353,15 @@ public class AssistantService {
     private int maxCandidates() {
         int configured = configService.getIntValue(CFG_MAX_CANDIDATES, DEFAULT_MAX_CANDIDATES);
         return configured > 0 ? configured : DEFAULT_MAX_CANDIDATES;
+    }
+
+    /**
+     * 升级阈值：规则最高分低于它才把判断交给大模型。
+     *
+     * <p>刻意**不**把非正值夹到默认值上——{@code 0} 有明确语义（每次都调，向后兼容），
+     * 夹掉它就等于关不掉升级制了。
+     */
+    private int escalateBelow() {
+        return configService.getIntValue(CFG_LLM_ESCALATE_BELOW, DEFAULT_LLM_ESCALATE_BELOW);
     }
 }

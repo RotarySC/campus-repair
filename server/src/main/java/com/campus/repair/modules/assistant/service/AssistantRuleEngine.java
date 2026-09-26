@@ -124,6 +124,42 @@ public final class AssistantRuleEngine {
         return scored.size() > limit ? new ArrayList<>(scored.subList(0, limit)) : scored;
     }
 
+    /**
+     * 是否该把这次判断**升级给大模型**。
+     *
+     * <p>升级制取代了"每次都调模型"：规则有把握时直接返回，模型**连看都看不到**——
+     * 于是那条路径**瞬时、不花钱、且完全确定**。确定性这条很实际：思考模型的
+     * {@code temperature} 会被服务端强制成 1.0，同一句话的首候选会在两个细类间随机翻
+     * （实测见设计文档 §8），而升级制让大多数请求根本不经过那条不确定的路径。
+     *
+     * @param ranked    规则引擎已排序的候选（可能为空 = 一条都没命中）。
+     *                  刻意取**最高分**而不是 {@code ranked.get(0)}，这样调用方
+     *                  传未排序的列表也不会算错。
+     * @param threshold 升级阈值。<b>{@code <= 0} 表示"每次都升级"</b>（等价于关闭升级制，
+     *                  即升级制之前的行为）；否则**最高分低于阈值就升级**。
+     *                  按打分口径（叶子名 +10 / 关键词 +5 / 大类名 +3）：
+     *                  <ul>
+     *                    <li>{@code 1} = 只有一条都没命中（noMatch）才升级；</li>
+     *                    <li>{@code 10} = **非 HIGH 就升级**（默认）——弱命中（只命中 1 个关键词、
+     *                        或只命中大类名）也会交给模型，因为实测那正是模型能补出更好答案的地方；</li>
+     *                    <li>{@code 11} 以上 = 连 HIGH 也升级（等同每次都调，但不建议）。</li>
+     *                  </ul>
+     */
+    public static boolean shouldEscalate(List<Scored> ranked, int threshold) {
+        if (threshold <= 0) {
+            return true;
+        }
+        int top = 0;
+        if (ranked != null) {
+            for (Scored scored : ranked) {
+                if (scored.score() > top) {
+                    top = scored.score();
+                }
+            }
+        }
+        return top < threshold;
+    }
+
     /** 去掉所有空白字符（含全角空格）+ ASCII 转小写。 */
     public static String normalize(String raw) {
         if (raw == null || raw.isEmpty()) {

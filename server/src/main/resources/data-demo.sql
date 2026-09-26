@@ -149,7 +149,8 @@ INSERT INTO sys_config (config_key, config_value, description) VALUES
 ('sla_warning_ahead_hours',       '24', 'SLA 截止前多少小时开始预警催办'),
 ('assistant_enabled',             '1',  '智能助手总开关：0=前端不渲染入口且推荐接口返回空'),
 ('assistant_llm_enabled',         '0',  '助手的大模型增强开关（默认关）：需同时注入 ASSISTANT_LLM_* 才生效'),
-('assistant_max_candidates',      '3',  '助手一次最多返回的故障候选数量');
+('assistant_max_candidates',      '3',  '助手一次最多返回的故障候选数量'),
+('assistant_llm_escalate_below',  '10', '大模型升级阈值：规则最高分低于它才调模型（10=非HIGH就升级，1=只noMatch，0=每次都调）');
 
 -- ---------------------------------------------------------------------------
 -- 6. 耗材备件台账（含低于/等于安全库存的红色预警项与 1 个停用项）
