@@ -25,20 +25,19 @@
       </template>
 
       <el-form ref="formRef" :model="form" :rules="rules" :label-width="isNarrowPhone ? undefined : '110px'" :label-position="isNarrowPhone ? 'top' : 'right'" class="submit-form">
-        <el-divider content-position="left">报修故障位置</el-divider>
+        <el-divider content-position="left">报修位置与故障类型</el-divider>
         <el-form-item label="空间节点" prop="spaceId">
           <DrilldownCascader
             v-model="spacePath"
             :options="spaceOptions"
             label="空间节点"
             placeholder="请选择校区/楼栋/房间"
-            style="width: 100%; max-width: 420px"
+            class="field-cascader"
             @change="onSpaceChange"
           />
           <span v-if="spaceFullPathName" class="path-hint">{{ spaceFullPathName }}</span>
         </el-form-item>
 
-        <el-divider content-position="left">故障类型与工种</el-divider>
         <el-form-item label="故障细类" prop="categoryId">
           <DrilldownCascader
             v-model="categoryPath"
@@ -46,14 +45,14 @@
             label="故障细类"
             placeholder="请选择分类与对应工种"
             root-label="全部分类"
-            style="width: 100%; max-width: 420px"
+            class="field-cascader"
             @change="onCategoryChange"
           />
           <span v-if="categoryFullPathName" class="path-hint">{{ categoryFullPathName }}</span>
         </el-form-item>
 
         <!-- 助手内联推荐：只提示、只建议，用户不点「采用」就不动表单 -->
-        <el-form-item v-if="assistantCandidates.length || assistantHint" label=" ">
+        <el-form-item v-if="assistantCandidates.length || assistantHint" label=" " class="assistant-item">
           <div class="assistant-inline">
             <div class="assistant-inline-head">
               <span class="assistant-inline-title">智能助手建议</span>
@@ -77,7 +76,7 @@
             maxlength="300"
             show-word-limit
             placeholder="请详细描述故障现象（如爆水管、断闸跳闸、插座松动等）"
-            style="width: 100%; max-width: 560px"
+            class="field-textarea"
             @input="onDescriptionInput"
           />
         </el-form-item>
@@ -115,7 +114,7 @@
         </el-form-item>
 
         <el-form-item label="联系电话" prop="applicantPhone">
-          <el-input v-model="form.applicantPhone" placeholder="留空默认使用个人中心手机号" style="width: 100%; max-width: 280px" @input="saveDraft" />
+          <el-input v-model="form.applicantPhone" placeholder="留空默认使用个人中心手机号" class="field-phone" @input="saveDraft" />
         </el-form-item>
 
         <el-form-item>
@@ -482,11 +481,54 @@ onMounted(async () => {
 .student-submit-page {
   padding: 16px;
 }
+/* V13：表单页内容列限宽 1280px 且**左对齐**——不用 margin-inline:auto（V5 仍成立）。
+   提示条与卡片一起收进同一列：只收卡片会让提示条仍然边到边，比不收更难看。 */
+.student-submit-page > .el-alert,
+.student-submit-page > .el-card {
+  max-width: 1280px;
+}
 .card-title {
   font-weight: 600;
 }
 .submit-form {
   max-width: 760px;
+}
+/* 字段宽度：窄/中档沿用原来的控件级上限（与 V5 时期逐值一致） */
+.field-cascader {
+  width: 100%;
+  max-width: 420px;
+}
+.field-textarea {
+  width: 100%;
+  max-width: 560px;
+}
+.field-phone {
+  width: 100%;
+  max-width: 280px;
+}
+/* V13：≥1440px 表单分两栏。
+   阈值不是档位是算术：1440 档卡片 1168 → 内层 1126 → 每列 (1126−24)/2 = 551 → 字段 551−110 = **441px**，
+   比单栏时期的 420px 还略宽；内容列吃满 1280 时字段是 **497px**。
+   也就是说"分栏"不会把输入框拉成 1000px 行长——字段始终在 440~500 这个量级。
+   为什么不是等内容列到 1280（视口 1592）才分栏：1440 档卡片已有 1168，分栏同样成立且更早生效。 */
+@media (min-width: 1440px) {
+  .submit-form {
+    max-width: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  /* 分隔线是整节标题、助手建议块是整宽列表——两者都跨两列 */
+  .submit-form > .el-divider,
+  .submit-form > .assistant-item {
+    grid-column: 1 / -1;
+  }
+  /* 列宽已经把字段限住了，控件级死上限在这一档必须撤掉（V13） */
+  .submit-form .field-cascader,
+  .submit-form .field-textarea {
+    max-width: none;
+  }
 }
 .path-hint {
   margin-left: 12px;

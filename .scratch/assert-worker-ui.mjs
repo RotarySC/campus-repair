@@ -595,6 +595,11 @@ const FINISH_SNAP = `(() => {
     labelPosition: label && content ? (lr.bottom <= cr.top + 1 ? 'top' : (lr.right <= cr.left + 1 ? 'left' : 'other')) : null,
     descRows: desc ? desc.querySelectorAll('tbody tr').length : null,
     submitWidth: Math.round(document.querySelector('.submit-btn').getBoundingClientRect().width),
+    noticeWidth: notice ? Math.round(notice.getBoundingClientRect().width) : null,
+    cardBoxes: cards.map(c => {
+      const r = c.getBoundingClientRect();
+      return { top: Math.round(r.top), left: Math.round(r.left), w: Math.round(r.width) };
+    }),
     overflowX: de.scrollWidth - de.clientWidth
   };
 })()`;
@@ -609,7 +614,18 @@ check('完工页 4 个分段都是 el-card 且都有 #header', f?.cardCount === 
   `cardCount=${f?.cardCount} headers=${JSON.stringify(f?.headers)}`);
 check('完工页 alert 不再边到边（圆角恢复）', f?.noticeRadius && f.noticeRadius !== '0px', `radius=${f?.noticeRadius}`);
 check('完工页 alert 用 14px 下边距与卡片同距', f?.noticeMarginBottom === '14px', `margin-bottom=${f?.noticeMarginBottom}`);
-check('完工页 表单列限宽 760px', f?.formMaxWidth === '760px', `max-width=${f?.formMaxWidth}`);
+// ⚠️ V13（2026-09-27）把这条断言锁的规则**改掉了**：内容列由 760 放宽到 1280 并分两栏。
+// 旧值 `760px` 是 V5 时期的口径——V5 只解决"居中"这一半（见设计文档 §3.3「V5 的由来」），
+// 表单页那一半一直是缺的。看到这里 diff 请对照 §3.3.4，不要当成回归。
+check('完工页 宽档内容列限宽 1280px（V13）', f?.formMaxWidth === '1280px', `max-width=${f?.formMaxWidth}`);
+check('完工页 宽档内容列吃满容器（左对齐、无死宽）',
+  Math.abs((f?.formWidth ?? 0) - ((f?.rootWidth ?? 0) - 32)) <= 1,
+  `form=${f?.formWidth} 期望=${(f?.rootWidth ?? 0) - 32}`);
+check('完工页 宽档「完工照片 | 维修总结」并排（V13 小节级分栏）',
+  f?.cardBoxes?.[1]?.top === f?.cardBoxes?.[2]?.top && f?.cardBoxes?.[1]?.left !== f?.cardBoxes?.[2]?.left,
+  JSON.stringify(f?.cardBoxes));
+check('完工页 提示条与内容列同宽（V13：不许卡片收窄了提示条还边到边）',
+  f?.noticeWidth === f?.formWidth, `notice=${f?.noticeWidth} form=${f?.formWidth}`);
 check('完工页 表单列左对齐（不是 margin-inline:auto 居中）',
   f?.formMarginLeft !== 'auto' && f?.formOffsetFromRoot === 16,
   `margin-left=${f?.formMarginLeft} offset=${f?.formOffsetFromRoot}（居中会是 ${Math.round((f?.rootWidth - f?.formWidth) / 2)}）`);
@@ -626,6 +642,9 @@ check('完工页 窄档 descriptions 1 列（3 行）', f?.descRows === 3, `rows
 check('完工页 窄档提交按钮撑满', Math.abs((f?.submitWidth ?? 0) - ((f?.rootWidth ?? 0) - 32)) <= 1,
   `btn=${f?.submitWidth} 期望=${f?.rootWidth - 32}`);
 check('完工页 窄档无横向溢出', f?.overflowX === 0, `overflowX=${f?.overflowX}`);
+check('完工页 窄档退回单列（4 张卡片左边界相同）',
+  new Set((f?.cardBoxes ?? []).map(c => c.left)).size === 1,
+  JSON.stringify(f?.cardBoxes?.map(c => c.left)));
 
 const beforeValidate = netLog.length;
 await evalJs(`(()=>{document.querySelector('.submit-btn')?.click();return 1})()`);

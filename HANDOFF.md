@@ -1,7 +1,8 @@
 # 交接文档 (HANDOFF) — 个人中心 / 身份模型批次 1+2 / P1 安全项 / 批次 4 审计词表
 
-> **记录日期**：2026-09-13（P1 + 批次 4 为同日第三轮追加）　**状态同步**：2026-09-21（只核对提交与运行现状，未复跑测试）
-> **分支**：`feat/personal-center-org-tree`（未合回 `master`；一期已提交在 `master`）。相对 `master` 共 16 个提交（末位是本次 2026-09-21 文档同步，只动本文件与 `AGENTS.md` §2.1），工作区干净
+> **记录日期**：2026-09-13（P1 + 批次 4 为同日第三轮追加）　**状态同步**：2026-09-27（只核对提交与运行现状，未复跑本文件正文那一轮的测试）
+> **⚠️ 本文件正文（§0~§4）仍是 2026-09-13/21 身份模型那一轮的内容。2026-09-27 起的四轮——师傅两页视觉收口、工作台双形态、时间展示收敛、**表单页 V13 限宽分栏**——记录在 `docs/20260912-1351-…-unified-portal-design.md` §14~§17 与 `docs/20260906-1430-…-frontend-design.md` §3.3（V1~V13），本文件不重复。下面只维护「分支 / 工作区 / 基线」这三件会过期的事。**
+> **分支**：`refactor/shared-datetime-format`（领先 `master` **2 个提交**，**未合并**）。`master` = `f7b1322`（已含 `feat/worker-ui-unification` 与 `feat/smart-assistant` 的全部内容，无 merge commit）；本分支 = `762cc5d`（时间展示收敛为唯一来源）+ 本轮 V13 表单页限宽分栏（`git log -1` 即它，刻意不写死哈希）。工作区干净
 > **机制与陷阱已沉淀在 `AGENTS.md`**：本文件只写「状态 + 待办 + 证据 + 环境」。相关条目：§1「个人中心（`/profile`）」「单位组织字典 `modules/org`」「身份与授权模型」、§2.1「✅ 当前后端测试基线」、§2.2 四条 CDP 探针陷阱、§4「审计词表只有一个词表」「工单读接口有属主校验」「首登改密是服务端强制的」「登出与令牌吊销」「非 JSON 的 Content-Type 曾经是 500」等。
 > **本次未传参数**，未针对后续主题做定向裁剪。设计文档：一期 `docs/20260913-0140-campus-repair-system-personal-center-design.md`、二期 `docs/20260913-0950-campus-repair-system-org-tree-department-cascader-design.md`、身份模型 `docs/20260913-1118-campus-repair-system-identity-role-model-design.md`（§5.4 是批次 4 的实现补充）。
 
@@ -15,16 +16,16 @@
 4. **前端**：`PersonalCenterView.vue` 重构为「左栏 账户概览＋资料维护 / 右栏 安全改密＋角色化统计区」；顶栏用户菜单加「个人中心」；顶栏头像改 `:src`；进页面/外壳挂载用 `/users/me` 刷新登录快照；`ROLE_LABELS` 三处重复收敛到 shared。
 5. **验证（截至 2026-09-13 全部四轮的现行基线；1~4 条是一期目标，逐轮明细见 §2.1~§2.7）**：`mvn test -f server/pom.xml` → **`Tests run: 112, Failures: 0, Errors: 0` / BUILD SUCCESS**（一期 80 → 二期 85 → 身份批次 1/2 的 94 → 评审 95 → P1+批次 4 的 112）；`tsc`(shared) + `vue-tsc`(admin) exit 0；入库探针 **9 个文件**（7 个 `assert-*` + `cdp-raw.mjs` + `verify-p1-batch4.ps1`），计数见 §4（**均为 2026-09-13 记录值，2026-09-21 同步未复跑**）。
 6. **顺带修掉 3 个既有问题**（都不是本轮引入）：① `updateById` 跳 null 导致「清空字段」写不进库；② `AnalyticsAggregationEquivalenceTest#testLiteralAggregateValues` **在 00:00~03:00 跑必失败**（旧基线"绿"是假象，真实基线是 70 用例带 1 必失败）；③ `application-test.yml` 缺 `encoding: UTF-8` 导致测试库种子中文乱码。
-7. **提交与运行现状（2026-09-21 现测）**：分支相对 `master` **16 个提交**（含本文件的同步提交）、工作区干净（§1）；后端 8080（PID 9680/13544，11:28 启动 = **含 P1 + 批次 4 的最新后端**）、前端 3000、Edge 9222 均在跑，CDP 代理 3456 未启动（§5）。
+7. **提交与运行现状（2026-09-27 现测）**：`master` = `f7b1322`；当前分支 `refactor/shared-datetime-format` 领先 **2 个提交**、工作区干净（§1）；后端 8080（`mvn spring-boot:run`，冷启动 9.0s，H2 `local` profile）、前端 3000（Vite 5.4.21）、Edge 9222 均在跑。**后端测试基线已由 112 涨到 176**（智能助手 64 例），见 §4 与 `AGENTS.md` §2.1。
 
 ## 1. 仓库与分支状态
 
 | 项 | 值 |
 | :--- | :--- |
-| 当前分支 | `feat/personal-center-org-tree`（二期；一期在 `master`） |
-| 提交总数 | 相对 `master` 共 **16 个**：`f6fc6ee`/`d0026c1`（二期基线）+ **13 个**由本交接覆盖的三轮会话产生（见下行）+ **1 个本次文档同步**（2026-09-21，`git log -1` 即它；刻意不写死哈希，否则每次 `--amend` 都会让本行过期） |
-| 本交接覆盖的提交（13 个，**均已入库**） | 批次 1+2 按层固化 **4 个**：`bdfead4` 后端与数据 / `177cfd4` 前端 / `a954ff0` 文档与 ADR / `cd93c71` AGENTS+HANDOFF+探针（见 §2.4）；`9c54821` 固化记录；评审修复 **2 个**：`9753e0b` 后端与数据 / `337c2e8` 前端（见 §2.5）；`d607c6d` 评审文档；P1+批次 4 **2 个**：`e5d5af3` 后端（安全项 + 词表）/ `137ff5c` 前端（登出吊销 + 换票）（见 §2.6）；文档回填 **3 个**：`f0b262d` AGENTS/HANDOFF+探针入库 / `d8c5ff5` README+分析报告+ADR 0002 / `68c2941` README §3.2 补黑名单（见 §2.7） |
-| 工作区 | **已无未提交改动**（2026-09-21 现测 `git status -uno` 输出为空）；仅剩 `.scratch/`（26 项）与 `.zcode/` 下的未跟踪产物 |
+| 当前分支 | `refactor/shared-datetime-format`（领先 `master` **2 个提交**，未合并；`master` = `f7b1322`） |
+| 提交总数 | 相对 `master` **2 个**（`762cc5d` 时间展示收敛为唯一来源 + 本轮 V13 表单页限宽分栏）。**下表是 2026-09-13/21 那一轮的历史提交，早已合入 `master`，不再是"相对 master 的提交"** |
+| 本交接覆盖的提交（13 个，**均已入库并已合入 `master`**） | 批次 1+2 按层固化 **4 个**：`bdfead4` 后端与数据 / `177cfd4` 前端 / `a954ff0` 文档与 ADR / `cd93c71` AGENTS+HANDOFF+探针（见 §2.4）；`9c54821` 固化记录；评审修复 **2 个**：`9753e0b` 后端与数据 / `337c2e8` 前端（见 §2.5）；`d607c6d` 评审文档；P1+批次 4 **2 个**：`e5d5af3` 后端（安全项 + 词表）/ `137ff5c` 前端（登出吊销 + 换票）（见 §2.6）；文档回填 **3 个**：`f0b262d` AGENTS/HANDOFF+探针入库 / `d8c5ff5` README+分析报告+ADR 0002 / `68c2941` README §3.2 补黑名单（见 §2.7） |
+| 工作区 | 干净（本轮 V13 提交后现测）；未跟踪的只有 `.scratch/` 下的探针/截图/诊断产物 |
 | 审查基线 | 一期 `git diff 2372ce3 HEAD`；二期/评审 `git diff master HEAD`；批次 1+2 固化 `git diff d0026c1 HEAD`；P1+批次 4 `git diff 9c54821 HEAD`（`f0b262d` 之前） |
 | 未跟踪噪声 | `.scratch/` 下截图产物（`profile/`、`align/`、`switch/`、`drill/`、`shell/`、`repro403/`、`narrow/`）与诊断脚本、`.zcode/`；**已入库 9 个文件**＝7 个 `assert-*` 探针（`assert-profile` / `assert-drill` / `assert-shell-toggle` / `assert-actions-align` / `assert-switch-plain` / `assert-identity-batch1` / `assert-audit-vocab`）+ 依赖 `cdp-raw.mjs` + `verify-p1-batch4.ps1`；仍未跟踪 20+（含 `assert-dual.mjs`、`assert-cards-interact.mjs`、`assert-cockpit-merged.mjs`、`narrow-walkthrough.mjs` 等探针，以及 `diag-hover-media.mjs`、`diag-category-align*.mjs`、`diag-identity-timeline.mjs`——AGENTS.md 引用它们作为可复现证据，**仍未入库**） |
 | 遗留悬空文件 | `.scratch/commit-msg3.txt`（历史遗留的临时提交信息文件，可删） |
@@ -249,6 +250,8 @@
 | P2 | **二期遗留**：`org_node` 没有维护界面（「空间字典」页只覆盖空间树与故障分类），改字典目前只能改 SQL 种子 | 二期设计文档 §5 |
 | P3 | **二期遗留**：生产 `sql/schema.sql` 未同步 `org_node`（该文件本身只有 11 张表、连 `spatial_node` 都没有）——上线前应统一补齐生产 DDL | 二期设计文档 §5 |
 | 观察 | 二期把探针计数写进文档时又发现两处过期值：`assert-actions-align` 实为 **15 条**（文档原写 16/16）、`assert-drill` 改后为 **130 条**；计数请现跑现数，不要沿用文档 | `AGENTS.md` §2.2/§4 |
+| P3 | **本轮发现未修**：提单页 `.path-hint` 与 `DrilldownCascader` 触发器同串重复（`东校区 / 学生生活区 / 1号宿舍楼 / 302室` 出现两次），属 V12「同一件事只有一个投影」。它**不是纯冗余**——触发器有 `text-overflow: ellipsis`，提示是"路径被截断时的兜底"。正解＝把全路径放进触发器的 `title`、删掉提示（组件级改动） | `docs/20260906-1430-…-frontend-design.md` §3.3.4 末节 |
+| P2 | **待决策**：`refactor/shared-datetime-format`（`762cc5d` + 本轮 V13）**尚未合并到 `master`**；仓库惯例是 fast-forward only | §1 |
 
 ### 3.1 身份系统专项分析发现（2026-09-13，**均已实测、一律未修**）
 
@@ -268,7 +271,7 @@
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（**基线：Tests run: 112, Failures: 0, Errors: 0 / BUILD SUCCESS**——2026-09-13 落 `e5d5af3` 时实测；演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 → 评审修复 95 → **P1 + 批次 4 的 112 = 95 + IDOR 6 + 首登 3 + 登出 4 + 词表 1 + 415/400 2 + shared 守卫 1**）
+# 后端全量（**现行基线：Tests run: 176, Failures: 0, Errors: 0 / BUILD SUCCESS**——2026-09-27 现测。⚠️ 必须先 `$env:TEMP="$PWD\server\target\tmp"; $env:TMP=$env:TEMP`，否则 ImageIO 类用例全红，见 `AGENTS.md` §2.1。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 → 评审修复 95 → **P1 + 批次 4 的 112** → 147 → 149 → 160 → 169 → 174 → **176**（智能助手 64 例））
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml

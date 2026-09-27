@@ -25,7 +25,7 @@
       </div>
 
       <!-- 1. 工单信息摘要卡片 -->
-      <el-card shadow="never" class="finish-section">
+      <el-card shadow="never" class="finish-section finish-section--full">
         <template #header><span class="section-title">工单信息</span></template>
         <el-descriptions :column="isNarrowPhone ? 1 : 2" border>
           <el-descriptions-item label="工单单号">{{ orderInfo.orderNo || `BX-${orderId}` }}</el-descriptions-item>
@@ -71,7 +71,7 @@
       </el-card>
 
       <!-- 4. 耗材备件领用核销面板 -->
-      <el-card shadow="never" class="finish-section">
+      <el-card shadow="never" class="finish-section finish-section--full">
         <template #header>
           <div class="consume-header">
             <span class="section-title">物料核销 (若无消耗可不添加)</span>
@@ -423,6 +423,8 @@ async function onSubmitFinish() {
 
 .finish-notice {
   margin-bottom: 14px;
+  /* V13：提示条与内容列同宽——不许卡片收窄了、提示条还边到边 */
+  max-width: 1280px;
 }
 
 .back-row {
@@ -432,6 +434,24 @@ async function onSubmitFinish() {
 /* 表单主体限宽：手机档自然满宽，桌面档不无限拉伸（与提单页 .submit-form 同法） */
 .finish-form {
   max-width: 760px;
+}
+/* V13：≥1440px 内容列放宽到 1280 并分两栏。
+   完工页的分栏是**小节级**（4 张卡片），不是字段级——这一页的正文是卡片而不是表单行。
+   跨两列的是「工单信息」（el-descriptions 本身已两列）与「物料核销」（列表越宽越好）；
+   并排的是「完工照片 | 维修总结」，两张卡各自独立高度（align-items:start）。 */
+@media (min-width: 1440px) {
+  .finish-form {
+    max-width: 1280px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .finish-form > .back-row,
+  .finish-form > .finish-section--full,
+  .finish-form > .submit-row {
+    grid-column: 1 / -1;
+  }
 }
 
 .finish-section {
