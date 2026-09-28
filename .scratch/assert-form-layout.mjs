@@ -10,9 +10,12 @@
  * V10/V11 才是**列表页**的正解」——表单页那一半一直没写。本探针锁的就是补上的 **V13**。
  *
  * V13 判据（四档 × 两页）：
- *  ① 内容列（卡片与提示条）`max-width ≤ 1280px` 且**左对齐**（不用 margin-inline:auto，V5 仍成立）；
+ *  ① 内容列（卡片与提示条）`max-width ≤ 1280px` 且**居中**（左右余量相等；列宽吃满容器时两侧都是 0）；
+ *     ⚠️ 二轮修订（2026-09-27）：初版锁的是**左对齐**，用户 2560px 复看仍指"右边太空"后改为居中。
+ *        看到这处 diff 请对照设计文档 §3.3.4，**不是回归**；
  *  ② **≥1440px 分栏**：同一行存在两项；**<1440px 退回单列**（窄/中档逐值不变）；
- *  ③ 内容列吃满容器（表单宽 / 最宽块 ≥ 0.9），提示条与卡片同宽——不许"卡片收窄了、提示条还边到边"；
+ *  ③ 内容列吃满容器（表单宽 / 最宽块 ≥ 0.9）——不许"内容列只占卡片一小条"；
+ *     **提示条与内容列同宽**，且**每一档**都成立（1272 档曾出现「提示条 985 / 表单 760」）；
  *  ④ 控件级死上限在宽档必须撤掉：最宽控件 / 最宽块 ≥ 0.3（改前是 0.25）。
  *
  * ⚠️ 阈值 1440 不是档位是**算术**：1440 档卡片 1168 → 内层 1126 → 每列 (1126−24)/2 = 551
@@ -76,9 +79,13 @@ const evalJs = async (e) => {
 };
 
 const consoleErrors = [];
+/** 非 2xx/3xx 的响应——控制台只会说"404"，不给 URL；单独抓一份便于定位 */
+const badResponses = [];
 browser.onMessage((m) => {
   if (m.sessionId !== sessionId) return;
-  if (m.method === 'Log.entryAdded' && m.params?.entry?.level === 'error') {
+  if (m.method === 'Network.responseReceived' && (m.params?.response?.status ?? 0) >= 400) {
+    badResponses.push(`${m.params.response.status} ${m.params.response.url}`);
+  } else if (m.method === 'Log.entryAdded' && m.params?.entry?.level === 'error') {
     consoleErrors.push(m.params.entry.text.slice(0, 200));
   } else if (m.method === 'Runtime.exceptionThrown') {
     consoleErrors.push(
@@ -90,6 +97,7 @@ browser.onMessage((m) => {
 await cdp('Page.enable');
 await cdp('Runtime.enable');
 await cdp('Log.enable');
+await cdp('Network.enable');
 
 /** 后台标签里 setDeviceMetricsOverride 不投递 resize ⇒ 必须补一帧再轮询 */
 async function setWidth(width, height = 1000) {
@@ -119,10 +127,22 @@ const SNAP = (root, form) => `(() => {
   if (!root || !form) return { __error: 'root/form not found' };
   const rr = root.getBoundingClientRect();
   const fr = form.getBoundingClientRect();
+  const rs = getComputedStyle(root);
+  const padL = parseFloat(rs.paddingLeft) || 0;
+  const padR = parseFloat(rs.paddingRight) || 0;
+  const innerLeft = rr.left + padL;
+  const innerRight = rr.right - padR;
+  const innerW = Math.round(innerRight - innerLeft);
   const blocks = [...root.children]
     .map(el => ({ el, r: el.getBoundingClientRect() }))
     .filter(x => x.r.width > 0 && x.r.height > 0)
-    .map(x => ({ cls: String(x.el.className).split(' ')[0], left: Math.round(x.r.left), w: Math.round(x.r.width) }));
+    .map(x => ({
+      cls: String(x.el.className).split(' ')[0],
+      left: Math.round(x.r.left),
+      w: Math.round(x.r.width),
+      gapL: Math.round(x.r.left - innerLeft),
+      gapR: Math.round(innerRight - x.r.right)
+    }));
   // 分栏判据：表单直接子项按 top 分组，行内项数 >1 即该行并排
   const items = [...form.children]
     .map(el => el.getBoundingClientRect())
@@ -133,22 +153,28 @@ const SNAP = (root, form) => `(() => {
   const rows = [...byTop.values()];
   const controls = [...form.querySelectorAll('.el-form-item__content > *')]
     .map(el => Math.round(el.getBoundingClientRect().width)).filter(w => w > 0);
+  const maxBlockW = blocks.length ? Math.max(...blocks.map(b => b.w)) : null;
   return {
     viewport: window.innerWidth,
     rootPaddingLeft: getComputedStyle(root).paddingLeft,
     rootLeft: Math.round(rr.left),
     rootW: Math.round(rr.width),
+    innerW,
     formW: Math.round(fr.width),
     formMaxWidth: getComputedStyle(form).maxWidth,
     formMarginLeft: getComputedStyle(form).marginLeft,
     formOffset: Math.round(fr.left - rr.left),
-    maxBlockW: blocks.length ? Math.max(...blocks.map(b => b.w)) : null,
+    maxBlockW,
     minBlockW: blocks.length ? Math.min(...blocks.map(b => b.w)) : null,
     blockLefts: blocks.map(b => b.left - Math.round(rr.left)),
+    blockGapL: blocks.map(b => b.gapL),
+    blockGapR: blocks.map(b => b.gapR),
+    /** 容器还有多少富余宽度没被内容列吃掉——>0 说明 auto 边距真的在居中（而不是"吃满"） */
+    slack: maxBlockW === null ? 0 : innerW - maxBlockW,
     blockClasses: blocks.map(b => b.cls),
     rowItemCounts: rows.map(r => r.length),
     twoUpRows: rows.filter(r => r.length > 1).length,
-    widestControl: controls.length ? Math.max(...controls) : null,
+    widestControl: controls.length ? Math.max(...controls) : 0,
     overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth
   };
 })()`;
@@ -186,14 +212,31 @@ for (const page of PAGES) {
     if (m?.__error) { check(`${page.id} ${at} 页面可量测`, false, m.__error); continue; }
 
     console.log(`  ── 卡片/提示条=[${m.blockClasses.join(', ')}] 宽=[${m.maxBlockW}] ` +
-      `表单=${m.formW} 行内项数=[${m.rowItemCounts.join(',')}] 最宽控件=${m.widestControl} 视口=${m.viewport}`);
+      `表单=${m.formW} 左右余量=[${m.blockGapL.join(',')}]/[${m.blockGapR.join(',')}] 富余=${m.slack} ` +
+      `行内项数=[${m.rowItemCounts.join(',')}] 最宽控件=${m.widestControl} 视口=${m.viewport}`);
 
-    check(`${page.id} ${at} 内容列左对齐（左边界 = 根节点 + 16px，不是居中）`,
-      m.formMarginLeft !== 'auto' && m.blockLefts.every(o => o === 16),
-      `margin-left=${m.formMarginLeft} blockLefts=${JSON.stringify(m.blockLefts)}`);
+    // V13 二轮：居中 = 每个内容块的左右余量相等（列宽吃满容器时两侧都是 0，同样算居中）。
+    // 这条断言同时挡住"退回左对齐"：2524 档左对齐会得到 gapL=[0,0] / gapR=[972,972]。
+    const gapDiff = m.blockGapL.length
+      ? Math.max(...m.blockGapL.map((l, i) => Math.abs(l - m.blockGapR[i]))) : 0;
+    check(`${page.id} ${at} 内容列居中（左右余量相等）`,
+      m.blockGapL.length > 0 && gapDiff <= 2,
+      `gapL=${JSON.stringify(m.blockGapL)} gapR=${JSON.stringify(m.blockGapR)}`);
+    // 只有容器真的还有富余时才可能"看起来居中"——吃满容器时居中与左对齐无从区分，
+    // 所以富余档必须额外证明左余量 > 0，否则这条断言在最宽档是恒真的假信号。
+    if (m.slack > 4) {
+      check(`${page.id} ${at} 有富余宽度时确实居中（左余量 > 0，不是左对齐）`,
+        Math.min(...m.blockGapL) > 0 && gapDiff <= 2,
+        `slack=${m.slack} gapL=${JSON.stringify(m.blockGapL)} gapR=${JSON.stringify(m.blockGapR)}`);
+    }
     check(`${page.id} ${at} 内容列 ≤ ${CONTENT_MAX}px`,
       m.maxBlockW <= CONTENT_MAX, `maxBlockW=${m.maxBlockW}`);
     check(`${page.id} ${at} 无横向溢出`, m.overflowX === 0, `overflowX=${m.overflowX}`);
+
+    // 提示条与内容列必须**每一档**都同宽（不只是宽档）：1272 档完工页曾出现
+    // 「提示条 985 / 表单 760」——V13 第①条要消灭的形态，只是小一号。二轮把它一并锁死。
+    check(`${page.id} ${at} 提示条与内容列同宽（不许内容列收窄了提示条还边到边）`,
+      m.maxBlockW - m.minBlockW <= 1, `max=${m.maxBlockW} min=${m.minBlockW}`);
 
     if (w >= TWO_COLUMN_AT) {
       check(`${page.id} ${at} 宽档分栏（存在同行两项）`, m.twoUpRows >= 1,
@@ -201,8 +244,6 @@ for (const page of PAGES) {
       check(`${page.id} ${at} 内容列吃满容器（表单/最宽块 ≥ 0.9）`,
         m.maxBlockW > 0 && m.formW / m.maxBlockW >= 0.9,
         `form=${m.formW} maxBlock=${m.maxBlockW} ratio=${(m.formW / m.maxBlockW).toFixed(3)}`);
-      check(`${page.id} ${at} 提示条与卡片同宽（不许卡片收窄了提示条还边到边）`,
-        m.maxBlockW - m.minBlockW <= 1, `max=${m.maxBlockW} min=${m.minBlockW}`);
     } else {
       check(`${page.id} ${at} 窄/中档退回单列（无同行两项）`, m.twoUpRows === 0,
         `rowItemCounts=${JSON.stringify(m.rowItemCounts)}`);
@@ -217,7 +258,9 @@ for (const page of PAGES) {
 }
 
 // 页面级：整轮走查 0 控制台错误
-check('两个表单页四档走查 0 控制台错误', consoleErrors.length === 0, JSON.stringify(consoleErrors.slice(0, 3)));
+check('两个表单页四档走查 0 控制台错误', consoleErrors.length === 0,
+  JSON.stringify(consoleErrors.slice(0, 3)) +
+  (badResponses.length ? `  HTTP≥400: ${JSON.stringify(badResponses.slice(0, 3))}` : ''));
 
 await cdp('Emulation.clearDeviceMetricsOverride').catch(() => {});
 await browser.send('Target.closeTarget', { targetId }).catch(() => {});

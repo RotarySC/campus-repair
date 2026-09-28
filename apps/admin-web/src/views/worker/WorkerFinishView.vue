@@ -414,7 +414,7 @@ async function onSubmitFinish() {
 /*
  * 视觉语言与其余页面一致（口径见 docs/20260906-1430-…-frontend-design.md §3.3）：
  * 根节点 16px 内边距；分段用 el-card shadow="never" + #header（同工单详情页 .block）；
- * 表单列限宽但**左对齐**——页面级不做 margin-inline:auto 居中；
+ * 表单列限宽且**居中**（V13 二轮修订，2026-09-27：初版左对齐仍让空白全堆在右侧）；
  * 颜色只用设计文档 §3.1 令牌与品牌主色 #1677FF。
  */
 .finish-container {
@@ -423,25 +423,32 @@ async function onSubmitFinish() {
 
 .finish-notice {
   margin-bottom: 14px;
-  /* V13：提示条与内容列同宽——不许卡片收窄了、提示条还边到边 */
+  /* V13：提示条与内容列同宽——不许卡片收窄了、提示条还边到边；
+     并随内容列一起**居中**（二轮修订，见设计文档 §3.3.4） */
   max-width: 1280px;
+  margin-inline: auto;
 }
 
 .back-row {
   margin-bottom: 10px;
 }
 
-/* 表单主体限宽：手机档自然满宽，桌面档不无限拉伸（与提单页 .submit-form 同法） */
+/* V13（二轮修订）：完工页的 el-form **就是**内容列本身（它直接包着 4 张卡片），
+   所以它必须与 .finish-notice 同列宽、同居中——不能只让提示条占满。
+   初版把 V5 遗留的 760px 上限保留到 <1440，探针在 1272 档量出「提示条 985 / 表单 760、
+   右余量 225 而左余量 0」——正是 V13 第①条要消灭的"提示条边到边、卡片收窄"，只是小一号。
+   列宽统一交给 1280 上限：视口 <1552 时它自然吃满容器（1272 档 985、390 档 358），
+   ≥1552 才靠 auto 边距居中。 */
 .finish-form {
-  max-width: 760px;
+  max-width: 1280px;
+  margin-inline: auto;
 }
-/* V13：≥1440px 内容列放宽到 1280 并分两栏。
+/* V13：≥1440px 内容列分两栏（列宽上限已在上面统一给出）。
    完工页的分栏是**小节级**（4 张卡片），不是字段级——这一页的正文是卡片而不是表单行。
    跨两列的是「工单信息」（el-descriptions 本身已两列）与「物料核销」（列表越宽越好）；
    并排的是「完工照片 | 维修总结」，两张卡各自独立高度（align-items:start）。 */
 @media (min-width: 1440px) {
   .finish-form {
-    max-width: 1280px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 24px;

@@ -17,7 +17,7 @@
  *  ④ `cardOnly` 语义：故障描述/预约时段**只在卡片出现、表格不占列**；
  *  ⑤ 状态与操作：状态 `el-tag` 色档 === `orderStatusTagType`；动作按钮按状态齐备且**不换行**；
  *     `tel:` 链接在；页签红点数 === 后端 `counts`；切页签发新请求（CDP Network 取证）；
- *  ⑥ 完工页：4 张 `el-card` 分段、表单列左对齐、标签随断点、耗材选择链路、
+ *  ⑥ 完工页：4 张 `el-card` 分段、内容列居中限宽、标签随断点、耗材选择链路、
  *     `el-form > el-card > el-form-item` 校验上下文。
  *
  * **本探针不写库**：不提交完工，并直接断言「校验失败时一个 `/finish` 请求都没发」。
@@ -592,6 +592,11 @@ const FINISH_SNAP = `(() => {
     formOffsetFromRoot: Math.round(form.getBoundingClientRect().left - root.getBoundingClientRect().left),
     rootWidth: Math.round(root.getBoundingClientRect().width),
     formWidth: Math.round(form.getBoundingClientRect().width),
+    // V13 二轮：内容列居中的几何判据——左右余量相等（吃满容器时两侧都是 0，同样算居中）
+    formGapLeft: Math.round(form.getBoundingClientRect().left
+      - (root.getBoundingClientRect().left + parseFloat(getComputedStyle(root).paddingLeft))),
+    formGapRight: Math.round((root.getBoundingClientRect().right - parseFloat(getComputedStyle(root).paddingRight))
+      - form.getBoundingClientRect().right),
     labelPosition: label && content ? (lr.bottom <= cr.top + 1 ? 'top' : (lr.right <= cr.left + 1 ? 'left' : 'other')) : null,
     descRows: desc ? desc.querySelectorAll('tbody tr').length : null,
     submitWidth: Math.round(document.querySelector('.submit-btn').getBoundingClientRect().width),
@@ -617,18 +622,25 @@ check('完工页 alert 用 14px 下边距与卡片同距', f?.noticeMarginBottom
 // ⚠️ V13（2026-09-27）把这条断言锁的规则**改掉了**：内容列由 760 放宽到 1280 并分两栏。
 // 旧值 `760px` 是 V5 时期的口径——V5 只解决"居中"这一半（见设计文档 §3.3「V5 的由来」），
 // 表单页那一半一直是缺的。看到这里 diff 请对照 §3.3.4，不要当成回归。
+// 二轮修订：760 的上限在**所有档位**都已撤掉（初版只撤到 ≥1440，于是 1272 档量出
+// 「提示条 985 / 表单 760」——正是 V13 第①条要消灭的形态，只是小一号）。
 check('完工页 宽档内容列限宽 1280px（V13）', f?.formMaxWidth === '1280px', `max-width=${f?.formMaxWidth}`);
-check('完工页 宽档内容列吃满容器（左对齐、无死宽）',
+check('完工页 宽档内容列吃满容器（无死宽）',
   Math.abs((f?.formWidth ?? 0) - ((f?.rootWidth ?? 0) - 32)) <= 1,
   `form=${f?.formWidth} 期望=${(f?.rootWidth ?? 0) - 32}`);
 check('完工页 宽档「完工照片 | 维修总结」并排（V13 小节级分栏）',
   f?.cardBoxes?.[1]?.top === f?.cardBoxes?.[2]?.top && f?.cardBoxes?.[1]?.left !== f?.cardBoxes?.[2]?.left,
   JSON.stringify(f?.cardBoxes));
-check('完工页 提示条与内容列同宽（V13：不许卡片收窄了提示条还边到边）',
+check('完工页 提示条与内容列同宽（V13：不许内容列收窄了提示条还边到边）',
   f?.noticeWidth === f?.formWidth, `notice=${f?.noticeWidth} form=${f?.formWidth}`);
-check('完工页 表单列左对齐（不是 margin-inline:auto 居中）',
-  f?.formMarginLeft !== 'auto' && f?.formOffsetFromRoot === 16,
-  `margin-left=${f?.formMarginLeft} offset=${f?.formOffsetFromRoot}（居中会是 ${Math.round((f?.rootWidth - f?.formWidth) / 2)}）`);
+// ⚠️ V13 二轮（2026-09-27）把这条断言锁的规则**改掉了**：内容列由"左对齐"改为**居中**。
+// 旧写法断言 `margin-left !== 'auto' && offsetFromRoot === 16`，锁的是已被推翻的规则。
+// 这里改用几何判据（左右余量相等）而不是 margin-left 的字符串：1440 档容器已被吃满，
+// auto 边距算出来就是 0，"居中"与"左对齐"在这一档**几何上无从区分**——真正分得出来的是
+// 2524 档，那条由 `.scratch/assert-form-layout.mjs` 的「有富余宽度时确实居中」承担。
+check('完工页 内容列居中（左右余量相等；1440 档吃满容器故两侧均为 0）',
+  Math.abs((f?.formGapLeft ?? -1) - (f?.formGapRight ?? -2)) <= 2,
+  `gapL=${f?.formGapLeft} gapR=${f?.formGapRight} margin-left=${f?.formMarginLeft}`);
 check('完工页 宽档标签与输入框同行（label 在输入框左侧）', f?.labelPosition === 'left', `labelPosition=${f?.labelPosition}`);
 check('完工页 宽档 descriptions 2 列（2 行）', f?.descRows === 2, `rows=${f?.descRows}`);
 check('完工页 宽档无横向溢出', f?.overflowX === 0, `overflowX=${f?.overflowX}`);
