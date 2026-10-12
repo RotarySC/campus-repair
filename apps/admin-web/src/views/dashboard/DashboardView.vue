@@ -497,15 +497,39 @@ function renderSpatialChart(data: SpatialHeatVO[]) {
 }
 
 /**
- * 故障大类的分类色板。
+ * 故障大类的**分类色板**（规范 §3.2b，方案甲）。
  *
- * ⚠️ **这是本页唯一仍在令牌之外的一处**，刻意保留、登记在案：
- * 规范 §5 的 V4 修订把口径收成「彩色只服务状态语义」，而饼图需要的是**分类色**——
- * 语义完全不同的另一种用色。规范 §3 没有定义分类色板，而把 8 个扇区压成灰阶会让饼图
- * **不可读**（读不出相邻扇区的边界）。这是需要单独决策的一件事，不是实施遗漏；
- * 在决策之前，保持现状比自造一套色板更安全。
+ * 改前这里是一串硬编码的 8 个色值，而且其中 **4 个与 D 锁定的状态色完全相同**
+ * （`#1677FF`=维修中 / `#52C41A`=已结单 / `#722ED1`=待验收 / `#13C2C2`=待承接）——
+ * 同一个色相在一屏上同时表示两件事。另外它的明度极差 38.1，扇区重量随机。
+ *
+ * 现在色值住在 `tokens.css`（D 的规矩：颜色只活在 token 层），这里只负责**按序取**。
+ * 推导过程与三条约束见 tokens.css 里 §3.2b 那段注释；回归锁在
+ * `packages/shared/test/category-palette.spec.ts`。
  */
-const CATEGORY_PIE_PALETTE = ['#1677FF', '#52C41A', '#FAAD14', '#FA541C', '#722ED1', '#13C2C2', '#EB2F96', '#8C8C8C'];
+function categoryPalette(): string[] {
+  /*
+   * ⚠️ **故意展开写成 8 行，不用 `Array.from` + 模板字符串拼令牌名。**
+   *
+   * 拼出来的名字（`--cat-${i + 1}`）有两个害处：
+   *   ① `token-coverage.spec.ts` 靠正则识别 `cssToken('--name', '#value')` 这种**字面量**形式
+   *      来豁免 fallback；模板名匹配不上，那个 fallback 就被当成**真·色值字面量**而报违规
+   *      —— 报错信息会指向一个其实没问题的东西，排查得从"我到底改了啥"开始；
+   *   ② 更要紧的是，匹配不上就**对不上账**：那条「fallback 必须等于令牌真值」的镜像断言
+   *      也就扫不到它，等于开了个**没人盯着**的口子。
+   * 展开之后 8 个 fallback 全部被镜像断言罩住。
+   */
+  return [
+    cssToken('--cat-1', '#E26F56'),
+    cssToken('--cat-2', '#B38B29'),
+    cssToken('--cat-3', '#699F41'),
+    cssToken('--cat-4', '#00A487'),
+    cssToken('--cat-5', '#009FB6'),
+    cssToken('--cat-6', '#0098E9'),
+    cssToken('--cat-7', '#A67EDC'),
+    cssToken('--cat-8', '#E3659C')
+  ];
+}
 
 function renderCategoryPie(data: CategoryRatioVO[]) {
   if (!categoryPieRef.value) return;
@@ -518,7 +542,7 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 
   categoryPie.setOption({
     backgroundColor: 'transparent',
-    color: CATEGORY_PIE_PALETTE,
+    color: categoryPalette(),
     tooltip: { trigger: 'item', ...theme.tooltip },
     legend: {
       orient: 'vertical',

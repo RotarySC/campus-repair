@@ -63,12 +63,21 @@ function listFromSpec(name) {
   const open = src.indexOf('[', start);
   const close = src.indexOf(']', open);
   if (open === -1 || close === -1) throw new Error(`${name} 的数组字面量找不到起止`);
-  const items = [...src.slice(open, close).matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  if (!items.length) throw new Error(`${name} 解析出 0 项——解析器坏了，不是名单为空`);
-  return items;
+  return [...src.slice(open, close).matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
+/*
+ * ⚠️ 「解析出 0 项就抛」这条守卫**已经改了**（2026-10-12）。
+ *
+ * 它原本写成「0 项 = 解析器坏了，不是名单为空」—— 当时那是**对的**，
+ * 因为 `UNMIGRATED` 不可能为空。而分类色板落地之后，它**真的空了**（迁移收尾），
+ * 于是这条守卫把成功当成了故障，整条探针在开头就抛掉。
+ *
+ * 新写法保住原来那条性质（解析器坏了要能被发现），但换了个不可能自然为空的地方去证：
+ * **`MIGRATED` 永远非空**。它一旦解析出 0 项，就是锚点或正则坏了。
+ */
 const UNMIGRATED = new Set(listFromSpec('UNMIGRATED'));
 const MIGRATED = listFromSpec('MIGRATED');
+if (!MIGRATED.length) throw new Error('MIGRATED 解析出 0 项——解析器坏了（它不可能为空）');
 const DEFINITION_SITE = 'styles/tokens.css';
 
 function walk(dir, out = []) {
@@ -80,13 +89,21 @@ function walk(dir, out = []) {
   return out;
 }
 
-/** 剥掉块注释 / 模板注释 / 行注释后再数色值：注释是解释，不是实现 */
+/**
+ * 剥掉块注释 / 模板注释 / 行注释后再数色值：注释是解释，不是实现。
+ *
+ * ⚠️ **这是同一套口径的第 3 份拷贝**（另两份在 `token-coverage.spec.ts` 与 `scan-hex.mjs`）。
+ * 第一版漏了 `cssToken` 的 fallback 中性化 —— 于是同一时刻它报 DashboardView 有 14 处、
+ * 棘轮报 0 处。现在 `token-coverage.spec.ts` 里有一条用例**逐个比对三份的口径**，再漂就变红。
+ */
+const CSS_TOKEN_FALLBACK = /cssToken\(\s*'([^']+)'\s*,\s*'(#[0-9A-Fa-f]{3,8})'\s*\)/g;
 const codeOf = (text) =>
   text
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/^\s*\/\/.*$/gm, ' ')
-    .replace(/\s\/\/\s.*$/gm, ' ');
+    .replace(/\s\/\/\s.*$/gm, ' ')
+    .replace(CSS_TOKEN_FALLBACK, "cssToken('$1')");
 
 console.log('\n===== ① token 覆盖棘轮 =====');
 {
