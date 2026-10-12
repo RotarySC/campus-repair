@@ -37,6 +37,7 @@
                   label="故障分类"
                   placeholder="两级故障分类树"
                   root-label="全部分类"
+                  category-icon
                   @change="onCategoryChange"
                 />
               </el-form-item>

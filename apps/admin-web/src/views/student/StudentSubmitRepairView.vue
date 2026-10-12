@@ -47,6 +47,7 @@
             placeholder="请选择分类与对应工种"
             root-label="全部分类"
             class="field-cascader"
+            category-icon
             @change="onCategoryChange"
           />
           <span v-if="categoryFullPathName" class="path-hint">{{ categoryFullPathName }}</span>

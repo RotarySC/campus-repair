@@ -83,7 +83,11 @@
           <el-table-column prop="name" label="分类名称" width="260">
             <template #default="{ row }">
               <div class="category-name-cell">
-                <span>{{ row.name }}</span>
+                <div class="category-name-line">
+                  <!-- V3：分类图标。按分类名取，取不到回落到工种码（用户新建的分类也不空白）。 -->
+                  <CategoryIcon :name="row.name" :skill="row.workerSkillCode" />
+                  <span>{{ row.name }}</span>
+                </div>
                 <!-- 助手知识：不单开一列（1272px 下会把「操作」列挤到换行），挂在名称下面 -->
                 <span v-if="row.keywords" class="category-assist-line">
                   助手同义词：{{ row.keywords }}
@@ -96,9 +100,11 @@
           </el-table-column>
           <el-table-column prop="level" label="层级" width="100" align="center">
             <template #default="{ row }">
-              <el-tag :type="row.level === 1 ? 'primary' : 'success'" size="small">
-                {{ row.level === 1 ? '大类' : '二级细类' }}
-              </el-tag>
+              <!-- 🐞 第五处「四个装饰色」同族缺陷：这里原是
+                   `:type="row.level === 1 ? 'primary' : 'success'"`——大类=蓝、二级细类=绿。
+                   层级是**分类**，不是状态（与 §17.3 删掉的 `getLevelTagType()` 逐字同病）。
+                   现在层级由 CategoryIcon 的图形承担，这里只留一枚**中性**的发丝线 chip。 -->
+              <span class="category-level-chip">{{ row.level === 1 ? '大类' : '二级细类' }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="workerSkillCode" label="指派维修工种" width="160">
@@ -143,10 +149,9 @@
           <template #default="{ data }">
             <div class="category-card">
               <div class="category-card__head">
+                <CategoryIcon :name="data.name" :skill="data.workerSkillCode" />
                 <strong class="category-card__name">{{ data.name }}</strong>
-                <el-tag :type="data.level === 1 ? 'primary' : 'success'" size="small">
-                  {{ data.level === 1 ? '大类' : '二级细类' }}
-                </el-tag>
+                <span class="category-level-chip">{{ data.level === 1 ? '大类' : '二级细类' }}</span>
               </div>
               <div class="category-card__row">
                 <span class="category-card__label">指派维修工种</span>
@@ -303,6 +308,7 @@ import { branchLabel, WorkerSkillLabels, BuildingNatureOptions, buildingNatureLa
 import { httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
 import LevelIcon from '../../components/LevelIcon.vue';
+import CategoryIcon from '../../components/CategoryIcon.vue';
 
 const activeTab = ref('spatial');
 const onlyEnabled = ref(false);
@@ -685,6 +691,29 @@ onMounted(() => {
   font-size: var(--fs-base);
   color: var(--faint);
   word-break: break-all;
+}
+/* 分类名那一行：图标 + 名称（图标 16px、继承 currentColor） */
+.category-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+}
+/*
+ * 层级标记（V3）：**中性发丝线 chip**。
+ * 这里原来是 `el-tag type="primary|success"`——大类=蓝、二级细类=绿，
+ * 与 §17.3 删掉的 `getLevelTagType()` 是同一个病：**层级是分类，不是状态**。
+ * 注意 el-tag 的 `type` 缺省值是 `primary`，所以「不传 type」**不是**中性，必须换元素。
+ */
+.category-level-chip {
+  flex: none;
+  padding: 0 6px;
+  border: 0.667px solid var(--line);
+  border-radius: 2px;
+  color: var(--faint);
+  font-size: var(--fs-base);
+  line-height: 18px;
+  white-space: nowrap;
 }
 .form-tip {
   margin-top: 4px;

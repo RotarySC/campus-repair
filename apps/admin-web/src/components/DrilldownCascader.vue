@@ -100,6 +100,15 @@
               @click="pick(node)"
             >
               <LevelIcon v-if="levelIconKind" :kind="levelIconKind" :level="node.levelType" class="dd-option__icon" />
+              <!-- V3：故障分类图标。与 `levelIconKind` 是**两件事**——分类的层级是
+                   「大类/二级细类」，不是空间/组织那种层级，所以两者互斥、各管各的。
+                   取键：分类名（`labelKey`，默认 name）优先，工种码兜底。 -->
+              <CategoryIcon
+                v-else-if="categoryIcon"
+                :name="node[labelKey]"
+                :skill="node.workerSkillCode"
+                class="dd-option__icon"
+              />
               <span class="dd-option__label">{{ node[labelKey] }}</span>
               <el-icon v-if="hasChildren(node)" class="dd-option__more" aria-hidden="true"><ArrowRight /></el-icon>
               <el-icon v-else-if="node[valueKey] === selectedId" class="dd-option__check" aria-hidden="true">
@@ -136,6 +145,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { ArrowDown, ArrowLeft, ArrowRight, Check, CircleClose } from '@element-plus/icons-vue';
 import { useFormItem, useFormSize } from 'element-plus';
 import LevelIcon from './LevelIcon.vue';
+import CategoryIcon from './CategoryIcon.vue';
 
 interface DrillNode {
   [key: string]: any;
@@ -175,6 +185,19 @@ const props = withDefaults(
      * （见 AGENTS.md「两个必须能分开念」那条），按下钻深度推会算错一级。
      */
     levelIconKind?: 'org' | 'space';
+    /**
+     * 选项行前显示**故障分类图标**（规范 §4.6 的 V3）。
+     *
+     * 与 `levelIconKind` **互斥**（模板里是 `v-if` / `v-else-if`，层级图标优先）：
+     * 空间树与组织树的「层级」是 `level_type`，故障分类的「层级」是大类/二级细类，
+     * 两套词表、两种图标，同一个面板不可能同时是两者。
+     *
+     * 取键规则在 `CategoryIcon` 里：**分类名优先、工种码兜底**，
+     * 所以用户新建的细类（名字不在 12 个图标表里）仍然靠 `worker_skill_code` 拿到图标。
+     *
+     * **默认 `false`**，既有调用方行为逐字节不变。
+     */
+    categoryIcon?: boolean;
   }>(),
   {
     valueKey: 'id',
@@ -188,7 +211,8 @@ const props = withDefaults(
     emptyText: '暂无可选项',
     panelWidth: 'min(360px, 92vw)',
     separator: ' / ',
-    levelIconKind: undefined
+    levelIconKind: undefined,
+    categoryIcon: false
   }
 );
 
@@ -608,7 +632,20 @@ function onTriggerKeydown(event: KeyboardEvent) {
   font-weight: 600;
 }
 
+/*
+ * 标签必须**吃掉剩余宽度**。
+ *
+ * 🐞 这里原来是空白的，而 `.dd-option` 是 `justify-content: space-between`。
+ * 两子元素（标签 + 箭头）时它恰好正确：标签靠左、箭头靠右。
+ * **V4 加了第三个子元素（层级图标）之后，`space-between` 把中间那个也平均分配了**——
+ * 名次还是在左边，但标签被推到了行的**正中间**，图标与标签之间空出约 150px。
+ * V4 的探针只数了「几行有图标」，**没看过一眼面板**，所以没发现；
+ * 是这一轮看分类面板的实拍图才看出来的（第 5 次「看图上才发现」）。
+ * `flex: 1 1 auto` 让标签吸收自由空间，两子元素与三子元素两种情况**都**正确，
+ * 且两子元素时的几何与改动前逐像素相同。
+ */
 .dd-option__label {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;

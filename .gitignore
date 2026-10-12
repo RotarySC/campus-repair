@@ -49,5 +49,6 @@ docs/
 # 探针脚本本身（.scratch/*.mjs）是入库的——它们是可复跑的判据；
 # 但它们吐出来的图与日志是**一次性的观测**，入库只会让 git status 长满噪声。
 .scratch/v7-shots/
+.scratch/v3-shots/
 .scratch/probe-out*.txt
 
