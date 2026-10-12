@@ -40,7 +40,6 @@ const UNMIGRATED = new Set([
   // 没有定义分类色板，而 8 个扇区压成灰阶不可读——这是待决策项，不是遗漏（见该文件内注释）。
   'views/dashboard/DashboardView.vue',
   'views/error/ForbiddenView.vue',
-  'views/inventory/InventoryManageView.vue',
   'views/spatial/SpatialManageView.vue',
   'views/student/StudentOrderDetailView.vue',
   'views/student/StudentSubmitRepairView.vue',
@@ -64,7 +63,9 @@ const MIGRATED = [
   'components/WorkOrderTimeline.vue',
   'components/NotificationCenterDrawer.vue',
   // ---- 第二期第三批（本仓最大的单文件：76 处）----
-  'views/dispatch/DispatchCenterView.vue'
+  'views/dispatch/DispatchCenterView.vue',
+  // ---- 第二期第四批（进销存；做完这一批，§11.1 裁决 1 的「半迁移页」状态消失）----
+  'views/inventory/InventoryManageView.vue'
 ];
 
 const HEX = /#[0-9A-Fa-f]{3,8}\b/g;

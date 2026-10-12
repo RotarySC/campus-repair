@@ -114,6 +114,8 @@ await shoot('worker01', '/worker/workbench', 'workbench-worker01');
 await shoot('admin', '/reports/orders', 'report-admin');
 // 调度中心：本仓最大的单文件（76 处色值），也是「列表 + 操作最密」的一页
 await shoot('admin', '/dispatch', 'dispatch-admin');
+// 进销存：第二期第四批；BEFORE 是「半迁移」状态，AFTER 应当与其他页自洽
+await shoot('admin', '/inventory', 'inventory-admin');
 
 writeFileSync(`${OUT}/summary.json`, JSON.stringify(shots, null, 2));
 console.log('\n=== 截图汇总 ===');

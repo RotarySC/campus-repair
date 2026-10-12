@@ -35,21 +35,27 @@
           </el-card>
         </el-col>
         <el-col :xs="12" :md="6">
-          <el-card shadow="never" class="kpi-card alert-kpi">
-            <div class="kpi-title">低库存警戒物料</div>
-            <div class="kpi-num text-danger">{{ summary.lowStockCount }} <span class="kpi-unit">种</span></div>
+          <!--
+            四张 KPI 卡原先各带一个语义色数字（红 / 绿 / 灰），低库存那张还整张染浅红底 + 红边。
+            按 V4「彩色只服务状态语义」与控制台概览同口径：**数字一律中性**，
+            而「低库存」是真的警戒 —— 它的形状是 §3.3 的**实心圆点**，不是一张红卡。
+            （与控制台概览的「缺料警戒」警戒条、进销存的页顶横幅是同一个语义、同一种形状。）
+          -->
+          <el-card shadow="never" class="kpi-card">
+            <div class="kpi-title"><StatusRing variant="dot" label="低库存警戒物料" /></div>
+            <div class="kpi-num">{{ summary.lowStockCount }} <span class="kpi-unit">种</span></div>
           </el-card>
         </el-col>
         <el-col :xs="12" :md="6">
           <el-card shadow="never" class="kpi-card">
             <div class="kpi-title">正常储备物料</div>
-            <div class="kpi-num text-success">{{ summary.normalCount }} <span class="kpi-unit">种</span></div>
+            <div class="kpi-num">{{ summary.normalCount }} <span class="kpi-unit">种</span></div>
           </el-card>
         </el-col>
         <el-col :xs="12" :md="6">
           <el-card shadow="never" class="kpi-card">
             <div class="kpi-title">已停用下架</div>
-            <div class="kpi-num text-muted">{{ summary.disabledCount }} <span class="kpi-unit">种</span></div>
+            <div class="kpi-num">{{ summary.disabledCount }} <span class="kpi-unit">种</span></div>
           </el-card>
         </el-col>
       </el-row>
@@ -116,10 +122,11 @@
           </template>
 
           <template #col-partName="{ row }">
-            <span style="font-weight: 500;">{{ row.partName }}</span>
-            <el-tag v-if="row.isLowStock" type="danger" size="small" effect="dark" style="margin-left: 6px;">
-              低库存
-            </el-tag>
+            <span class="part-name">{{ row.partName }}</span>
+            <!-- 低库存＝警戒：**实心圆点 + 文字**（§3.3），不再是一个实心红底标签。
+                 「低库存」这件事在本页原先有**四处**表达（名称旁的实心红胶囊、数量上的红底药丸、
+                 KPI 卡的浅红底 + 红数字、页顶横幅），这里收成一处。 -->
+            <StatusRing v-if="row.isLowStock" variant="dot" label="低库存" class="part-flag" />
           </template>
 
           <template #col-categoryType="{ row }">
@@ -131,13 +138,12 @@
           </template>
 
           <template #col-stockQuantity="{ row }">
-            <span :class="{ 'low-stock-text': row.isLowStock, 'normal-stock-text': !row.isLowStock }">
-              {{ row.stockQuantity }}
-            </span>
+            <!-- 数量本身**不再着色**（原先是红底药丸 + 700 字重）。警戒由名称旁那一个实心圆点承担。 -->
+            <span class="stock-cell" :class="{ 'is-low': row.isLowStock }">{{ row.stockQuantity }}</span>
           </template>
 
           <template #col-safetyStockThreshold="{ row }">
-            <span style="color: #8C8C8C;">{{ row.safetyStockThreshold }}</span>
+            <span class="cell-muted">{{ row.safetyStockThreshold }}</span>
           </template>
 
           <template #col-status="{ row }">
@@ -249,7 +255,7 @@
             :step="5"
             style="width: 100%;"
           />
-          <div style="font-size: 12px; color: #8C8C8C; margin-top: 4px;">
+          <div class="field-note">
             当物理库存小于或等于该警戒值时，系统触发全域采购补货红色告警
           </div>
         </el-form-item>
@@ -275,9 +281,9 @@
       width="min(480px, 94vw)"
       :close-on-click-modal="false"
     >
-      <div v-if="selectedPartForInbound" style="margin-bottom: 14px; background: #F9FAFB; padding: 10px 14px; border-radius: 6px;">
+      <div v-if="selectedPartForInbound" class="context-box">
         <div><strong>入库物料：</strong>{{ selectedPartForInbound.partName }} ({{ selectedPartForInbound.partCode }})</div>
-        <div style="font-size: 13px; color: #4B5563; margin-top: 4px;">
+        <div class="context-box__meta">
           当前库存: <strong>{{ selectedPartForInbound.stockQuantity }}</strong> {{ selectedPartForInbound.unit }} |
           安全警戒线: {{ selectedPartForInbound.safetyStockThreshold }}
         </div>
@@ -346,15 +352,16 @@
             placement="top"
             type="success"
           >
-            <div style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #E5E7EB;">
-              <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+            <div class="inbound-record">
+              <div class="inbound-record__head">
                 <span>单号: {{ item.inboundNo }}</span>
-                <span style="color: #52C41A;">+{{ item.quantity }} 件</span>
+                <!-- 入库数量原先用绿色 → 中性。「入库为正」已经由 `+` 号表达，不需要第二个信号 -->
+                <span class="inbound-record__qty">+{{ item.quantity }} 件</span>
               </div>
-              <div style="font-size: 12px; color: #4B5563; line-height: 1.6;">
+              <div class="inbound-record__body">
                 <div>采购单价: ¥{{ Number(item.unitPrice).toFixed(2) }} | 总金额: ¥{{ Number(item.totalAmount).toFixed(2) }}</div>
                 <div>批次日期: {{ item.batchDate }} | 经办人: {{ item.operatorName }}</div>
-                <div v-if="item.remark" style="color: #8C8C8C;">备注: {{ item.remark }}</div>
+                <div v-if="item.remark" class="inbound-record__remark">备注: {{ item.remark }}</div>
               </div>
             </div>
           </el-timeline-item>
@@ -668,7 +675,7 @@ async function handleExportAdvice() {
 <style scoped>
 .inventory-view {
   min-height: calc(100vh - var(--topbar-h, 56px));
-  background-color: #F5F7FA;
+  background-color: var(--canvas);
   display: flex;
   flex-direction: column;
 }
@@ -735,39 +742,28 @@ async function handleExportAdvice() {
   margin-bottom: 2px;
 }
 .kpi-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
+/* KPI 标题：`StatusRing` 已经把「警戒」表达成 9px 实心点，标题文字一律中性 */
 .kpi-title {
   font-size: 13px;
-  color: #6B7280;
+  color: var(--muted);
   margin-bottom: 6px;
 }
 .kpi-num {
   font-size: 24px;
-  font-weight: 700;
-  color: #1F2937;
+  /* §3.5：KPI 大数字是**常规字重**。原先这里是 700，而实测腾讯云 700 只出现 1 次、上限是 600。 */
+  font-weight: var(--fw-normal);
+  color: var(--ink);
 }
 .kpi-unit {
   font-size: 13px;
-  font-weight: normal;
-  color: #9CA3AF;
-}
-.alert-kpi {
-  background: #FFF9F9;
-  border-color: #FFA39E;
-}
-.text-danger {
-  color: #F5222D;
-}
-.text-success {
-  color: #52C41A;
-}
-.text-muted {
-  color: #8C8C8C;
+  font-weight: var(--fw-normal);
+  color: var(--faint);
 }
 
 .table-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
 .inventory-table {
   display: block;
@@ -823,16 +819,65 @@ async function handleExportAdvice() {
   display: none;
 }
 
-.low-stock-text {
-  color: #F5222D;
-  font-weight: 700;
-  background: #FFF1F0;
-  padding: 2px 8px;
-  border-radius: 4px;
+/* 库存数量的两档**只差中性层级**（原先是「浅红底 + 红字 + 700 药丸」对「深墨 + 600」）。
+   警戒不再由颜色面积承担——它由物料名旁那一个 9px 实心圆点说（§3.3）。 */
+.stock-cell {
+  color: var(--muted);
 }
-.normal-stock-text {
-  color: #1F2937;
-  font-weight: 600;
+.stock-cell.is-low {
+  color: var(--ink);
+  font-weight: var(--fw-medium);
+}
+
+/* ---------- 原先写死在模板内联 style 里的几处（内联特异性高于类，必须换成类才收得进口径） ---------- */
+.part-name {
+  font-weight: var(--fw-normal);
+}
+.part-flag {
+  margin-inline-start: 6px;
+}
+.cell-muted {
+  color: var(--faint);
+}
+.field-note {
+  font-size: var(--fs-base);
+  color: var(--faint);
+  margin-top: 4px;
+}
+.context-box {
+  margin-bottom: 14px;
+  background: var(--canvas);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+}
+.context-box__meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.inbound-record {
+  background: var(--canvas);
+  padding: 12px;
+  border-radius: var(--radius);
+  border: var(--hairline) solid var(--line);
+}
+.inbound-record__head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+  margin-bottom: 6px;
+}
+.inbound-record__qty {
+  color: var(--ink);
+}
+.inbound-record__body {
+  font-size: var(--fs-base);
+  color: var(--muted);
+  line-height: 1.6;
+}
+.inbound-record__remark {
+  color: var(--faint);
 }
 
 .pagination-wrap {
