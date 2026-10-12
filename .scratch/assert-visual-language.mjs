@@ -111,6 +111,19 @@ console.log('\n===== ① token 覆盖棘轮 =====');
   check('名单里已迁干净的文件已销账（无残留）', UNMIGRATED.size === offenders.filter((o) => UNMIGRATED.has(o.rel)).length, `${UNMIGRATED.size} 个名单项`);
 }
 
+/* §3.6「边框 0.667px」**只能断言声明值**：本机 150% 每源缩放下，浏览器把 `1px` 与 `0.667px`
+   都吸附成一个设备像素，`getComputedStyle` 一律报 `0.666667px`（125% 时同理报 0.8px，
+   见 diag-page-zoom.mjs）——**计算值分辨不出这两者**，所以去读源文件。 */
+{
+  const css = readFileSync(join(SRC, 'styles', 'element-overrides.css'), 'utf8');
+  const decl = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  check('element-overrides.css 为按钮声明了发丝线边框', /\.el-button\s*\{[^}]*border-width:\s*var\(--hairline\)/.test(decl));
+  check('§3.6 的按钮几何在覆盖层里被声明（30px / 0 20px / 圆角 0 / 字重 400）',
+    /height:\s*30px/.test(decl) && /padding:\s*0 20px/.test(decl) &&
+    /border-radius:\s*0/.test(decl) && /font-weight:\s*var\(--fw-normal\)/.test(decl));
+  check('该层本身不含色值字面量（只用令牌，否则令牌层就被绕开了）', !/#[0-9A-Fa-f]{3,8}\b/.test(decl));
+}
+
 /* ==================== 传输层：web-access 代理 ==================== */
 
 const proxyPost = async (path, body) => {
@@ -210,8 +223,81 @@ const SNAPSHOT = `(() => {
   });
 })()`;
 
-const auth = (await (await fetch(`${BACKEND}/auth/login`, {
-  method: 'POST',
+/**
+ * 往页面里注入**一整套 EP 按钮变体**再量。
+ *
+ * 为什么注入而不是逐页去找按钮：变体样式全部来自全局 EP CSS，注入一次即可覆盖全部变体；
+ * 更关键的是**注入前后用的是同一把尺子**，可以逐值对比覆盖层落地前后的差异
+ * （基线由 `.scratch/probe-button-metrics.mjs` 单独留存）。
+ */
+const BUTTON_PROBE = `(() => {
+  document.getElementById('btn-probe')?.remove();
+  const box = document.createElement('div');
+  box.id = 'btn-probe';
+  box.style.cssText = 'position:fixed;left:-9999px;top:0';
+  box.innerHTML = [
+    '<button class="el-button" id="b-default">默认按钮</button>',
+    '<button class="el-button el-button--primary" id="b-primary">主要</button>',
+    '<button class="el-button el-button--small" id="b-small">小</button>',
+    '<button class="el-button el-button--large" id="b-large">大</button>',
+    '<button class="el-button el-button--primary is-link" id="b-link">链接</button>',
+    '<button class="el-button el-button--small is-link" id="b-link-small">小链接</button>',
+    '<button class="el-button is-circle" id="b-circle">圆</button>',
+    '<button class="el-button el-button--small is-circle" id="b-circle-small">小圆</button>',
+    '<button class="el-button el-button--success is-plain" id="b-plain">朴素</button>',
+    '<button class="el-button el-button--small is-plain" id="b-plain-small">小朴素</button>',
+    '<button class="el-button is-disabled" id="b-disabled">禁用</button>',
+    '<button class="el-button el-button--primary is-disabled" id="b-primary-disabled">主禁用</button>',
+    '<button class="el-button el-button--primary is-loading" id="b-loading">载入中</button>',
+    '<button class="el-button el-button--small is-disabled" id="b-small-disabled">小禁用</button>',
+    '<button class="el-button el-button--primary is-round" id="b-round">圆角</button>'
+  ].join('');
+  document.body.appendChild(box);
+  const rows = [];
+  for (const el of box.querySelectorAll('button')) {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    rows.push({
+      id: el.id,
+      h: Math.round(r.height * 100) / 100,
+      w: Math.round(r.width * 100) / 100,
+      padL: cs.paddingLeft, padR: cs.paddingRight,
+      radius: cs.borderTopLeftRadius,
+      fontSize: cs.fontSize, fontWeight: cs.fontWeight,
+      color: cs.color, bg: cs.backgroundColor
+    });
+  }
+  return JSON.stringify(rows);
+})()`;
+
+/** 警戒条快照（控制台概览的 `.alert-strip` 与进销存的 `.low-stock-alert-banner` 同形） */
+const ALERT_SNAPSHOT = `(() => {
+  const cs = (el, p) => (el ? getComputedStyle(el).getPropertyValue(p).trim() : null);
+  const strip = document.querySelector('.alert-strip') || document.querySelector('.low-stock-alert-banner');
+  const dot = strip ? strip.querySelector('.status-ring--dot') : null;
+  const mark = dot ? dot.querySelector('.status-ring__mark') : null;
+  const label = dot ? dot.querySelector('.status-ring__label') : null;
+  const strong = strip ? strip.querySelector('strong') : null;
+  return JSON.stringify({
+    found: !!strip,
+    count: strong ? strong.textContent.trim() : null,
+    stripBg: cs(strip, 'background-color'),
+    stripBgImage: cs(strip, 'background-image'),
+    stripBorder: cs(strip, 'border-top-color'),
+    stripRadius: cs(strip, 'border-radius'),
+    stripShadow: cs(strip, 'box-shadow'),
+    dotCount: strip ? strip.querySelectorAll('.status-ring--dot').length : 0,
+    dotColor: cs(dot, 'color'),
+    dotSize: cs(mark, 'width'),
+    dotFill: cs(mark, 'background-color'),
+    dotVariantClass: dot ? dot.className : null,
+    dotLabel: label ? label.textContent.trim() : null,
+    dotLabelColor: cs(label, 'color'),
+    strongColor: cs(strong, 'color')
+  });
+})()`;
+
+const auth = (await (await fetch(`${BACKEND}/auth/login`, {  method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ username: 'admin', password: 'password' })
 })).json()).data;
@@ -231,6 +317,18 @@ const PAGES = [
   { path: '/login', name: '登录页' },
   { path: '/', name: '控制台概览' },
   { path: '/reports/orders', name: '工单报表' }
+];
+
+/**
+ * 只跑「五档无横向溢出」的补充页。
+ * 专门挑**按钮最密**的几页：§3.6 把内边距从 `15px 15px` 改成 `0 20px`
+ * 会让每个按钮变宽，最可能的坏结果是工具栏在窄档溢出或被挤出视口——
+ * 这三页正是那个风险面（调度中心 12 个按钮 / 进销存 5 个 / 空间字典 8 个）。
+ */
+const MATRIX_EXTRA = [
+  { path: '/dispatch', name: '后勤调度中心' },
+  { path: '/inventory', name: '耗材进销存' },
+  { path: '/spatial', name: '空间与分类字典' }
 ];
 
 const snapshots = {};
@@ -328,7 +426,14 @@ console.log('\n===== ⑥ 登录页（§4.5，止于 G1） =====');
   check('标题字重 600（原 700）', L?.titleWeight === '600', L?.titleWeight);
   check('标题色 --ink', L?.titleColor === 'rgba(0, 0, 0, 0.9)', L?.titleColor);
   check('主按钮已是新主色 #0052D9', L?.btnBg === 'rgb(0, 82, 217)', L?.btnBg);
-  check('按钮圆角 2px、字号 12px（§4.2 用变量能覆盖到的那部分）', L?.btnRadius === '2px' && L?.btnFontSize === '12px', `${L?.btnRadius} / ${L?.btnFontSize}`);
+  /*
+    ⚠️ **这条断言被改写过两次，不是回归。**
+    它最初（只有 §4.2 那 4 个变量时）断言「按钮圆角 **2px**」——那是当时的**能覆盖到的上限**，
+    而 §3.6 的口径本来就要求圆角 **0**。`element-overrides.css` 落地后 2px 变成 0px，
+    这条也就必须跟着改：**它原来测的是"妥协后的现状"，不是规范。**
+  */
+  check('按钮圆角 0（§3.6；曾被 §4.2 的变量折中成 2px）、字号 12px',
+    L?.btnRadius === '0px' && L?.btnFontSize === '12px', `${L?.btnRadius} / ${L?.btnFontSize}`);
   /*
     ⚠️ **这一条是改写过的旧断言，不是回归。**
     G1 之前它断言的是「深蓝渐变仍在」——那是当时刻意留下的停点（规范 §4.5 把渐变指向 §4.6）。
@@ -352,9 +457,79 @@ console.log('\n===== ⑥ 登录页（§4.5，止于 G1） =====');
   check('体积 ≤ 120 KB（「可压到极小体积」）', bytes > 0 && bytes <= 120 * 1024, `${(bytes / 1024).toFixed(1)} KB`);
 }
 
+console.log('\n===== ⑧ §3.6 按钮（结构级覆盖层 element-overrides.css） =====');
+{
+  const rows = JSON.parse(await evalJs(BUTTON_PROBE));
+  const B = Object.fromEntries(rows.map((r) => [r.id, r]));
+  const d = B['b-default'];
+  check('默认档高度 30px（EP 原 32）', d.h === 30, `${d.h}px`);
+  check('默认档内边距 0 20px（EP 原 15px 15px）', d.padL === '20px' && d.padR === '20px', `${d.padL}/${d.padR}`);
+  check('默认档圆角 0（EP 原 2px）', d.radius === '0px', d.radius);
+  check('默认档字重 400（EP 原 500）', d.fontWeight === '400', d.fontWeight);
+  check('默认档字号 12px', d.fontSize === '12px', d.fontSize);
+
+  // 这两档最容易出的事故：`.el-button--small` 与 `.el-button` 特异度相同、而覆盖层加载在后，
+  // 不显式重申高度的话 small/large 会被默认档的 30px 一起带走。
+  check('small 档高度仍是 24px（没被默认档的 30px 带走）', B['b-small'].h === 24, `${B['b-small'].h}px`);
+  check('small 档内边距 0 16px（按默认档增量 +5 外推）', B['b-small'].padL === '16px', B['b-small'].padL);
+  check('large 档高度仍是 40px', B['b-large'].h === 40, `${B['b-large'].h}px`);
+  check('large 档内边距 0 24px（按默认档增量 +5 外推）', B['b-large'].padL === '24px', B['b-large'].padL);
+
+  const c = B['b-circle'];
+  check('圆形按钮仍是正圆（宽==高 且圆角 50%）', c.w === c.h && c.radius === '50%', `${c.w}×${c.h} ${c.radius}`);
+  check('文字链接没被撑宽（EP 自带 padding 2px 仍然赢）', B['b-link'].padL === '2px', B['b-link'].padL);
+  check('圆角档仍是 20px', B['b-round'].radius === '20px', B['b-round'].radius);
+
+  check('禁用态文字 = rgba(0,0,0,.3)', B['b-disabled'].color === 'rgba(0, 0, 0, 0.3)', B['b-disabled'].color);
+  check('禁用态底色中性化（不再把语义色洗淡）', B['b-disabled'].bg === 'rgb(242, 244, 248)', B['b-disabled'].bg);
+  check('主色禁用同样中性化（EP 原为淡蓝底白字）',
+    B['b-primary-disabled'].color === 'rgba(0, 0, 0, 0.3)' && B['b-primary-disabled'].bg === 'rgb(242, 244, 248)',
+    `${B['b-primary-disabled'].color} / ${B['b-primary-disabled'].bg}`);
+  check('加载中**不是**禁用态：按钮保持主色',
+    B['b-loading'].color === 'rgb(255, 255, 255)' && B['b-loading'].bg !== 'rgb(242, 244, 248)',
+    `${B['b-loading'].color} / ${B['b-loading'].bg}`);
+}
+
+console.log('\n===== ⑨ 实心圆＝警戒（§3.3 ＋ §4.6 G4） =====');
+{
+  // 阈值**不是前端写死的**：先把后端真值取回来，再跟页面上显示的数字对
+  const invRes = await fetch(`${BACKEND}/inventory/summary`, {
+    headers: { Authorization: `Bearer ${auth.accessToken}` }
+  });
+  const inv = await invRes.json();
+  const truth = inv?.data?.lowStockCount;
+  check('后端 /inventory/summary 可取（阈值在库里：stock_quantity <= safety_stock_threshold）',
+    invRes.ok && typeof truth === 'number', `HTTP ${invRes.status} lowStockCount=${truth}`);
+
+  for (const [path, name] of [['/', '控制台概览'], ['/inventory', '耗材进销存']]) {
+    await navigate(ORIGIN + path);
+    for (let i = 0; i < 25; i++) {
+      await sleep(500);
+      if (await evalJs(`!!document.querySelector('.alert-strip, .low-stock-alert-banner, .kpi-card, .el-table')`)) break;
+    }
+    await sleep(1500);
+    const a = JSON.parse(await evalJs(ALERT_SNAPSHOT));
+    if (!a.found) {
+      console.log(`SKIP  ${name}：当前数据没有低于安全线的物料（lowStockCount=${truth}），警戒条本就不该渲染`);
+      continue;
+    }
+    check(`${name}：页上确实找到了警戒条（先排除空集恒真）`, a.found);
+    check(`${name}：警戒条显示的数字 === 后端的 lowStockCount`, Number(a.count) === truth, `${a.count} vs ${truth}`);
+    check(`${name}：底色是 --surface，**不是**渐变/彩底`, a.stripBg === 'rgb(255, 255, 255)' && a.stripBgImage === 'none', `${a.stripBg} / ${a.stripBgImage}`);
+    check(`${name}：描边是 --line 发丝线`, a.stripBorder === 'rgb(230, 233, 239)', a.stripBorder);
+    check(`${name}：无自造阴影（V15）`, a.stripShadow === 'none', a.stripShadow);
+    check(`${name}：有且只有一个实心圆点`, a.dotCount === 1, `${a.dotCount} 个`);
+    check(`${name}：圆点色相 = --alert (#F5222D)`, a.dotColor === 'rgb(245, 34, 45)', a.dotColor);
+    check(`${name}：圆点是**实心**（填充 === 描边色）`, a.dotFill === a.dotColor, `${a.dotFill} vs ${a.dotColor}`);
+    check(`${name}：圆点外径 9px`, a.dotSize === '9px', a.dotSize);
+    check(`${name}：圆点用的是 dot 变体（不是 ring）`, (a.dotVariantClass || '').includes('status-ring--dot'), a.dotVariantClass);
+    check(`${name}：圆点文字与强调数字都是中性色`, a.dotLabelColor === 'rgba(0, 0, 0, 0.9)' && a.strongColor === 'rgba(0, 0, 0, 0.9)', `${a.dotLabelColor} / ${a.strongColor}`);
+  }
+}
+
 /* ---------- ⑦ 五档矩阵（同源 iframe 驱动宽度） ---------- */
 console.log('\n===== ⑦ 五档真机矩阵（390 / 768 / 1272 / 1440 / 2524） =====');
-for (const page of PAGES) {
+for (const page of [...PAGES, ...MATRIX_EXTRA]) {
   const matrix = JSON.parse(await evalJs(`(async () => {
     const widths = [390, 768, 1272, 1440, 2524];
     const out = [];
@@ -368,12 +543,16 @@ for (const page of PAGES) {
       await wait(2200);
       const d = f.contentDocument, win = f.contentWindow;
       const root = d.documentElement;
+      const btns = [...d.querySelectorAll('.el-button')];
       out.push({
         w, innerWidth: win.innerWidth,
         overflowX: root.scrollWidth - root.clientWidth,
         hasTable: !!d.querySelector('.rl-table-wrapper .el-table'),
         cardCount: d.querySelectorAll('.rl-card').length,
-        emptyCount: d.querySelectorAll('.el-empty').length
+        emptyCount: d.querySelectorAll('.el-empty').length,
+        buttonCount: btns.length,
+        // §3.6 让按钮变宽，最可能的坏结果是**被挤出视口**（而非页面整体溢出）
+        maxButtonRight: btns.length ? Math.max(...btns.map((b) => b.getBoundingClientRect().right)) : 0
       });
       f.remove();
       await wait(200);
@@ -383,6 +562,13 @@ for (const page of PAGES) {
   for (const m of matrix) {
     check(`${page.name} @${m.w}：无横向溢出`, m.overflowX === 0, `溢出 ${m.overflowX}px`);
     check(`${page.name} @${m.w}：无意外 el-empty`, m.emptyCount === 0, `${m.emptyCount} 个`);
+    if (m.buttonCount > 0) {
+      check(
+        `${page.name} @${m.w}：没有按钮被挤出视口（${m.buttonCount} 个按钮）`,
+        m.maxButtonRight <= m.innerWidth + 1,
+        `最右 ${Math.round(m.maxButtonRight)} > 视口 ${m.innerWidth}`
+      );
+    }
     if (page.path === '/reports/orders') {
       const wantCard = m.w < 768;
       check(

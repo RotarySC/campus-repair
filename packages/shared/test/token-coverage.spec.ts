@@ -114,9 +114,29 @@ describe('token 层覆盖棘轮', () => {
     }
   });
 
-  it('全局样式入口只有 responsive.css 与 tokens.css 两个', () => {
-    const styles = readdirSync(join(SRC, 'styles'));
-    expect(styles.sort()).toEqual(['responsive.css', 'tokens.css']);
+  it('全局样式入口恰好是三层，且只有令牌层持有色值', () => {
+    const styles = readdirSync(join(SRC, 'styles')).sort();
+    expect(styles).toEqual(['element-overrides.css', 'responsive.css', 'tokens.css']);
+    // tokens.css 是色值的**唯一定义处**；另两层必须一个色值都没有，否则令牌层就被绕开了
     expect(offenders.has(DEFINITION_SITE)).toBe(true);
+    expect(offenders.has('styles/element-overrides.css')).toBe(false);
+    expect(offenders.has('styles/responsive.css')).toBe(false);
+  });
+
+  it('main.ts 的样式导入顺序是 EP → tokens → element-overrides → responsive', () => {
+    // **顺序是承重的**，不是审美：
+    //   · tokens / element-overrides 的所有覆盖都要压在 EP 之上 ⇒ 必须在 index.css 之后；
+    //   · element-overrides 用 `var(--ink)` 这类令牌 ⇒ 必须在 tokens.css 之后；
+    //   · responsive.css 是窄档度量收敛，应当最后说话。
+    // 把顺序倒过来不会报任何错——只会**静默失效**，所以这里逐项锁死位置。
+    const main = readFileSync(join(SRC, 'main.ts'), 'utf8');
+    const seq = [
+      'element-plus/dist/index.css',
+      './styles/tokens.css',
+      './styles/element-overrides.css',
+      './styles/responsive.css'
+    ].map((spec) => main.indexOf(spec));
+    expect(seq, '四个样式入口都必须在 main.ts 里出现').not.toContain(-1);
+    expect(seq, '顺序被改动了').toEqual([...seq].sort((a, b) => a - b));
   });
 });

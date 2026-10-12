@@ -1,19 +1,22 @@
 <template>
   <div class="inventory-view">
     <div class="view-content">
-      <!-- 1. 低库存常驻红色预警横幅 (当有低于安全库存时显示) -->
+      <!-- 1. 低库存常驻警戒横幅（当有低于安全库存时显示）
+           §4.6 G4 指定的口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**。
+           取代原先的 `linear-gradient(#FFF1F0,#FFF2E8)` ＋ `#FFA39E` 边框 ＋ 自造投影 ＋
+           `WarningFilled` 红图标——那是「用颜色表达紧急度」，而 D 把紧急度挪到了**填充**维度（§3.3）。 -->
       <div v-if="summary.lowStockCount > 0" class="low-stock-alert-banner">
         <div class="alert-left">
-          <el-icon :size="20" color="#F5222D" class="pulse-icon"><WarningFilled /></el-icon>
+          <StatusRing variant="dot" label="缺料警戒" class="low-stock-ring" />
           <span class="alert-text">
-            <strong>安全库存红色预警：</strong>系统当前共有
+            系统当前共有
             <strong class="highlight-count">{{ summary.lowStockCount }}</strong>
-            种常用耗材备件库存低于或等于安全警戒线，请后勤物资科尽快安排补货集采！
+            种常用耗材备件库存低于或等于安全警戒线，请后勤物资科尽快安排补货集采。
           </span>
         </div>
         <div class="alert-right">
           <el-button
-            type="danger"
+            type="primary"
             size="small"
             :loading="exporting"
             @click="handleExportAdvice"
@@ -365,13 +368,13 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-  WarningFilled,
   Search,
   Plus,
   Download
 } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import StatusRing from '../../components/StatusRing.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   SparePartVO,
@@ -678,16 +681,21 @@ async function handleExportAdvice() {
 }
 
 .low-stock-alert-banner {
-  background: linear-gradient(135deg, #FFF1F0, #FFF2E8);
-  border: 1px solid #FFA39E;
-  border-radius: 8px;
+  /* §4.6 G4：实心圆点 ＋ 中性字 ＋ 发丝线边框。无渐变、无彩底、无彩边、无自造阴影 */
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
   padding: 12px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  box-shadow: 0 2px 6px rgba(245, 34, 45, 0.08);
+}
+
+/* 圆点与文案同处一条 flex 行；窄档下不换行地贴在文案前 */
+.low-stock-ring {
+  flex-shrink: 0;
 }
 /* 窄档告警文案很长，必须让左侧可收缩、右侧按钮换行，否则按钮会被文字压住点不到 */
 @media (max-width: 767px) {
@@ -709,22 +717,18 @@ async function handleExportAdvice() {
   gap: 12px;
   min-width: 0;
 }
-.pulse-icon {
-  animation: pulse 1.6s infinite;
-}
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.15); }
-  100% { transform: scale(1); }
-}
+/* `.pulse-icon` 与它的 `@keyframes pulse` 已随 G4 一并删除：
+   那个 1.6 秒缩放的红色警示图标是 D 明确不要的东西——
+   「紧急度」现在由那 9px **实心**圆点表达（§3.3），不需要动画再加一层。 */
 .alert-text {
-  font-size: 14px;
-  color: #CF1322;
+  font-size: var(--fs-base);
+  color: var(--muted);
 }
 .highlight-count {
-  font-size: 16px;
-  color: #F5222D;
-  text-decoration: underline;
+  /* 要读的数字用字号 + 中性墨色立起来；**不再靠红色**——色相归圆点 */
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
 }
 
 .kpi-row {

@@ -1,0 +1,111 @@
+/**
+ * Element Plus 结构级覆盖层（**只做变量表达不出来的那些**）。
+ *
+ * 三层职责，不要混：
+ *   1. `element-plus/dist/index.css`  —— EP 自带
+ *   2. `tokens.css`                   —— **变量**：中性色、状态色相、EP 主题变量（§4.2）
+ *   3. 本文件                          —— **选择器级**覆写：EP 把值写死在 CSS 里、
+ *                                        `--el-*` 变量够不着的那部分（§3.6 的按钮几何）
+ *
+ * 为什么必须单开一层：§3.6 的 7 个度量里，§4.2 的 4 个 EP 变量只能覆盖 3 个
+ * （主色 ✅ / 字号 12px ✅ / 圆角 2px ⚠️ 而 §3.6 要 0）。剩下 4 个——
+ * **高 30px、内边距 `0 20px`、边框 0.667px、字重 400**——在 EP 里是写死的
+ * （实测：32px / `15px 15px` / 1px / 500），**没有变量可改**，只能靠选择器。
+ *
+ * 导入位置（main.ts）：EP index.css → tokens.css → **本文件** → responsive.css
+ *
+ * 实测依据：`.scratch/probe-button-metrics.mjs`（往页面注入全部变体再量）。
+ * 覆盖前基线（本机 150% 每源缩放下现测）：
+ *
+ *   | 变体      | 高 | 内边距   | 圆角 | 字重 |
+ *   |---|---|---|---|---|
+ *   | 默认      | 32 | 15/15   | 2px  | 500  |
+ *   | small     | 24 | 11/11   | 1px  | 500  |
+ *   | large     | 40 | 19/19   | 2px  | 500  |
+ *   | link      | 17.3 | **2/2** | 2px | 500 |
+ *   | circle    | 32 | 8/8     | **50%** | 500 |
+ *   | round     | 32 | 15/15   | **20px** | 500 |
+ *
+ * ⚠️ **`border-width` 在本机量不出来**：150% 缩放下浏览器把 1px 与 0.667px **都**吸附成
+ * 一个设备像素，`getComputedStyle` 一律报 `0.666667px`（125% 时同理报 0.8px，
+ * 见 `.scratch/diag-page-zoom.mjs`）。所以「边框 0.667px」这条**只能断言声明值**，
+ * 断言写在 `.scratch/assert-visual-language.mjs` 里（解析本文件）。
+ */
+
+/* ==================== §3.6 按钮（本规范已采纳） ====================
+   高 30px / 圆角 0 / 内边距 `0 20px` / 12px / 400 / 0.667px / 主按钮 #0052D9 / 禁用文字 rgba(0,0,0,.3)
+
+   规范只给了**默认档**的实测值。本仓确实在用三档（`size="small|large"` 有 20 余处），
+   所以这里**保留 EP 的档位高度**（24 / 40），只把 §3.6 的度量落到默认档，另两档
+   **按默认档的内边距增量 +5px 平移**（15→20 / 11→16 / 19→24）。
+   ⚠️ 那两档的 +5 是**外推，不是实测**——照规范字面，这一层只需管默认档。 */
+
+.el-button {
+  height: 30px;
+  padding: 0 20px;
+  border-radius: 0;
+  font-size: var(--fs-base);
+  /* §3.5：字重上限 600，而按钮该是常规字重（EP 默认 500） */
+  font-weight: var(--fw-normal);
+  border-width: var(--hairline);
+}
+
+/* 必须**显式重申**这两档的高度与内边距：
+   `.el-button--small`（0,1,0）与 `.el-button`（0,1,0）**特异度相同**，
+   而本文件加载在后 —— 不重申的话上面那条 `height: 30px` 会把 small/large 一起改掉。 */
+.el-button--small {
+  height: 24px;
+  padding: 0 16px;
+  border-radius: 0;
+}
+.el-button--large {
+  height: 40px;
+  padding: 0 24px;
+  border-radius: 0;
+}
+
+/*
+  圆形按钮**必须显式钉成正方形**。
+  ⚠️ 这里踩过一次：最初我以为「EP 的 `.el-button.is-circle` 特异度比我高，所以它会自己保住 50% 与尺寸」——
+  圆角确实保住了，但 EP 只给圆钮设了 `padding`，**宽度由 `.el-button` 的 `height` 反推不出来**：
+  实测变成 **32 宽 × 30 高**，也就是**椭圆**（`.el-button` 那条 `height: 30px` 只压了高、没压宽）。
+  所以这里按各档把宽高一起钉死（`.el-button--small.is-circle` 特异度与 `.el-button.is-circle`
+  相同，故它必须写在后面）。
+*/
+.el-button.is-circle {
+  width: 30px;
+  height: 30px;
+}
+.el-button--small.is-circle {
+  width: 24px;
+  height: 24px;
+}
+.el-button--large.is-circle {
+  width: 40px;
+  height: 40px;
+}
+
+/* ==================== §3.6 禁用态：文字降到 rgba(0,0,0,.3) ====================
+   顺带把禁用的**底色与描边也一并中性化**：EP 默认是把语义色洗淡（主色禁用 = 淡蓝底 + 白字），
+   而 §5 的 V4 修订把口径收成「**彩色只服务状态语义**」——
+   「这个按钮现在不能点」不是一种状态语义，用品牌色洗淡它属于装饰。 */
+.el-button.is-disabled,
+.el-button.is-disabled:hover,
+.el-button.is-disabled:focus,
+.el-button.is-disabled:active {
+  color: var(--disabled);
+  background-color: var(--canvas);
+  border-color: var(--line);
+}
+
+/* 加载中的按钮**不是**禁用态：EP 用 `is-loading` 而非 `is-disabled`，
+   所以上面那条不会碰到它，按钮在请求期间保持自己的语义色与主色。此处只作说明。 */
+
+/* ==================== 表格里按钮的相邻外边距 ====================
+   EP 给相邻 `.el-button` 默认 `margin-left: 12px`。本仓多处用 `gap` 布局，
+   两者会**叠加**（`WorkbenchView` 已就地抵消过一次，见该文件 `.action-buttons`）。
+   在表格的操作列里这个 12px 会把最后一个按钮挤出列宽，故统一归零，
+   间距一律交给容器的 `gap`。 */
+.el-table .el-button + .el-button {
+  margin-left: 0;
+}

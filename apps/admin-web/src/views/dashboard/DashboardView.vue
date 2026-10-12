@@ -18,6 +18,28 @@
       </div>
     </el-card>
 
+    <!--
+      缺料警戒（§4.6 G4 已定的口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**，不用渐变/彩底/彩边）。
+
+      这是本页**唯一真正的异常条件**，也是「实心＝警戒」（§3.3）在全站的第一处落点。
+      阈值不是我拍的：`GET /inventory/summary` 的 `lowStockCount` 数的是
+      `stock_quantity <= safety_stock_threshold` 且状态为**启用**的物料——
+      「安全警戒线」本来就存在库里，见 `InventoryServiceImpl#getInventorySummary`。
+
+      ⚠️ 两处刻意的实现选择：
+      ① **没有做成第 7 张 KPI 卡**：KPI 行是 `:lg="4"`（一行 6 张），塞第 7 张会得到 6+1 的孤卡。
+         §3.3 说的是「KPI 的警戒项」，这里按「KPI 区的警戒条」落地，形态与 G4 已定的口径一致。
+      ② 只在 `lowStockCount > 0` 时出现——**没有异常就不渲染**，
+         这也让「本页唯一允许出现的色相是那 9px 圆点」这件事可以被断言（断言在探针里）。
+    -->
+    <div v-if="lowStockCount > 0" class="alert-strip">
+      <StatusRing variant="dot" label="缺料警戒" />
+      <span class="alert-strip__text">
+        有 <strong>{{ lowStockCount }}</strong> 项物料已低于安全警戒线，
+        <router-link to="/inventory">前往耗材进销存台账处理</router-link>
+      </span>
+    </div>
+
     <!-- 顶层核心指标：6 张 KPI 统计卡 -->
     <el-row :gutter="16" class="kpi-row">
       <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :md="8" :lg="4">
@@ -121,6 +143,7 @@ import { useRouter } from 'vue-router';
 import * as echarts from 'echarts';
 import { httpClient, useAuthStore } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import StatusRing from '../../components/StatusRing.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   DashboardKpiVO,
@@ -128,6 +151,7 @@ import {
   SpatialHeatVO,
   CategoryRatioVO,
   WorkerLeaderboardVO,
+  InventorySummaryVO,
   WorkerSkillLabels,
   functionLabel
 } from '@campus/shared';
@@ -156,6 +180,8 @@ const leaderboard = ref<WorkerLeaderboardVO[]>([]);
 const pendingTrend = ref<TrendChartVO | null>(null);
 const spatialHeat = ref<SpatialHeatVO[]>([]);
 const categoryRatios = ref<CategoryRatioVO[]>([]);
+/** 低于安全警戒线的物料种数（0 时整条警戒横幅不渲染） */
+const lowStockCount = ref(0);
 
 /** 荣誉榜列定义双档共用：宽档渲染 el-table，窄档渲染卡片（排名徽标由 ranked 提供） */
 const leaderboardColumns: TableColumn<WorkerLeaderboardVO>[] = [
@@ -199,8 +225,12 @@ const hasCategoryData = computed(() => categoryRatios.value.some(d => Number(d.c
 
 onMounted(() => {
   fetchAllData();
+  fetchLowStock();
   // 看板每 30 秒轮询一次，保持数据新鲜
-  refreshTimer = setInterval(fetchAllData, 30000);
+  refreshTimer = setInterval(() => {
+    fetchAllData();
+    fetchLowStock();
+  }, 30000);
 
   window.addEventListener('resize', scheduleResize);
   // 侧边栏折叠/内容区宽度变化时也要重算图表尺寸
@@ -228,6 +258,26 @@ function scheduleResize() {
     spatialChart?.resize();
     categoryPie?.resize();
   });
+}
+
+/**
+ * 缺料警戒（§4.6 G4）。**刻意独立于 `fetchAllData` 的 try/catch**：
+ *
+ * `fetchAllData` 是 5 个 analytics 端点的 `Promise.all`——任一失败就整批落空。
+ * 这一个调的是**另一个模块**的端点（`/inventory/summary`，只对 DISPATCHER/PLATFORM_ADMIN 开放），
+ * 混进那个 `Promise.all` 的话，一次 403/网络抖动会把 KPI、趋势、空间、分类、榜单**一起**拖没。
+ * 分开之后它失败最坏的结果是「警戒条不显示」，看板其余部分不受影响。
+ */
+async function fetchLowStock() {
+  try {
+    const res = await httpClient.get<InventorySummaryVO>('/inventory/summary');
+    if (res.code === 200 && res.data) {
+      lowStockCount.value = res.data.lowStockCount ?? 0;
+    }
+  } catch (e) {
+    // 非关键信息：失败时静默（警戒条不出现），不打断看板
+    console.error('Fetch inventory summary failed', e);
+  }
 }
 
 async function fetchAllData() {
@@ -512,6 +562,34 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* §4.6 G4 的警戒口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**。
+   无渐变、无彩底、无彩边、无自造阴影——色相只活在 StatusRing 那 9px 圆点上（§3.3）。 */
+.alert-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.alert-strip__text {
+  font-size: var(--fs-base);
+  color: var(--muted);
+}
+
+.alert-strip__text strong {
+  color: var(--ink);
+  font-weight: var(--fw-medium);
+}
+
+.alert-strip__text a {
+  color: var(--ink);
+  text-underline-offset: 3px;
 }
 
 /* §3.5：卡片圆角 0（腾讯云卡片实测 0px，没有一个 ≥8px） */
