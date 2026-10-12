@@ -9,7 +9,7 @@
     <!-- 固定左侧边栏（<768px 转覆盖抽屉） -->
     <aside id="admin-sidebar" class="sidebar" aria-label="主导航">
       <div class="brand">
-        <el-icon v-show="!isCollapsed" :size="24" color="#1677FF" class="brand-icon"><Management /></el-icon>
+        <BrandMark v-show="!isCollapsed" :size="24" class="brand-icon" />
         <span v-show="!isCollapsed" class="brand-text">校园设施报修运维平台</span>
 
         <!-- 标题栏的收起/展开入口：抽屉档＝关闭抽屉，其余档位＝240 ↔ 64 -->
@@ -135,6 +135,7 @@ import { BREAKPOINTS, useViewport } from '../composables/useViewport';
 import { visibleNavItems, type NavItem } from '../constants/navItems';
 import NotificationCenterDrawer from '../components/NotificationCenterDrawer.vue';
 import AssistantWidget from '../components/AssistantWidget.vue';
+import BrandMark from '../components/BrandMark.vue';
 
 const identity = useIdentity();
 
@@ -347,6 +348,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 品牌区的文字与标识共用一色：BrandMark 用 currentColor 继承，故不必在 .brand-text 再写一遍 */
+  color: #1f2937;
   /* 含 1px 下边框，与顶栏同高，两条分隔线落在同一水平线上 */
   box-sizing: border-box;
   height: var(--topbar-h);
@@ -368,7 +371,7 @@ onMounted(() => {
   text-overflow: ellipsis;
   font-size: 13px;
   font-weight: 600;
-  color: #1f2937;
+  /* 颜色继承 .brand */
 }
 
 /* 标题栏的收起/展开按钮（抽屉档为关闭抽屉） */

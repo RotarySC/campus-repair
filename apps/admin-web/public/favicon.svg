@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="校园设施报修运维平台">
+  <!--
+    品牌标识「缺口楼宇」——两半楼体之间留一道缺口，底部一条基线压稳。
+    几何与 apps/admin-web/src/components/BrandMark.vue 必须一致（同一份路径数据，两处）。
+    favicon 用固定色而非 currentColor（标签页没有可继承的 color），并按 prefers-color-scheme 切换，
+    否则深色标签栏上会看不清。
+  -->
+  <style>
+    path { fill: none; stroke: #1A1A1A; stroke-width: 2; stroke-linecap: square; stroke-linejoin: miter; }
+    @media (prefers-color-scheme: dark) { path { stroke: #F5F5F7; } }
+  </style>
+  <path d="M4 19.5V7.6l6.2-2.9v14.8" />
+  <path d="M13.8 4.7 20 7.6v11.9h-6.2" />
+  <path d="M2.4 19.5h19.2" />
+</svg>
