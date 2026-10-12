@@ -49,7 +49,7 @@
             <p v-else class="no-image">未上传照片</p>
           </div>
 
-          <div class="diff-divider"><el-icon :size="20" color="#1677FF"><Right /></el-icon></div>
+          <div class="diff-divider"><el-icon :size="20" class="diff-arrow"><Right /></el-icon></div>
 
           <div class="diff-pane">
             <el-tag type="primary" effect="plain" class="diff-badge">完工防伪实况</el-tag>
@@ -116,7 +116,7 @@
 
         <div class="rate-row">
           <span class="rate-title">服务满意度打分：</span>
-          <el-rate v-model="ratingStar" :texts="rateTexts" show-text text-color="#ff976a" />
+          <el-rate v-model="ratingStar" :texts="rateTexts" show-text text-color="var(--muted)" />
         </div>
 
         <template v-if="ratingStar >= 3">
@@ -308,8 +308,8 @@ async function onSubmitEvaluation() {
 .diff-pane {
   flex: 1 1 280px;
   min-width: 0;
-  background: #f9fafb;
-  border-radius: 8px;
+  background: var(--canvas);
+  border-radius: var(--radius-card);
   padding: 12px;
 }
 .diff-badge {
@@ -318,7 +318,7 @@ async function onSubmitEvaluation() {
 .diff-desc {
   margin: 0 0 8px 0;
   font-size: 13px;
-  color: #374151;
+  color: var(--ink);
   line-height: 1.5;
   min-height: 36px;
 }
@@ -330,28 +330,33 @@ async function onSubmitEvaluation() {
 .diff-thumb {
   width: 96px;
   height: 96px;
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 .no-image {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--fs-base);
+  color: var(--faint);
   font-style: italic;
 }
+/* 返工产生的差异成本**不再染红**——金额不是警戒 */
 .diff-cost {
   margin: 10px 0 0 0;
-  font-size: 12px;
-  color: #f56c6c;
-  font-weight: 600;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  font-weight: var(--fw-medium);
 }
 .diff-divider {
   display: flex;
   align-items: center;
 }
+/* 「报修初始实况 ➔ 完工结果」之间的箭头：可交互方向指示 → 走主色令牌 */
+.diff-arrow {
+  color: var(--el-color-primary);
+}
 .tag-gap {
   margin-right: 6px;
 }
 .muted {
-  color: #9ca3af;
+  color: var(--faint);
 }
 .rate-row {
   display: flex;
@@ -360,12 +365,12 @@ async function onSubmitEvaluation() {
   margin-bottom: 12px;
 }
 .rate-title {
-  font-weight: 600;
-  color: #374151;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
 }
 .tag-title {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--muted);
   margin-bottom: 8px;
 }
 .tag-list {
@@ -377,16 +382,17 @@ async function onSubmitEvaluation() {
 .tag-pill {
   font-size: 13px;
   padding: 5px 14px;
-  border-radius: 14px;
-  background: #f3f4f6;
-  color: #6b7280;
+  border-radius: var(--radius);
+  background: var(--canvas);
+  color: var(--muted);
   cursor: pointer;
-  transition: all 0.2s;
+  /* 只过渡具体属性：`all` 会把 padding/圆角也纳入过渡 */
+  transition: background-color 0.2s, color 0.2s;
   user-select: none;
 }
 .tag-pill.active {
-  background: #1677ff;
-  color: #fff;
+  background: var(--el-color-primary);
+  color: var(--surface);
 }
 .rework-alert {
   margin-bottom: 12px;

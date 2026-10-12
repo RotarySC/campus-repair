@@ -29,44 +29,48 @@ const SRC = join(ROOT, 'apps', 'admin-web', 'src');
 const DEFINITION_SITE = 'styles/tokens.css';
 
 /**
- * 尚未迁移的文件（第二期铺开）。这份名单**只允许变短**。
- * 分类是按「本页属不属于第一期试点切片」判的，不是按改动量。
+ * 尚未迁移的文件。这份名单**只允许变短**。
+ *
+ * 2026-10-12 第二期推完后只剩**一个**文件，而且它剩下的不是"没做"，是**一个待决策项**：
+ * `DashboardView.vue` 的「故障大类占比」饼图**分类色板**——D 定义了状态色（8 个色相）与中性色，
+ * **没有定义分类色板**，而 8 个扇区压成灰阶读不出边界。用户裁决「进度到这里再决定」。
+ * 其余全仓（含 `App.vue`）已是 0 色值。
  */
 const UNMIGRATED = new Set([
-  'App.vue',
-  'components/AssistantWidget.vue',
-  'views/auth/RegisterView.vue',
-  // 控制台概览：只剩「故障大类占比」那张饼图的**分类色板**。D 定义了状态色与中性色，
-  // 没有定义分类色板，而 8 个扇区压成灰阶不可读——这是待决策项，不是遗漏（见该文件内注释）。
-  'views/dashboard/DashboardView.vue',
-  'views/error/ForbiddenView.vue',
-  'views/spatial/SpatialManageView.vue',
-  'views/student/StudentOrderDetailView.vue',
-  'views/student/StudentSubmitRepairView.vue',
-  'views/system/UserManageView.vue'
+  'views/dashboard/DashboardView.vue'
 ]);
 
-/** 第一期已经迁干净、**必须保持 0 色值**的文件 */
+/** 已经迁干净、**必须保持 0 色值**的文件 */
 const MIGRATED = [
+  // ---- 第一期 ----
   'components/ResponsiveTable.vue',
   'components/StatusRing.vue',
   'layouts/AdminLayout.vue',
   // 登录页的深蓝渐变已由 G1 的生成式背景替换（规范 §4.6），品牌蓝随之退场
   'views/login/LoginView.vue',
   'views/analytics/WorkOrderReportView.vue',
-  // ---- 第二期第一批（V7 状态圆环铺开，随该批一起迁干净）----
+  // ---- 第二期第一批（V7 状态圆环铺开）----
   'views/worker/WorkbenchView.vue',
   'views/student/StudentOrderListView.vue',
   'views/profile/PersonalCenterView.vue',
-  // ---- 第二期第二批（两个共享组件；它们被多页复用，单位改动收益最高）----
+  // ---- 第二期第二批（两个共享组件；它们被多页复用）----
   'components/WorkOrderTimeline.vue',
   'components/NotificationCenterDrawer.vue',
   // ---- 第二期第三批（本仓最大的单文件：76 处）----
   'views/dispatch/DispatchCenterView.vue',
-  // ---- 第二期第四批（进销存；做完这一批，§11.1 裁决 1 的「半迁移页」状态消失）----
+  // ---- 第二期第四批（做完后「半迁移页」状态消失）----
   'views/inventory/InventoryManageView.vue',
   // ---- 第二期第五批 ----
-  'views/worker/WorkerFinishView.vue'
+  'views/worker/WorkerFinishView.vue',
+  // ---- 第二期第六批（收尾：剩下的零头一次推完）----
+  'views/student/StudentOrderDetailView.vue',
+  'views/spatial/SpatialManageView.vue',
+  'views/auth/RegisterView.vue',
+  'views/student/StudentSubmitRepairView.vue',
+  'components/AssistantWidget.vue',
+  'views/error/ForbiddenView.vue',
+  'views/system/UserManageView.vue',
+  'App.vue'
 ];
 
 const HEX = /#[0-9A-Fa-f]{3,8}\b/g;

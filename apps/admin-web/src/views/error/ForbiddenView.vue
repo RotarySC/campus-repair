@@ -56,14 +56,14 @@ function handleLogout() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f5f7fa;
+  background-color: var(--canvas);
   padding: 24px;
 }
 
 .forbidden-card {
   width: 100%;
   max-width: 560px;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
 
 .account-box {
@@ -73,7 +73,7 @@ function handleLogout() {
 .account-box p {
   margin: 6px 0;
   font-size: 14px;
-  color: #4b5563;
+  color: var(--muted);
 }
 
 .tips {

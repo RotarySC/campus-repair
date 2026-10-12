@@ -139,6 +139,10 @@ await shoot(
     `.find(x=>!x.classList.contains('disabled-part'))?.click();setTimeout(()=>{` +
     `document.querySelector('.consume-header')?.scrollIntoView({block:'center'});setTimeout(r,900)},1200)},1500))})()`
 );
+// 第二期第六批（收尾）涉及的三页
+await shoot('admin', '/spatial', 'spatial-admin');
+await shoot('student02', '/register', 'register-public');
+await shoot('student02', '/student/orders/1005', 'order-detail-student02');
 
 writeFileSync(`${OUT}/summary.json`, JSON.stringify(shots, null, 2));
 console.log('\n=== 截图汇总 ===');

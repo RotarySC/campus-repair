@@ -92,7 +92,12 @@
           </el-table-column>
           <el-table-column prop="workerSkillCode" label="指派维修工种" width="160">
             <template #default="{ row }">
-              <el-tag v-if="row.workerSkillCode" type="warning">{{ row.workerSkillCode }}</el-tag>
+              <!-- 🐞 原先直接渲染 `row.workerSkillCode`，于是用户看到的是 **`PLUMBER` / `HVAC` / `LOCKSMITH`**
+                   这些字典码本身（AGENTS.md 禁止的正是这一类，而它举的反例恰好就是 `PLUMBER`）。
+                   工种的唯一中文来源是 shared 的 `WorkerSkillLabels`——与调度中心、助手候选卡同源。 -->
+              <el-tag v-if="row.workerSkillCode" type="warning">
+                {{ WorkerSkillLabels[row.workerSkillCode] || row.workerSkillCode }}
+              </el-tag>
               <span v-else class="text-muted">--</span>
             </template>
           </el-table-column>
@@ -134,7 +139,10 @@
               </div>
               <div class="category-card__row">
                 <span class="category-card__label">指派维修工种</span>
-                <el-tag v-if="data.workerSkillCode" type="warning" size="small">{{ data.workerSkillCode }}</el-tag>
+                <!-- 同上：窄档卡片也要走中文标签，别把字典码端给用户 -->
+                <el-tag v-if="data.workerSkillCode" type="warning" size="small">
+                  {{ WorkerSkillLabels[data.workerSkillCode] || data.workerSkillCode }}
+                </el-tag>
                 <span v-else class="text-muted">--</span>
               </div>
               <div class="category-card__row">
@@ -277,7 +285,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { branchLabel } from '@campus/shared';
+import { branchLabel, WorkerSkillLabels } from '@campus/shared';
 import { httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
 
@@ -522,8 +530,8 @@ onMounted(() => {
 <style scoped>
 .spatial-manage {
   padding: 16px;
-  background: #ffffff;
-  border-radius: 8px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
   min-height: calc(100vh - var(--topbar-h, 56px) - 32px);
 }
 .tab-toolbar {
@@ -556,8 +564,8 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 .full-path {
-  font-size: 12px;
-  color: #9CA3AF;
+  font-size: var(--fs-base);
+  color: var(--faint);
   margin-left: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -588,7 +596,7 @@ onMounted(() => {
   }
 }
 .text-muted {
-  color: #9CA3AF;
+  color: var(--faint);
 }
 
 /* 窄档：故障分类字典的树形卡片（替代 880px 宽的树形表格） */
@@ -608,9 +616,9 @@ onMounted(() => {
   flex: 1;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #fff;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
   margin: 6px 0;
 }
 .category-card__head {
@@ -619,11 +627,11 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 6px;
   padding-bottom: 8px;
-  border-bottom: 1px dashed #ebeef5;
+  border-bottom: var(--hairline) dashed var(--line);
 }
 .category-card__name {
   font-size: 14px;
-  color: #1f2937;
+  color: var(--ink);
   word-break: break-all;
 }
 .category-card__row {
@@ -636,7 +644,7 @@ onMounted(() => {
 }
 .category-card__label {
   flex: 0 0 108px;
-  color: #909399;
+  color: var(--muted);
 }
 .category-card__text {
   flex: 1 1 auto;
@@ -651,14 +659,14 @@ onMounted(() => {
   line-height: 1.5;
 }
 .category-assist-line {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--fs-base);
+  color: var(--faint);
   word-break: break-all;
 }
 .form-tip {
   margin-top: 4px;
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--fs-base);
+  color: var(--faint);
   line-height: 1.6;
 }
 .category-card__foot {
@@ -667,6 +675,6 @@ onMounted(() => {
   gap: 8px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px dashed #ebeef5;
+  border-top: var(--hairline) dashed var(--line);
 }
 </style>

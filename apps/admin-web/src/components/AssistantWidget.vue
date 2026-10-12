@@ -450,10 +450,11 @@ defineExpose({ notifyCenter: openNotificationCenter });
   border: none;
   border-radius: 999px;
   background: var(--el-color-primary);
-  color: #fff;
+  color: var(--surface);
   font-size: 14px;
   cursor: pointer;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  /* V15：不再自造阴影；浮层用令牌层那一条（`--shadow-overlay` 就是为浮层准备的） */
+  box-shadow: var(--shadow-overlay);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .assistant-bubble:hover {
@@ -564,7 +565,7 @@ defineExpose({ notifyCenter: openNotificationCenter });
   border: none;
   border-radius: 50%;
   background: var(--el-text-color-placeholder);
-  color: #fff;
+  color: var(--surface);
   cursor: pointer;
   opacity: 0;
 }

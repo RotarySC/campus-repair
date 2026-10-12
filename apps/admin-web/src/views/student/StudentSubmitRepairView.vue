@@ -537,18 +537,18 @@ onMounted(async () => {
   }
 }
 .path-hint {
-  margin-left: 12px;
-  color: #6b7280;
-  font-size: 12px;
+  margin-inline-start: 12px;
+  color: var(--muted);
+  font-size: var(--fs-base);
 }
 .upload-tip {
-  color: #9ca3af;
-  font-size: 12px;
+  color: var(--faint);
+  font-size: var(--fs-base);
 }
 .urgency-hint {
-  margin-left: 12px;
-  color: #6b7280;
-  font-size: 12px;
+  margin-inline-start: 12px;
+  color: var(--muted);
+  font-size: var(--fs-base);
 }
 .assistant-inline {
   width: 100%;

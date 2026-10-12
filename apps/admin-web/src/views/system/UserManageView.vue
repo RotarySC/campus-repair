@@ -236,8 +236,8 @@ onMounted(() => {
 <style scoped>
 .user-management {
   padding: 16px;
-  background-color: #ffffff;
-  border-radius: 8px;
+  background-color: var(--surface);
+  border-radius: var(--radius-card);
   min-height: calc(100vh - var(--topbar-h, 56px) - 32px);
 }
 .toolbar {

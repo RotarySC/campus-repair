@@ -135,7 +135,7 @@ async function onSubmit() {
 <style scoped>
 .register-page {
   min-height: 100vh;
-  background-color: #F7F8FA;
+  background-color: var(--canvas);
 }
 
 .register-header {
@@ -143,8 +143,8 @@ async function onSubmit() {
   align-items: center;
   height: 48px;
   padding-inline: 8px;
-  background-color: #FFFFFF;
-  border-bottom: 1px solid #EBEDF0;
+  background-color: var(--surface);
+  border-bottom: var(--hairline) solid var(--line);
 }
 
 .back-btn {
@@ -154,17 +154,18 @@ async function onSubmit() {
   height: 36px;
   padding-inline: 8px;
   border: none;
-  border-radius: 8px;
+  /* 圆角由 8px 收到 --radius（§3.5：圆角 0–2px） */
+  border-radius: var(--radius);
   background-color: transparent;
-  color: #4B5563;
+  color: var(--muted);
   font-size: 13px;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .back-btn:hover {
-  background-color: #F5F7FA;
-  color: #1677FF;
+  background-color: var(--canvas);
+  color: var(--el-color-primary);
 }
 
 .register-card {
@@ -179,20 +180,22 @@ async function onSubmit() {
 
 .banner h3 {
   margin: 0;
-  font-size: 20px;
-  color: #1F2937;
+  font-size: var(--fs-xl);
+  color: var(--ink);
 }
 
 .banner p {
   margin: 6px 0 0;
   font-size: 13px;
-  color: #6B7280;
+  color: var(--muted);
 }
 
 .register-form {
-  background-color: #FFFFFF;
-  border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  background-color: var(--surface);
+  /* 圆角 10px → 0（§3.5：卡片圆角是 0）；
+     自造阴影 `0 1px 4px rgba(0,0,0,.04)` 按 V15 删除，层级改用发丝线边框 */
+  border-radius: var(--radius-card);
+  border: var(--hairline) solid var(--line);
   padding: 20px 16px 24px;
 }
 

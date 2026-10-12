@@ -110,6 +110,6 @@ html, body, #app {
 }
 
 body {
-  background-color: #f5f7fa;
+  background-color: var(--canvas);
 }
 </style>
