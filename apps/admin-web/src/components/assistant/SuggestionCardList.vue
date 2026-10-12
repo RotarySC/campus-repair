@@ -7,7 +7,7 @@
       role="listitem"
     >
       <div class="card-head">
-        <!-- V3：分类图标。候选是**细类**，所以按名取；取不到回落到 candidate.skillCode。 -->
+        <!-- A3：分类图标。候选是**细类**，所以按名取；取不到回落到 candidate.skillCode。 -->
         <CategoryIcon :name="candidate.categoryName" :skill="candidate.skillCode" />
         <span class="category-name">{{ candidate.categoryName }}</span>
         <el-tag size="small" :type="confidenceTagType(candidate.confidence)" effect="light">

@@ -19,7 +19,7 @@
             <div class="tree-node-row">
               <span class="node-title">
                 <!--
-                  V4：层级改用**图标 + 中性文字**。原先是一个按层级染色的 `el-tag`
+                  A4：层级改用**图标 + 中性文字**。原先是一个按层级染色的 `el-tag`
                   （`getLevelTagType()` 给 校区/组团/楼栋/房间 配了 红/橙/蓝/绿 四个 EP 语义色），
                   而**层级是分类，不是状态**——那四个色在这里没有任何语义，只是「四个不一样的颜色」。
                   换成图标后颜色维度整个消失：图标继承 `currentColor`，文字走中性令牌。
@@ -84,7 +84,7 @@
             <template #default="{ row }">
               <div class="category-name-cell">
                 <div class="category-name-line">
-                  <!-- V3：分类图标。按分类名取，取不到回落到工种码（用户新建的分类也不空白）。 -->
+                  <!-- A3：分类图标。按分类名取，取不到回落到工种码（用户新建的分类也不空白）。 -->
                   <CategoryIcon :name="row.name" :skill="row.workerSkillCode" />
                   <span>{{ row.name }}</span>
                 </div>
@@ -361,7 +361,7 @@ function getLevelLabel(level: number) {
 }
 
 /*
- * `getLevelTagType()` **已删除**（V4）：它把四个层级映射成四个 EP 语义色
+ * `getLevelTagType()` **已删除**（A4）：它把四个层级映射成四个 EP 语义色
  * （校区=danger 红 / 组团=warning 橙 / 楼栋=primary 蓝 / 房间=success 绿）。
  * 层级是**分类**不是状态，这四个色纯属装饰——而且它们还借用了「危险/警告」这两个
  * 有确定含义的语义档去表示「校区/组团」，属于 AGENTS.md 说的「一个色相两个意思」。
@@ -582,7 +582,7 @@ onMounted(() => {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* 层级标记：图标 + 中性文字（V4）。图标 16px、继承 currentColor；文字比节点名弱一档。 */
+/* 层级标记：图标 + 中性文字（A4）。图标 16px、继承 currentColor；文字比节点名弱一档。 */
 .level-tag {
   display: inline-flex;
   align-items: center;
@@ -700,7 +700,7 @@ onMounted(() => {
   color: var(--ink);
 }
 /*
- * 层级标记（V3）：**中性发丝线 chip**。
+ * 层级标记（A3）：**中性发丝线 chip**。
  * 这里原来是 `el-tag type="primary|success"`——大类=蓝、二级细类=绿，
  * 与 §17.3 删掉的 `getLevelTagType()` 是同一个病：**层级是分类，不是状态**。
  * 注意 el-tag 的 `type` 缺省值是 `primary`，所以「不传 type」**不是**中性，必须换元素。

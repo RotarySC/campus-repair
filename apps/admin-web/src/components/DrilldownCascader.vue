@@ -100,7 +100,7 @@
               @click="pick(node)"
             >
               <LevelIcon v-if="levelIconKind" :kind="levelIconKind" :level="node.levelType" class="dd-option__icon" />
-              <!-- V3：故障分类图标。与 `levelIconKind` 是**两件事**——分类的层级是
+              <!-- A3：故障分类图标。与 `levelIconKind` 是**两件事**——分类的层级是
                    「大类/二级细类」，不是空间/组织那种层级，所以两者互斥、各管各的。
                    取键：分类名（`labelKey`，默认 name）优先，工种码兜底。 -->
               <CategoryIcon
@@ -173,11 +173,11 @@ const props = withDefaults(
     /** 触发器里各级名称的连接符；默认 ` / `（空间/分类用），单位字典传空格以与库中 department 文案一致 */
     separator?: string;
     /**
-     * 选项行前显示**层级图标**（规范 §4.6 的 V4）。
+     * 选项行前显示**层级图标**（规范 §4.6 的 A4）。
      *
      * ⚠️ **默认关闭**，因为它是**树相关的**，而本组件是通用的：5 个既有调用方里，
      * 空间选择器要 `'space'`、单位字典要 `'org'`、故障分类**两个都不是**
-     * （分类的层级是 大类/二级细类，属 V3 的分类图标，不是层级图标）。
+     * （分类的层级是 大类/二级细类，属 A3 的分类图标，不是层级图标）。
      * 不传就一行不渲染，既有调用方行为**逐字节不变**。
      *
      * 层级取自**节点自己的 `levelType`**，而不是"当前下钻到第几层"：
@@ -186,7 +186,7 @@ const props = withDefaults(
      */
     levelIconKind?: 'org' | 'space';
     /**
-     * 选项行前显示**故障分类图标**（规范 §4.6 的 V3）。
+     * 选项行前显示**故障分类图标**（规范 §4.6 的 A3）。
      *
      * 与 `levelIconKind` **互斥**（模板里是 `v-if` / `v-else-if`，层级图标优先）：
      * 空间树与组织树的「层级」是 `level_type`，故障分类的「层级」是大类/二级细类，
@@ -637,9 +637,9 @@ function onTriggerKeydown(event: KeyboardEvent) {
  *
  * 🐞 这里原来是空白的，而 `.dd-option` 是 `justify-content: space-between`。
  * 两子元素（标签 + 箭头）时它恰好正确：标签靠左、箭头靠右。
- * **V4 加了第三个子元素（层级图标）之后，`space-between` 把中间那个也平均分配了**——
+ * **A4 加了第三个子元素（层级图标）之后，`space-between` 把中间那个也平均分配了**——
  * 名次还是在左边，但标签被推到了行的**正中间**，图标与标签之间空出约 150px。
- * V4 的探针只数了「几行有图标」，**没看过一眼面板**，所以没发现；
+ * A4 的探针只数了「几行有图标」，**没看过一眼面板**，所以没发现；
  * 是这一轮看分类面板的实拍图才看出来的（第 5 次「看图上才发现」）。
  * `flex: 1 1 auto` 让标签吸收自由空间，两子元素与三子元素两种情况**都**正确，
  * 且两子元素时的几何与改动前逐像素相同。
@@ -652,7 +652,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
   text-overflow: ellipsis;
 }
 
-/* 层级图标（V4）：16px、继承行内颜色，所以选中态会跟着变主色 */
+/* 层级图标（A4）：16px、继承行内颜色，所以选中态会跟着变主色 */
 .dd-option__icon {
   flex: none;
   color: var(--muted);

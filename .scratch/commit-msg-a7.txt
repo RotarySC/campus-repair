@@ -1,0 +1,90 @@
+feat(web): 资产线第三批 —— A7 的 403 矢量线稿；并修掉资产编号与约束编号的撞号
+
+## A7：换掉 el-result 的彩色内置插图
+
+原写法 <el-result icon="warning" title="无权访问该页面">，icon 渲染的是 EP 内置的
+彩色实心琥珀插图——按 D 的口径（色相只活在 9px 圆环上）那正是一块没有语义的色块；
+而且它传达的语义是错的：这一页要说的不是「有危险」，而是「这页对你锁着」。
+
+新资产 components/ForbiddenArt.vue：一把挂锁（锁梁 + 锁体 + 钥匙孔），96px，
+stroke=currentColor + fill=none，取 --faint 一档（装饰，不与标题抢重心）。
+
+选挂锁而不是「盾牌 + 斜杠」：盾牌和 A4b 的组织层级图标（学院/部门）撞车，
+那是个已经在用的形状。挑形状时必须先看看仓里已经有什么。
+
+## viewBox 用 96 而不是 24 —— 同一套参数在插图尺度上会变样
+
+LevelIcon / CategoryIcon 都是 viewBox=24 + stroke-width=1.5，渲染成 16px 图标时
+描边正好落到 1px。这里是 96px 的插图，照抄同一套参数会把描边放成
+1.5 × 96 / 24 = 6.5px 的粗杠——同样的几何、完全不同的观感，
+而类型检查、尺寸断言、颜色断言全都不会说话。
+
+所以 A7 用 viewBox=96 + stroke-width=2。判据里专门有一条算这个数。
+
+## 拆掉 el-result 时，把它的居中一起丢了（我自己引入的回归）
+
+整页原先在 <el-result> 里，而 EP 的 .el-result 容器是 text-align: center——
+标题、副标题、账号信息、说明条文字、底部按钮全都是居中的。
+
+换线稿时我只给页头写了 text-align: center，于是标题居中了、下面整块回到左对齐，
+页面读成「两套版式叠在一起」。它是看图上发现的，是本批第 6 次「看图上才发现」。
+
+证据其实一直摆在文件里：.tips { text-align: start } 这条规则只有在祖先是居中时
+才有意义——它本来就是用来把说明条的文字从居中扳回左对齐的。
+
+修法：给 .forbidden-card 补 text-align: center。新增 4 条几何判据
+（卡片中点 vs 标题/按钮/账号块中点，误差 ≤2px）并带反向自证：
+正常 636 → 把卡片 !important 扳回左对齐后 451。
+
+「标题文案还在」这条判据在「标题居中而下面左对齐」时照样通过——
+文案类断言与版式类断言是两条不同的判据。
+
+## 文档缺陷：资产编号与约束编号每一号都撞
+
+本文档的「V+数字」有两套互不相干的含义，而且七号全撞：
+  §4.6 的 V7 = 403 线稿        §5 的 V7 = 状态一律用 StatusRing
+  §4.6 的 V4 = 层级图标        §5 的 V4 = 颜色只取 token 层
+
+这已经造成过一次真实事故：§17.2 那条自相矛盾（「空间层级图标 | 19 节点四级 |
+只需 3 个（年级/学院/班级）」）之所以写得出来，就是因为 V4 同时意味着两件事。
+
+改法：资产表改为 A1~A7（与生成式那张表的 G1~G4 对称）；本文档 52 处引用 +
+源码里 21 处引用规范编号的注释一起改（LevelIcon / CategoryIcon / categoryIcons.ts /
+DrilldownCascader / SuggestionCardList / SpatialManageView）——留着过期的注释，
+下一个读代码的人会照着它去找一条不存在的编号。
+
+三条边界：
+1. §3.3 / §5 的 V1~V15 一个都不动（既有的、被 AGENTS.md 引用的契约编号）；
+2. §17.2 里对旧表格原文的逐字引用保留 V4 字样——那是缺陷的证据；
+3. 迁移用字面量替换、不用正则、不带边界猜，改完 grep 逐条核。
+
+迁移脚本入库备查（一次性，再跑是 0 处）：
+  .scratch/rename-asset-ids.mjs / .scratch/rename-asset-ids-2.mjs
+
+## 新增回归 .scratch/shot-forbidden.mjs（14 条）
+
+含：旧 .el-result 已撤 / stroke=currentColor / 落在 --faint（带反向自证） /
+≥3 条路径（否则「渲染出来了」是句废话）/ 标题副标题仍在 / 96px 且屏幕描边 ≈2px /
+版式三条 + 反向自证 / 由守卫真实改写到 /403 而不是直接打开 /403。
+
+## 验收（现测）
+
+  shot-forbidden.mjs           → 14 PASS / 0 FAIL（新增）
+  check-category-icons.mjs     → 13 PASS / 0 FAIL / 0 SKIP
+  check-level-icons.mjs        → 6 PASS / 0 FAIL
+  check-dict-codes.mjs         → 15 PASS / 2 SKIP / 0 FAIL
+  check-valuetype.mjs          → 5/5 ALL PASS
+  assert-visual-language.mjs   → 197 PASS / 0 FAIL / 0 重试
+  vitest run（packages/shared） → 37/37
+  tsc（shared）/ vue-tsc（admin）→ 双双 exit 0
+  色值字面量                    → 仍 14 处（只有 DashboardView；ForbiddenArt.vue 0 色值）
+
+## 遗留
+
+A7 把琥珀色的内置插图撤掉之后，账号职能的 <el-tag type="warning"> 成了整页唯一的
+彩色元素，也就顺位成了视觉焦点——而它本来只是句「你是报修人」，没有异常含义。
+本批刻意没动：它属于「非状态类彩色控件（53 处）」那批，用户明确说过先搁置；
+而 A7 换的是插图、不是这个标签（与 A3 不同——A3 换的正是那个被染色的层级标记本身）。
+但它现在的视觉权重是 A7 的后果，所以记下来等裁决。
+
+资产线至此只剩 A5（PWA）/ A6（水印）/ G2（空状态插画）/ G3（演示照片，可选）。
