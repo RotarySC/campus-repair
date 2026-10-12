@@ -39,7 +39,6 @@ const UNMIGRATED = new Set([
   // 控制台概览：只剩「故障大类占比」那张饼图的**分类色板**。D 定义了状态色与中性色，
   // 没有定义分类色板，而 8 个扇区压成灰阶不可读——这是待决策项，不是遗漏（见该文件内注释）。
   'views/dashboard/DashboardView.vue',
-  'views/dispatch/DispatchCenterView.vue',
   'views/error/ForbiddenView.vue',
   'views/inventory/InventoryManageView.vue',
   'views/spatial/SpatialManageView.vue',
@@ -63,7 +62,9 @@ const MIGRATED = [
   'views/profile/PersonalCenterView.vue',
   // ---- 第二期第二批（两个共享组件；它们被多页复用，单位改动收益最高）----
   'components/WorkOrderTimeline.vue',
-  'components/NotificationCenterDrawer.vue'
+  'components/NotificationCenterDrawer.vue',
+  // ---- 第二期第三批（本仓最大的单文件：76 处）----
+  'views/dispatch/DispatchCenterView.vue'
 ];
 
 const HEX = /#[0-9A-Fa-f]{3,8}\b/g;

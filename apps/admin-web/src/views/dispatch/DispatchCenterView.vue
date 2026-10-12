@@ -48,7 +48,7 @@
               <span class="badge urgent-badge">{{ counts.urgentCount }}</span>
             </div>
             <div
-              class="tab-pill rework-pill"
+              class="tab-pill"
               :class="{ active: currentCategory === 'REWORK' }"
               @click="handleCategoryChange('REWORK')"
             >
@@ -91,34 +91,22 @@
             v-for="order in orders"
             :key="order.id"
             class="order-card"
-            :class="{
-              selected: selectedOrder?.id === order.id,
-              'rework-border': order.status === 'REWORK_PENDING',
-              'urgent-border': order.urgencyLevel === 2
-            }"
+            :class="{ selected: selectedOrder?.id === order.id }"
             @click="selectOrder(order)"
           >
             <div class="card-top">
               <div class="order-no-wrap">
                 <span class="order-no">{{ order.orderNo }}</span>
-                <el-tag
-                  v-if="order.status === 'REWORK_PENDING'"
-                  type="danger"
-                  effect="dark"
-                  size="small"
-                  class="pulse-tag"
-                >
-                  返工单
-                </el-tag>
-                <el-tag
-                  v-if="order.urgencyLevel === 2"
-                  type="danger"
-                  effect="plain"
-                  size="small"
-                >
-                  ⚡ 加急
-                </el-tag>
-                <el-tag size="small" type="info">{{ OrderStatusLabels[order.status] || order.status }}</el-tag>
+                <!--
+                  ⚡ 三种标记换成 §3.3 的标记语言（与工单报表 / 我的工单 / 工作台**同一个形状**）：
+                  · 「返工单」的实心红胶囊**删掉**——同一张卡上的状态圆环已经写着「返工待派」
+                    （色相 `--h6`），再加一个实心红底标签就是「同一件事两处颜色」；
+                  · 「加急」的橙字胶囊 → **实心圆点**（实心＝警戒），它没有工单状态码，
+                    色相恒为 `--alert`；
+                  · 状态标签 `el-tag type="info"` → **空心圆环**（V7）。
+                -->
+                <StatusRing v-if="order.urgencyLevel === 2" variant="dot" label="加急" />
+                <StatusRing :status="order.status" />
               </div>
               <span class="order-time">{{ formatDateTime(order.createdAt) }}</span>
             </div>
@@ -131,7 +119,7 @@
             </div>
 
             <div class="card-loc">
-              <el-icon color="#6B7280"><Location /></el-icon>
+              <el-icon class="loc-icon"><Location /></el-icon>
               <span class="loc-text" :title="order.spaceFullPath">{{ order.spaceFullPath }}</span>
             </div>
 
@@ -144,9 +132,10 @@
               <span>期望时段: {{ order.appointmentPeriod }}</span>
             </div>
 
-            <!-- 待办流转根因提示横幅 -->
+            <!-- 待办流转根因提示横幅：G4 口径（实心点 + 中性字 + 发丝线边框），
+                 与师傅工作台的挂起原因条**同一个形状** -->
             <div v-if="order.dispatchReason" class="card-reason-banner">
-              <el-icon><Warning /></el-icon>
+              <StatusRing variant="dot" />
               <span>{{ order.dispatchReason }}</span>
             </div>
 
@@ -275,7 +264,7 @@
               <div class="load-section">
                 <div class="load-text-bar">
                   <span>实时在修负荷</span>
-                  <strong :class="getLoadColorClass(worker)">{{ worker.currentLoad }} / {{ worker.maxLoad }}</strong>
+                  <strong :class="getLoadToneClass(worker)">{{ worker.currentLoad }} / {{ worker.maxLoad }}</strong>
                 </div>
                 <el-progress
                   :percentage="worker.loadRate"
@@ -376,7 +365,7 @@
       <el-form label-position="top">
         <el-form-item label="返工工单">
           <strong>{{ arbitratingOrder?.orderNo }} - {{ arbitratingOrder?.categoryFullName }}</strong>
-          <div style="font-size: 13px; color: #E6A23C; margin-top: 4px;">
+          <div class="arbitrate-meta">
             原指派师傅: {{ arbitratingOrder?.workerName || '未知' }} | 申请人: {{ arbitratingOrder?.applicantName }}
           </div>
         </el-form-item>
@@ -453,11 +442,11 @@ import {
   Refresh,
   Search,
   Location,
-  Warning,
   Phone
 } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
+import StatusRing from '../../components/StatusRing.vue';
 import {
   OrderStatusEnum,
   OrderStatusLabels,
@@ -761,10 +750,15 @@ async function submitCancelOrder() {
   }
 }
 
-function getLoadColorClass(worker: WorkerBoardVO): string {
-  if (worker.isOverloaded) return 'color-red';
-  if (worker.loadRate >= 70) return 'color-orange';
-  return 'color-green';
+/**
+ * 负荷率的**中性档位**（原先返回 `color-red` / `color-orange` / `color-green` 三个颜色类名）。
+ *
+ * 严重度已经由旁边 `el-progress` 的 `:status`（`exception` / `warning` / `success`）表达，
+ * 那是 EP 组件自身的语义色，属规范 §12.5 登记的「非状态类彩色控件」策略，本批不动。
+ * 同一件事**不该有两处颜色**，所以这里只保留中性层级，把三个档位收成两档。
+ */
+function getLoadToneClass(worker: WorkerBoardVO): string {
+  return worker.isOverloaded || worker.loadRate >= 70 ? 'load-tone-alert' : 'load-tone-normal';
 }
 
 function getProgressBarStatus(worker: WorkerBoardVO): string {
@@ -780,7 +774,7 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   flex-direction: column;
   /* 外壳顶部条固定 56px，本页工作台占满剩余视口且自身不滚动 */
   height: calc(100vh - var(--topbar-h, 56px));
-  background-color: #F0F2F5;
+  background-color: var(--canvas);
   overflow: hidden;
 }
 
@@ -802,11 +796,14 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   gap: 6px;
 }
 
+/* 「实时刷新中」指示点。**不再是绿色**——「实时」不是工单状态，
+   而 §3.2 的 8 个色相只服务状态语义，给它绿色等于凭空添第 9 个色相。
+   呼吸动效保留（它表达的是「活着」，不是「属于哪一类」），光晕一并中性。 */
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background-color: #52C41A;
+  background-color: var(--faint);
 }
 
 .live-pulse {
@@ -814,9 +811,9 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 }
 
 @keyframes pulse {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.7); }
-  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(82, 196, 26, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(82, 196, 26, 0); }
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.25); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(0, 0, 0, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
 }
 
 .header-right {
@@ -837,9 +834,10 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 /* 左栏 55% 待办调度池 */
 .left-pane {
   flex: 0 0 55%;
-  background-color: #FFFFFF;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background-color: var(--surface);
+  border-radius: var(--radius-card);
+  /* §3.5 / V15：禁止自造阴影（原有一条 `0 1px 3px rgba(0,0,0,.05)`），层级用发丝线建立 */
+  border: var(--hairline) solid var(--line);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -847,7 +845,7 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 
 .pane-toolbar {
   padding: 14px 16px;
-  border-bottom: 1px solid #F0F0F0;
+  border-bottom: var(--hairline) solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -859,71 +857,65 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   gap: 8px;
 }
 
+/* 筛选胶囊：圆角由 16px 收到 --radius（§3.5 圆角 0–2px；实测腾讯云没有一个 ≥8px 的圆角）。 */
 .tab-pill {
   padding: 6px 12px;
-  border-radius: 16px;
-  background-color: #F5F7FA;
-  color: #4B5563;
+  border-radius: var(--radius);
+  background-color: var(--canvas);
+  color: var(--muted);
   font-size: 13px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.2s;
+  /* 刻意不写 `transition: all`——它会把宽高/圆角这些**几何**也纳入过渡，是隐性地雷 */
+  transition: background-color 0.2s, color 0.2s;
   user-select: none;
 }
 
 .tab-pill:hover {
-  background-color: #E6F4FF;
-  color: #1677FF;
+  background-color: var(--canvas);
+  color: var(--el-color-primary);
 }
 
+/* 选中态走 §4.2 统一后的主色令牌（品牌蓝 #1677FF 已退场）；
+   字重回 400——§3.5：层级靠字号 + 颜色建立，不靠加粗 */
 .tab-pill.active {
-  background-color: #1677FF;
-  color: #FFFFFF;
-  font-weight: 500;
+  background-color: var(--el-color-primary);
+  color: var(--surface);
+  font-weight: var(--fw-normal);
 }
 
 .badge {
   background-color: rgba(0, 0, 0, 0.08);
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-size: 11px;
 }
 
 .tab-pill.active .badge {
   background-color: rgba(255, 255, 255, 0.3);
-  color: #FFFFFF;
+  color: var(--surface);
+  /* 覆盖下面那组中性徽标的发丝线边框：在选中态的蓝底上留一条灰边很难看 */
+  border-color: transparent;
 }
 
-.warning-badge {
-  background-color: #FFF7E6;
-  color: #D46B08;
-}
-
-.info-badge {
-  background-color: #E6F4FF;
-  color: #1677FF;
-}
-
-.urgent-badge {
-  background-color: #FFF1F0;
-  color: #CF1322;
-}
-
-.rework-pill {
-  border: 1px solid #FFA39E;
-  color: #CF1322;
-}
-
-.rework-pill.active {
-  background-color: #F5222D !important;
-  color: #FFFFFF !important;
-}
-
+/*
+ * 四个计数徽标**全部中性化**（原先四组「浅底 + 同色文字」：橙 / 蓝 / 红 / 深红底白字）。
+ * 理由有两条，第二条更要紧：
+ * ① 它们只是「这一档里有几条」，是**数量**而不是状态——按 V4「彩色只服务状态语义」，
+ *    数量不该是彩色的；
+ * ② **同一个色相只服务一种语义**。若把「返工」单独染红，红色在**这一页**就同时表示
+ *    「加急」（`.urgent-badge`）、「返工」（`.rework-badge`）、「负荷超载」（`.color-red`）——
+ *    一个色相三个意思，正是 D 要消灭的东西。
+ */
+.warning-badge,
+.info-badge,
+.urgent-badge,
 .rework-badge {
-  background-color: #CF1322;
-  color: #FFFFFF;
+  background-color: transparent;
+  color: var(--muted);
+  border: var(--hairline) solid var(--line);
 }
 
 .order-list-scroll {
@@ -936,35 +928,35 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 }
 
 .order-card {
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
   padding: 12px 14px;
-  background-color: #FFFFFF;
+  background-color: var(--surface);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
+/* 悬停：只改边框色，**去掉自造阴影**（V15） */
 .order-card:hover {
-  border-color: #91CAFF;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.08);
+  border-color: var(--el-color-primary);
 }
 
+/* 选中：边框 + 极浅的主色底（`light-9` 是令牌层给的派生档，不是手调出来的色） */
 .order-card.selected {
-  border-color: #1677FF;
-  background-color: #F0F7FF;
-  box-shadow: 0 0 0 1px #1677FF, 0 4px 12px rgba(22, 119, 255, 0.12);
+  border-color: var(--el-color-primary);
+  background-color: var(--el-color-primary-light-9);
 }
 
-.rework-border {
-  border-left: 4px solid #F5222D !important;
-}
-
-.urgent-border {
-  border-left: 4px solid #FA8C16;
-}
+/*
+ * ⚠️ `.rework-border` 与 `.urgent-border`（`border-left: 4px solid` 红/橙）**已删除**。
+ * 这是与流转时间轴同一处病：**用色块面积表达状态**，而 D 把状态收进 9px 圆环。
+ * · 「返工待派」是**工单状态**——它的色相现在只由卡片上的空心圆环说（`--h6`），
+ *   再配一条 4px 红边就是同一件事的第二处颜色；
+ * · 「加急」不是状态，改用**实心圆点**（实心＝警戒），与工单报表/我的工单/工作台同形。
+ */
 
 .card-top {
   display: flex;
@@ -983,14 +975,14 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 }
 
 .order-no {
-  font-weight: 600;
-  color: #111827;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
   font-size: 14px;
 }
 
 .order-time {
-  font-size: 12px;
-  color: #9CA3AF;
+  font-size: var(--fs-base);
+  color: var(--faint);
 }
 
 .card-category {
@@ -1001,16 +993,19 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 
 .cat-name {
   font-size: 13px;
-  font-weight: 500;
-  color: #374151;
+  color: var(--ink);
 }
 
 .card-loc {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
-  color: #4B5563;
+  font-size: var(--fs-base);
+  color: var(--muted);
+}
+
+.loc-icon {
+  color: var(--faint);
 }
 
 .loc-text {
@@ -1021,29 +1016,31 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 
 .card-desc {
   font-size: 13px;
-  color: #4B5563;
+  color: var(--muted);
   line-height: 1.4;
-  background-color: #FAFAFA;
+  background-color: var(--canvas);
   padding: 6px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .card-user-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--fs-base);
+  color: var(--muted);
 }
 
+/* G4 口径（§4.6）：提示条**不用彩底彩边**——实心点 + 中性字 + 发丝线边框。
+   与师傅工作台的挂起原因条、进销存的低库存横幅是同一个形状（跨页一致）。 */
 .card-reason-banner {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: #D46B08;
-  background-color: #FFFBE6;
-  border: 1px solid #FFE58F;
-  border-radius: 4px;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  background-color: transparent;
+  border: var(--hairline) solid var(--line);
+  border-radius: 0;
   padding: 4px 8px;
 }
 
@@ -1052,17 +1049,24 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   justify-content: space-between;
   align-items: center;
   padding-top: 6px;
-  border-top: 1px dashed #E5E7EB;
+  border-top: var(--hairline) dashed var(--line);
 }
 
 .dispatch-type-tip {
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--fs-base);
+  color: var(--muted);
+}
+
+/* 返工仲裁弹窗里的元信息行（原先是一段内联 `style="color:#E6A23C"`） */
+.arbitrate-meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
 }
 
 .pagination-footer {
   padding: 8px 16px;
-  border-top: 1px solid #F0F0F0;
+  border-top: var(--hairline) solid var(--line);
   display: flex;
   justify-content: flex-end;
 }
@@ -1070,9 +1074,9 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 /* 右栏 45% 师傅看板 */
 .right-pane {
   flex: 1;
-  background-color: #FFFFFF;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background-color: var(--surface);
+  border-radius: var(--radius-card);
+  border: var(--hairline) solid var(--line);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1080,7 +1084,7 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 
 .board-header {
   padding: 14px 16px;
-  border-bottom: 1px solid #F0F0F0;
+  border-bottom: var(--hairline) solid var(--line);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1096,23 +1100,25 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 
 .board-title {
   font-size: 15px;
-  font-weight: 600;
-  color: #1F2937;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
 }
 
+/* 指派规则说明条：**信息**而不是状态 → 中性小胶囊（原先是主色浅底 + 主色文字） */
 .board-rule-tag {
-  font-size: 12px;
-  color: #1677FF;
-  background-color: #E6F4FF;
+  font-size: var(--fs-base);
+  color: var(--muted);
+  background-color: transparent;
+  border: var(--hairline) solid var(--line);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   display: inline-block;
   width: fit-content;
 }
 
 .board-rule-tag.empty {
-  color: #9CA3AF;
-  background-color: #F3F4F6;
+  color: var(--faint);
+  border-color: var(--line);
 }
 
 .board-filters {
@@ -1134,29 +1140,34 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 }
 
 .worker-card {
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
   padding: 12px;
-  background-color: #FFFFFF;
+  background-color: var(--surface);
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: all 0.2s;
+  transition: border-color 0.2s;
 }
 
 .worker-card:hover {
-  border-color: #1677FF;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: var(--el-color-primary);
 }
 
+/*
+ * 超载卡片：原先整张卡染浅红底 + 红边（`#FFF1F0` / `#FFA39E`）。
+ * **去掉色块**——严重度已经由这张卡里 `el-progress` 的 `:status="exception"` 表达
+ * （EP 组件自身的语义色，属 §12.5 登记的 53 处策略），同一件事不该有两处颜色。
+ * 需要更醒目的「哪几个师傅超载」时，正解是 §3.3 的**实心圆点**，不是把整张卡染红。
+ */
 .worker-card.overloaded {
-  background-color: #FFF1F0;
-  border-color: #FFA39E;
+  background-color: var(--surface);
+  border-color: var(--line);
 }
 
 .worker-card.offduty {
   opacity: 0.65;
-  background-color: #F9FAFB;
+  background-color: var(--canvas);
 }
 
 .worker-top {
@@ -1171,17 +1182,18 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   gap: 8px;
 }
 
+/* 头像首字母底：与个人中心同口径——**中性**（V4：彩色只服务状态语义，而这只是装饰） */
 .avatar-box {
   width: 36px;
   height: 36px;
-  border-radius: 18px;
-  background-color: #1677FF;
-  color: #FFFFFF;
+  border-radius: 50%;
+  background-color: var(--ink);
+  color: var(--surface);
   display: flex;
   justify-content: center;
   align-items: center;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .name-line {
@@ -1191,35 +1203,36 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 }
 
 .real-name {
-  font-weight: 600;
-  color: #111827;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
   font-size: 14px;
 }
 
 .worker-skill {
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--fs-base);
+  color: var(--muted);
 }
 
+/* 评分小胶囊：**去掉琥珀底色与边框**，靠文字与 ★ 字形表达（原先浅黄底 + 黄边 + 黄星 + 深黄分） */
 .rating-box {
   display: flex;
   align-items: center;
   gap: 2px;
-  background-color: #FFFBE6;
-  border: 1px solid #FFE58F;
+  background-color: transparent;
+  border: var(--hairline) solid var(--line);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .star-icon {
-  color: #FAAD14;
+  color: var(--faint);
   font-size: 13px;
 }
 
 .star-score {
-  font-weight: 600;
-  color: #D48806;
-  font-size: 12px;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
+  font-size: var(--fs-base);
 }
 
 .load-section {
@@ -1231,28 +1244,31 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 .load-text-bar {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: #4B5563;
+  font-size: var(--fs-base);
+  color: var(--muted);
 }
 
-.color-green {
-  color: #52C41A;
+/*
+ * 负荷率的两个**中性档位**（原名 `color-green` / `color-orange` / `color-red`，
+ * 三个颜色类已收成两档，类名也一并改了——留一个叫 `color-red` 却不是红的类，
+ * 就是下一个「名字与事实不符」的坑）。
+ * 严重度由旁边 `el-progress` 的 `:status` 表达（见 `getLoadToneClass` 的注释）。
+ */
+.load-tone-normal {
+  color: var(--muted);
 }
 
-.color-orange {
-  color: #FA8C16;
-}
-
-.color-red {
-  color: #F5222D;
+.load-tone-alert {
+  color: var(--ink);
+  font-weight: var(--fw-medium);
 }
 
 .worker-kpi-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #F9FAFB;
-  border-radius: 6px;
+  background-color: var(--canvas);
+  border-radius: var(--radius);
   padding: 6px 10px;
 }
 
@@ -1264,18 +1280,18 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
 
 .kpi-label {
   font-size: 11px;
-  color: #9CA3AF;
+  color: var(--faint);
 }
 
 .kpi-val {
-  font-size: 12px;
-  color: #1F2937;
+  font-size: var(--fs-base);
+  color: var(--ink);
 }
 
 .kpi-divider {
   width: 1px;
   height: 18px;
-  background-color: #E5E7EB;
+  background-color: var(--line);
 }
 
 .worker-action-bar {
@@ -1289,8 +1305,8 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--fs-base);
+  color: var(--muted);
 }
 
 .worker-search-input {

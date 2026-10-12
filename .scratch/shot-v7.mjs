@@ -74,7 +74,7 @@ async function shoot(user, path, name) {
   for (let i = 0; i < 25; i++) {
     const ok = await evalJs(
       targetId,
-      `!!document.querySelector('.el-table__row, .rl-card, .status-ring')`
+      `!!document.querySelector('.el-table__row, .rl-card, .order-card, .status-ring')`
     ).catch(() => false);
     if (ok) break;
     await sleep(600);
@@ -112,6 +112,8 @@ await shoot('worker01', '/worker/workbench', 'workbench-worker01');
 // ⚠️ 报表的真实路径是 `/reports/orders`。写成 `/reports` 会落到路由的 catch-all，
 //    静默截到**控制台概览**——实测踩过：文件名写着 report，图里是 dashboard。
 await shoot('admin', '/reports/orders', 'report-admin');
+// 调度中心：本仓最大的单文件（76 处色值），也是「列表 + 操作最密」的一页
+await shoot('admin', '/dispatch', 'dispatch-admin');
 
 writeFileSync(`${OUT}/summary.json`, JSON.stringify(shots, null, 2));
 console.log('\n=== 截图汇总 ===');
