@@ -85,7 +85,7 @@
 
         <!-- 待办工单卡片列表 -->
         <div class="order-list-scroll" v-loading="loadingOrders">
-          <el-empty v-if="orders.length === 0" description="调度池目前无待办工单，运行平稳" />
+          <EmptyState v-if="orders.length === 0" description="调度池目前无待办工单，运行平稳" />
 
           <div
             v-for="order in orders"
@@ -224,7 +224,7 @@
         </div>
 
         <div class="worker-grid-scroll" v-loading="loadingWorkers">
-          <el-empty v-if="workers.length === 0" description="未检索到符合条件的维修师傅" />
+          <EmptyState v-if="workers.length === 0" kind="no-result" description="未检索到符合条件的维修师傅" />
 
           <div class="worker-grid" v-else>
             <div
@@ -435,6 +435,7 @@
 </template>
 
 <script setup lang="ts">
+import EmptyState from '../../components/EmptyState.vue';
 import { ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';

@@ -343,7 +343,7 @@
       direction="rtl"
     >
       <div v-loading="loadingHistory">
-        <el-empty v-if="inboundHistory.length === 0" description="暂无采购入库记录" />
+        <EmptyState v-if="inboundHistory.length === 0" description="暂无采购入库记录" />
         <el-timeline v-else style="padding-left: 10px;">
           <el-timeline-item
             v-for="item in inboundHistory"
@@ -372,6 +372,7 @@
 </template>
 
 <script setup lang="ts">
+import EmptyState from '../../components/EmptyState.vue';
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {

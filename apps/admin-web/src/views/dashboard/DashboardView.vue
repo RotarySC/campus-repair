@@ -65,7 +65,7 @@
         </div>
       </template>
       <div v-if="hasTrendData" ref="trendChartRef" class="chart-container chart-trend"></div>
-      <el-empty v-else description="近 30 天暂无提单与完工数据" :image-size="80" />
+      <EmptyState v-else description="近 30 天暂无提单与完工数据" :size="80" />
     </el-card>
 
     <!-- 空间热力排行 + 故障大类占比 -->
@@ -79,7 +79,7 @@
             </div>
           </template>
           <div v-if="hasSpatialData" ref="spatialChartRef" class="chart-container chart-square"></div>
-          <el-empty v-else description="暂无空间故障分布数据" :image-size="80" />
+          <EmptyState v-else description="暂无空间故障分布数据" :size="80" />
         </el-card>
       </el-col>
 
@@ -91,7 +91,7 @@
             </div>
           </template>
           <div v-if="hasCategoryData" ref="categoryPieRef" class="chart-container chart-square"></div>
-          <el-empty v-else description="暂无故障分类占比数据" :image-size="80" />
+          <EmptyState v-else description="暂无故障分类占比数据" :size="80" />
         </el-card>
       </el-col>
     </el-row>
@@ -133,6 +133,7 @@
 </template>
 
 <script setup lang="ts">
+import EmptyState from '../../components/EmptyState.vue';
 /**
  * 控制台概览 = 原「控制台概览」账号信息 + 原「运营指挥大屏」全部图表。
  * 2026-09-12：运营指挥大屏页（/cockpit）已下线，看板内容并入本页，

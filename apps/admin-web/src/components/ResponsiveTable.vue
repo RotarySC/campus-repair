@@ -14,6 +14,9 @@
         :row-class-name="clickable ? 'rl-clickable-row' : ''"
         @row-click="onRowClick"
       >
+        <template #empty>
+          <EmptyState :kind="emptyKind" :description="emptyText" />
+        </template>
         <el-table-column
           v-for="col in tableColumns"
           :key="col.key || col.label"
@@ -44,7 +47,7 @@
 
     <!-- 窄档：改为卡片列表，一屏可读全部字段，不再依赖表格横向滚动 -->
     <div v-else v-loading="loading" class="rl-cards">
-      <el-empty v-if="!items.length && !loading" :description="emptyText" />
+      <EmptyState v-if="!items.length && !loading" :kind="emptyKind" :description="emptyText" />
       <article
         v-for="(item, index) in items"
         :key="itemKey(item, index)"
@@ -102,6 +105,8 @@
 
 <script setup lang="ts" generic="T extends Record<string, any>">
 import { computed, useSlots } from 'vue';
+import { type EmptyArtKind } from './emptyArt';
+import EmptyState from './EmptyState.vue';
 import { ArrowRight } from '@element-plus/icons-vue';
 import { formatDate, formatDateTime } from '@campus/shared';
 import { useViewport } from '../composables/useViewport';
@@ -172,6 +177,8 @@ const props = withDefaults(
     columns: TableColumn<T>[];
     loading?: boolean;
     emptyText?: string;
+    /** 空态插画种类（G2）。默认「无数据」 */
+    emptyKind?: EmptyArtKind;
     /** 整卡可点击（师生「我的工单」用它进详情） */
     clickable?: boolean;
     /** 列表项主键字段；缺省回退到下标 */
@@ -191,6 +198,7 @@ const props = withDefaults(
   {
     loading: false,
     emptyText: '暂无数据',
+    emptyKind: 'no-data',
     clickable: false,
     itemKey: 'id',
     ranked: false,

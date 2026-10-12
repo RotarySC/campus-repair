@@ -13,7 +13,7 @@
     </div>
 
     <div v-loading="loading" class="notification-list">
-      <el-empty v-if="notifications.length === 0" description="暂无站内通知消息" :image-size="80" />
+      <EmptyState v-if="notifications.length === 0" description="暂无站内通知消息" :size="80" />
 
       <div
         v-for="item in notifications"
@@ -116,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+import EmptyState from './EmptyState.vue';
 import { ref, onMounted } from 'vue';
 import { ElMessage, FormInstance, FormRules } from 'element-plus';
 import { httpClient } from '../stores/auth';

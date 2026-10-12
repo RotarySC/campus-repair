@@ -81,10 +81,10 @@
           </div>
         </template>
 
-        <el-empty
+        <EmptyState
           v-if="selectedParts.length === 0"
           description="本次维修暂未领用库房耗材"
-          :image-size="72"
+          :size="72"
         />
 
         <div v-else class="part-list">
@@ -167,7 +167,11 @@
       </el-input>
 
       <div v-loading="loadingParts" class="picker-list">
-        <el-empty v-if="!loadingParts && availableParts.length === 0" description="未找到匹配的在库耗材" />
+        <EmptyState
+          v-if="!loadingParts && availableParts.length === 0"
+          kind="no-result"
+          description="未找到匹配的在库耗材"
+        />
         <div
           v-for="part in availableParts"
           :key="part.id"
@@ -197,6 +201,7 @@
 </template>
 
 <script setup lang="ts">
+import EmptyState from '../../components/EmptyState.vue';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions } from 'element-plus';

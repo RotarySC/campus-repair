@@ -5,7 +5,7 @@
     </div>
 
     <div v-else-if="!timelineList || timelineList.length === 0" class="timeline-empty">
-      <el-empty description="暂无流转审计日志" :image-size="80" />
+      <EmptyState description="暂无流转审计日志" :size="80" />
     </div>
 
     <el-timeline v-else class="timeline-flow">
@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import EmptyState from './EmptyState.vue';
 import { ref, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { httpClient } from '../stores/auth';

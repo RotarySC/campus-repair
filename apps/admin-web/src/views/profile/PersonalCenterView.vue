@@ -188,10 +188,11 @@
           <template #header><span class="block-title">我的作业概览</span></template>
 
           <div v-loading="workerLoading">
-            <el-empty
+            <EmptyState
               v-if="!workerLoading && !workerProfile"
+              kind="no-profile"
               description="尚未建立师傅档案，请联系管理员开通后查看作业数据"
-              :image-size="80"
+              :size="80"
             />
             <template v-else-if="workerProfile">
               <el-descriptions :column="isNarrowPhone ? 1 : 2" border>
@@ -241,6 +242,7 @@
 </template>
 
 <script setup lang="ts">
+import EmptyState from '../../components/EmptyState.vue';
 import { reactive, ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
