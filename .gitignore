@@ -36,3 +36,11 @@ Thumbs.db
 
 # 现场照片上传目录（运行时产物，由 app.file.upload-dir 指定）
 uploads/
+
+# 文档目录（按用户要求排除在 git 之外）
+# ⚠️ 注意：本目录下**已被跟踪**的文件不受影响（gitignore 只作用于未跟踪文件），
+#    它们仍会出现在 git status 里。要让它们真正退出跟踪需 `git rm -r --cached docs`。
+docs/
+
+# 视觉伴侣（brainstorming 的 mockup 产物与过程记录，本地会话临时文件）
+.superpowers/
