@@ -104,7 +104,7 @@
                    `:type="row.level === 1 ? 'primary' : 'success'"`——大类=蓝、二级细类=绿。
                    层级是**分类**，不是状态（与 §17.3 删掉的 `getLevelTagType()` 逐字同病）。
                    现在层级由 CategoryIcon 的图形承担，这里只留一枚**中性**的发丝线 chip。 -->
-              <span class="category-level-chip">{{ row.level === 1 ? '大类' : '二级细类' }}</span>
+              <MetaChip>{{ row.level === 1 ? '大类' : '二级细类' }}</MetaChip>
             </template>
           </el-table-column>
           <el-table-column prop="workerSkillCode" label="指派维修工种" width="160">
@@ -112,9 +112,9 @@
               <!-- 🐞 原先直接渲染 `row.workerSkillCode`，于是用户看到的是 **`PLUMBER` / `HVAC` / `LOCKSMITH`**
                    这些字典码本身（AGENTS.md 禁止的正是这一类，而它举的反例恰好就是 `PLUMBER`）。
                    工种的唯一中文来源是 shared 的 `WorkerSkillLabels`——与调度中心、助手候选卡同源。 -->
-              <el-tag v-if="row.workerSkillCode" type="warning">
+              <MetaChip v-if="row.workerSkillCode">
                 {{ WorkerSkillLabels[row.workerSkillCode] || row.workerSkillCode }}
-              </el-tag>
+              </MetaChip>
               <span v-else class="text-muted">--</span>
             </template>
           </el-table-column>
@@ -151,14 +151,14 @@
               <div class="category-card__head">
                 <CategoryIcon :name="data.name" :skill="data.workerSkillCode" />
                 <strong class="category-card__name">{{ data.name }}</strong>
-                <span class="category-level-chip">{{ data.level === 1 ? '大类' : '二级细类' }}</span>
+                <MetaChip>{{ data.level === 1 ? '大类' : '二级细类' }}</MetaChip>
               </div>
               <div class="category-card__row">
                 <span class="category-card__label">指派维修工种</span>
                 <!-- 同上：窄档卡片也要走中文标签，别把字典码端给用户 -->
-                <el-tag v-if="data.workerSkillCode" type="warning" size="small">
+                <MetaChip v-if="data.workerSkillCode">
                   {{ WorkerSkillLabels[data.workerSkillCode] || data.workerSkillCode }}
-                </el-tag>
+                </MetaChip>
                 <span v-else class="text-muted">--</span>
               </div>
               <div class="category-card__row">
@@ -302,6 +302,7 @@
 </template>
 
 <script setup lang="ts">
+import MetaChip from '../../components/MetaChip.vue';
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { branchLabel, WorkerSkillLabels, BuildingNatureOptions, buildingNatureLabelOf } from '@campus/shared';
@@ -700,21 +701,15 @@ onMounted(() => {
   color: var(--ink);
 }
 /*
- * 层级标记（A3）：**中性发丝线 chip**。
- * 这里原来是 `el-tag type="primary|success"`——大类=蓝、二级细类=绿，
- * 与 §17.3 删掉的 `getLevelTagType()` 是同一个病：**层级是分类，不是状态**。
- * 注意 el-tag 的 `type` 缺省值是 `primary`，所以「不传 type」**不是**中性，必须换元素。
+ * 层级标记（A3）：**中性发丝线 chip**。这里原来是 `el-tag type="primary|success"`——
+ * 大类=蓝、二级细类=绿，与 §17.3 删掉的 `getLevelTagType()` 同一个病：
+ * **层级是分类，不是状态**。注意 `el-tag` 的 `type` 缺省值就是 `primary`，
+ * 所以「不传 type」**不是**中性，必须换元素。
+ *
+ * ⚠️ 那段就地样式**已搬走**：本批把它连同「工种」「条线」「账号职能」等 8 处一起收进
+ * `components/MetaChip.vue` —— 全仓的「分类的中性表达」只留**一种长相**，
+ * 而不是 9 份各写一遍的 `border: 0.667px solid var(--line)`。
  */
-.category-level-chip {
-  flex: none;
-  padding: 0 6px;
-  border: 0.667px solid var(--line);
-  border-radius: 2px;
-  color: var(--faint);
-  font-size: var(--fs-base);
-  line-height: 18px;
-  white-space: nowrap;
-}
 .form-tip {
   margin-top: 4px;
   font-size: var(--fs-base);

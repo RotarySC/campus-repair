@@ -10,12 +10,7 @@
     :close-on-press-escape="false"
     :show-close="false"
   >
-    <el-alert
-      title="您的账号首次登录或已被管理员重置密码，为了您的账号安全，必须先修改初始密码后方可进入系统。"
-      type="warning"
-      :closable="false"
-      style="margin-bottom: 16px;"
-    />
+    <AlertBanner>您的账号首次登录或已被管理员重置密码，为了您的账号安全，必须先修改初始密码后方可进入系统。</AlertBanner>
 
     <el-form label-position="top">
       <el-form-item label="当前原密码">
@@ -36,6 +31,7 @@
 </template>
 
 <script setup lang="ts">
+import AlertBanner from './components/AlertBanner.vue';
 import { ref, reactive, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';

@@ -13,7 +13,7 @@
         <el-tag size="small" :type="confidenceTagType(candidate.confidence)" effect="light">
           {{ ASSISTANT_CONFIDENCE_LABELS[candidate.confidence] }}
         </el-tag>
-        <el-tag v-if="index === 0" size="small" type="primary" effect="plain">首选</el-tag>
+        <MetaChip v-if="index === 0">首选</MetaChip>
       </div>
 
       <p class="category-path">{{ candidate.categoryPath }}</p>
@@ -35,6 +35,7 @@
 </template>
 
 <script setup lang="ts">
+import MetaChip from '../MetaChip.vue';
 import {
   ASSISTANT_CONFIDENCE_LABELS,
   WorkerSkillLabels,

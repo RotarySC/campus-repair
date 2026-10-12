@@ -97,13 +97,64 @@ function walk(dir, out = []) {
  * 棘轮报 0 处。现在 `token-coverage.spec.ts` 里有一条用例**逐个比对三份的口径**，再漂就变红。
  */
 const CSS_TOKEN_FALLBACK = /cssToken\(\s*'([^']+)'\s*,\s*'(#[0-9A-Fa-f]{3,8})'\s*\)/g;
-const codeOf = (text) =>
-  text
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/^\s*\/\/.*$/gm, ' ')
-    .replace(/\s\/\/\s.*$/gm, ' ')
-    .replace(CSS_TOKEN_FALLBACK, "cssToken('$1')");
+/**
+ * 引号感知地去注释。
+ *
+ * ⚠️ **不能只用「第一个 /* 到最近的 *​/」那种配对**：它假定每一对都是注释，
+ * 而 `<input accept="image/*">` 里的那个 `/*` 在**属性值里**、根本不是注释 ——
+ * 配对会整体错位，把两者之间**全部真实代码**当成注释吞掉。
+ * 实测 `WorkerFinishView.vue` 因此被吃掉 15 个 `<el-` 标签，
+ * 并让两个真实色值（`#F56C6C` / `#1677FF`）在色值棘轮里**隐形了很久**，
+ * 于「定义处之外 0 处」这个结论上假绿（见规范 §23.6）。
+ *
+ * 逐字符走：**引号内部不认注释**，并处理反斜杠转义。HTML 注释先单独去掉。
+ */
+function stripCommentsText(src) {
+  const s = src.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));
+  let out = '';
+  let i = 0;
+  let quote = null;
+  while (i < s.length) {
+    const c = s[i];
+    const n = s[i + 1];
+    if (quote) {
+      if (c === '\\') {
+        out += s.slice(i, i + 2);
+        i += 2;
+        continue;
+      }
+      if (c === quote) quote = null;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === '/' && n === '*') {
+      const end = s.indexOf('*/', i + 2);
+      const stop = end === -1 ? s.length : end + 2;
+      out += s.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop;
+      continue;
+    }
+    if (c === '/' && n === '/') {
+      const end = s.indexOf('\n', i);
+      const stop = end === -1 ? s.length : end;
+      out += ' '.repeat(stop - i);
+      i = stop;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
+const codeOf = (text) => stripCommentsText(text).replace(CSS_TOKEN_FALLBACK, "cssToken('$1')");
 
 console.log('\n===== ① token 覆盖棘轮 =====');
 {

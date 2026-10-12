@@ -142,12 +142,7 @@
       width="min(480px, 94vw)"
       :close-on-click-modal="false"
     >
-      <el-alert
-        title="挂起后 SLA 倒计时冻结，解除挂起时自动顺延时限。"
-        type="warning"
-        :closable="false"
-        style="margin-bottom: 14px;"
-      />
+      <AlertBanner>挂起后 SLA 倒计时冻结，解除挂起时自动顺延时限。</AlertBanner>
       <el-form label-position="top">
         <el-form-item label="挂起原因" required>
           <el-select v-model="suspendReasonTypeCode" style="width: 100%;">
@@ -276,6 +271,7 @@
 </template>
 
 <script setup lang="ts">
+import AlertBanner from '../../components/AlertBanner.vue';
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';

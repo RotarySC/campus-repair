@@ -68,10 +68,10 @@
                 @change="fetchOrders"
               />
             </div>
-            <el-tag effect="plain" type="primary" class="live-tag">
+            <MetaChip class="live-tag">
               <span class="dot live-pulse"></span>
               实时调度作业中
-            </el-tag>
+            </MetaChip>
             <el-button
               :icon="Refresh"
               :loading="loadingOrders"
@@ -112,9 +112,9 @@
             </div>
 
             <div class="card-category">
-              <el-tag size="small" effect="plain" type="primary">
+              <MetaChip>
                 {{ WorkerSkillLabels[order.workerSkillCode] || order.workerSkillCode }}
-              </el-tag>
+              </MetaChip>
               <span class="cat-name">{{ order.categoryFullName }}</span>
             </div>
 
@@ -322,12 +322,7 @@
       width="460px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        title="作废操作不可逆，工单生命周期将终止为 CANCELLED，同时若占用师傅名额将自动释放。"
-        type="warning"
-        :closable="false"
-        style="margin-bottom: 16px;"
-      />
+      <AlertBanner>作废操作不可逆，工单生命周期将终止为 CANCELLED，同时若占用师傅名额将自动释放。</AlertBanner>
       <el-form label-position="top">
         <el-form-item label="当前作废工单">
           <strong>{{ cancelingOrder?.orderNo }} - {{ cancelingOrder?.categoryFullName }}</strong>
@@ -435,6 +430,8 @@
 </template>
 
 <script setup lang="ts">
+import AlertBanner from '../../components/AlertBanner.vue';
+import MetaChip from '../../components/MetaChip.vue';
 import EmptyState from '../../components/EmptyState.vue';
 import { ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';

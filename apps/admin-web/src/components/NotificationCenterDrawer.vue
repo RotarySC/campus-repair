@@ -85,13 +85,7 @@
       :close-on-click-modal="false"
       append-to-body
     >
-      <el-alert
-        type="warning"
-        :closable="false"
-        show-icon
-        title="广播将扇出推送至全部在册在校用户，请确认内容准确后发布"
-        style="margin-bottom: 16px"
-      />
+      <AlertBanner>广播将扇出推送至全部在册在校用户，请确认内容准确后发布</AlertBanner>
       <el-form ref="broadcastFormRef" :model="broadcastForm" :rules="broadcastRules" label-width="64px">
         <el-form-item label="标题" prop="title">
           <el-input v-model="broadcastForm.title" maxlength="50" show-word-limit placeholder="如：全校供水阀门维保停水通知" />
@@ -116,6 +110,7 @@
 </template>
 
 <script setup lang="ts">
+import AlertBanner from './AlertBanner.vue';
 import EmptyState from './EmptyState.vue';
 import { ref, onMounted } from 'vue';
 import { ElMessage, FormInstance, FormRules } from 'element-plus';

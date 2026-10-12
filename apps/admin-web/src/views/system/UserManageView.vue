@@ -33,7 +33,7 @@
       empty-text="暂无用户"
     >
       <template #col-userType="{ row }">
-        <el-tag :type="getUserTypeTag(row.userType)">{{ branchLabel(row.userType) }}</el-tag>
+        <MetaChip>{{ branchLabel(row.userType) }}</MetaChip>
       </template>
 
       <template #col-status="{ row }">
@@ -91,12 +91,13 @@
 </template>
 
 <script setup lang="ts">
+import MetaChip from '../../components/MetaChip.vue';
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { branchLabel } from '@campus/shared';
 import { httpClient } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
-import type { CardTagType, TableColumn } from '../../components/ResponsiveTable.vue';
+import type { TableColumn } from '../../components/ResponsiveTable.vue';
 
 const loading = ref(false);
 const importing = ref(false);
@@ -114,7 +115,7 @@ const columns: TableColumn<any>[] = [
     label: '所属条线',
     width: 140,
     card: 'tag',
-    cardTag: (row) => ({ text: branchLabel(row.userType), type: getUserTypeTag(row.userType) })
+    cardTag: (row) => ({ text: branchLabel(row.userType) })
   },
   { key: 'department', label: '所属部门/学院' },
   {
@@ -139,16 +140,6 @@ const query = reactive({
 
 const reportVisible = ref(false);
 const importReport = ref<any>({});
-
-/** 条线配色：行政信息化=红、后勤保障=橙、教学科研=蓝、学生=灰 */
-function getUserTypeTag(type: string): CardTagType {
-  switch (type) {
-    case 'ADMIN': return 'danger';
-    case 'LOGISTICS': return 'warning';
-    case 'FACULTY': return 'primary';
-    default: return 'info';
-  }
-}
 
 async function loadData() {
   loading.value = true;

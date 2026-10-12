@@ -103,14 +103,66 @@ const HEX = /#[0-9A-Fa-f]{3,8}\b/g;
  */
 const CSS_TOKEN_FALLBACK = /cssToken\(\s*'([^']+)'\s*,\s*'(#[0-9A-Fa-f]{3,8})'\s*\)/g;
 
+/**
+ * 引号感知地去注释。
+ *
+ * ⚠️ **不能只用「第一个 /* 到最近的 *​/」那种配对**：它假定每一对都是注释，
+ * 而 `<input accept="image/*">` 里的那个 `/*` 在**属性值里**、根本不是注释 ——
+ * 配对会整体错位，把两者之间**全部真实代码**当成注释吞掉。
+ * 实测 `WorkerFinishView.vue` 因此被吃掉 15 个 `<el-` 标签，
+ * 并让两个真实色值（`#F56C6C` / `#1677FF`）在色值棘轮里**隐形了很久**，
+ * 于「定义处之外 0 处」这个结论上假绿（见规范 §23.6）。
+ *
+ * 逐字符走：**引号内部不认注释**，并处理反斜杠转义。HTML 注释先单独去掉。
+ */
+function stripCommentsText(src) {
+  const s = src.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));
+  let out = '';
+  let i = 0;
+  let quote = null;
+  while (i < s.length) {
+    const c = s[i];
+    const n = s[i + 1];
+    if (quote) {
+      if (c === '\\') {
+        out += s.slice(i, i + 2);
+        i += 2;
+        continue;
+      }
+      if (c === quote) quote = null;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === '/' && n === '*') {
+      const end = s.indexOf('*/', i + 2);
+      const stop = end === -1 ? s.length : end + 2;
+      out += s.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop;
+      continue;
+    }
+    if (c === '/' && n === '/') {
+      const end = s.indexOf('\n', i);
+      const stop = end === -1 ? s.length : end;
+      out += ' '.repeat(stop - i);
+      i = stop;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 /** 剥掉注释后再数色值：注释是解释，不是实现。同时把 cssToken 的 fallback 参数中性化。 */
 function codeOf(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/^\s*\/\/.*$/gm, ' ')
-    .replace(/\s\/\/\s.*$/gm, ' ')
-    .replace(CSS_TOKEN_FALLBACK, "cssToken('$1')");
+  return stripCommentsText(text).replace(CSS_TOKEN_FALLBACK, "cssToken('$1')");
 }
 
 /** 把每个 `cssToken('--name', '#value')` 抽出来，供「fallback 必须等于令牌」那条用。
@@ -231,54 +283,48 @@ describe('token 层覆盖棘轮', () => {
     expect(bad, `cssToken 的 fallback 必须与 tokens.css 逐字符一致：\n  ${bad.join('\n  ')}`).toEqual([]);
   });
 
-  it('口径同源：三份 codeOf 的扫描规则必须逐条一致', () => {
+  it('口径同源：四份 stripCommentsText 必须逐字一致', () => {
     /*
      * 这条是**因为已经漂过才写的**，而且漂的不止一处。
      *
-     * 「怎么算一个色值字面量」这套口径在仓里存在**三份**：
-     *   ① 本文件（棘轮，权威）
-     *   ② `.scratch/scan-hex.mjs`（盘点工具："还剩多少处"）
-     *   ③ `.scratch/assert-visual-language.mjs`（主探针，自己也扫一遍）
+     * 「怎么算一个色值字面量」这套口径在仓里存在**四份**：
+     *   ① 本文件（色值棘轮，权威）      ② `.scratch/scan-hex.mjs`（盘点工具）
+     *   ③ `.scratch/assert-visual-language.mjs`（主探针）  ④ `color-controls.spec.ts`
      *
-     * 给①加上「`cssToken` 的 fallback 不算色值」之后，②③ **都没跟着改** ——
-     * 于是同一时刻 ① 报 DashboardView 0 处、②③ 报 14 处。
-     * 三个数字各自都能自圆其说，**你去看哪一个都觉得它对** —— 这是最难发现的一类不一致。
+     * 已经漂过一次：给①加上「`cssToken` 的 fallback 不算色值」之后，②③ 都没跟着改 ——
+     * 于是同一时刻 ① 报 0 处、②③ 报 14 处。**你去看哪一个都觉得它对。**
      *
-     * 三份实现短期不值得合并（两份是 `.mjs`、一份带 vitest 依赖），
-     * 那就按本仓既有的取舍：**冗余保留，但把「三处必须一致」变成机器判据。**
+     * 后来还发现了更糟的一件事（§23.6）：**四份用的规则本身是错的** ——
+     * 朴素配对会把 `accept="image/*"` 里的 `/*` 当注释起点，吞掉真实代码，
+     * 于是两个真实色值（`#F56C6C` / `#1677FF`）在四份里**同时隐形**，
+     * 四份一致地给出同一个假绿。**口径同源并不能防"四份一起错"**，
+     * 所以另外补了一条引号感知的替换 + 本文件里那条「扫描器得抓得到」的反向自证。
      *
-     * ⚠️ 比的是**扫描链**（`text` 之后那一串 `.replace`），不是散落的指纹子串：
-     * 指纹写法要跟 `\/` 这类转义纠缠 —— 第一版就是那么写错的，它连块注释那一条都对不上，
-     * 于是"通过"的含义悄悄变成了"我碰巧挑中了几个能匹配上的子串"。
+     * ⚠️ 比的是 `stripCommentsText` 的**函数体**（四处逐字相同），
+     * 不是散落的指纹子串 —— 指纹写法要跟 `\/` 这类转义纠缠，
+     * 第一版就是那么写错的，于是"通过"的含义悄悄变成了"我碰巧挑中了几个能匹配上的子串"。
      */
-    function scanRules(file: string): string[] {
+    function stripFnBody(file: string): string {
       const src = readFileSync(file, 'utf8');
-      const m = src.match(/(?:function codeOf|const codeOf)/);
-      if (!m || m.index === undefined) throw new Error(`${file} 里找不到 codeOf`);
-      const tail = src.slice(m.index);
-      const blank = tail.search(/\n\s*\n/);
-      const block = blank === -1 ? tail : tail.slice(0, blank);
-      return (
-        block
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          // 只取链本身：`return text` / `text` 是两种写法的入口，不参与比对
-          .filter((l) => l.startsWith('.replace('))
-          .map((l) => l.replace(/\s+/g, ' '))
-      );
+      const start = src.indexOf('function stripCommentsText');
+      if (start < 0) throw new Error(`${file} 里找不到 stripCommentsText`);
+      const end = src.indexOf('\n}', start);
+      if (end < 0) throw new Error(`${file} 的 stripCommentsText 没有结束大括号`);
+      return src.slice(start, end + 2).replace(/\s+/g, ' ').trim();
     }
 
-    const here = scanRules(fileURLToPath(import.meta.url));
-    // 反向自证：抓到的确实是一条 5 步的链，不是空数组（空 === 空 会让下面恒真）
-    expect(here.length, '本文件的扫描链应当有 5 条 replace（4 条剥注释 + 1 条中性化）').toBe(5);
+    const here = stripFnBody(fileURLToPath(import.meta.url));
+    // 反向自证：抓到的确实是那个逐字符扫描器，不是一段空字符串（空 === 空 会让下面恒真）
+    expect(here).toContain('while (i < s.length)');
+    expect(here).toContain(`c === '/' && n === '*'`);
 
     for (const rel of [
       ['.scratch', 'scan-hex.mjs'],
-      ['.scratch', 'assert-visual-language.mjs']
+      ['.scratch', 'assert-visual-language.mjs'],
+      ['packages', 'shared', 'test', 'color-controls.spec.ts']
     ]) {
       const file = join(ROOT, ...rel);
-      const rules = scanRules(file);
-      expect(rules, `${rel.join('/')} 的扫描口径与棘轮漂了：\n  棘轮: ${here.join(' | ')}\n  它  : ${rules.join(' | ')}`).toEqual(here);
+      expect(stripFnBody(file), `${rel.join('/')} 的 stripCommentsText 与棘轮漂了`).toBe(here);
     }
   });
 

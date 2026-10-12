@@ -10,14 +10,7 @@
       @close="hasDraft = false"
     />
 
-    <el-alert
-      v-if="duplicateTip"
-      type="warning"
-      show-icon
-      :title="duplicateTip"
-      style="margin-bottom: 14px"
-      @close="duplicateTip = ''"
-    />
+    <AlertBanner v-if="duplicateTip" closable @close="duplicateTip = ''">{{ duplicateTip }}</AlertBanner>
 
     <el-card shadow="never">
       <template #header>
@@ -102,7 +95,15 @@
 
         <el-divider content-position="left">预约与紧急程度</el-divider>
         <el-form-item label="加急处理">
-          <el-switch v-model="isUrgent" active-color="#F56C6C" @change="saveDraft" />
+          <!--
+            加急开关：**去掉 `active-color="#F56C6C"`**。
+            那一处是硬编码的 EP danger 红 —— 既绕开令牌层，又是「用色块表达紧急度」，
+            而 D 明令禁止（紧急度该由**实心圆点**承担，见 §3.3 / §4.6 G4）。
+            去掉之后开关走 `--el-color-primary`，加急与否由右侧那行提示文案交代。
+            ⚠️ 它此前一直是**隐形**的：注释配对规则把 `accept="image/*"` 里的 `/*` 当成注释起点，
+            吞掉了这一整段，于是色值棘轮在「0 处」上假绿了很久（见 §23.6）。
+          -->
+          <el-switch v-model="isUrgent" @change="saveDraft" />
           <span class="urgency-hint">{{ isUrgent ? '将按紧急工种优先调度（SLA 更短）' : '按普通工单进入智能调度' }}</span>
         </el-form-item>
 
@@ -129,6 +130,7 @@
 </template>
 
 <script setup lang="ts">
+import AlertBanner from '../../components/AlertBanner.vue';
 import { reactive, ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, UploadRequestOptions, UploadUserFile } from 'element-plus';

@@ -17,7 +17,7 @@
           当前登录账号：<strong>{{ authStore.userInfo?.realName || authStore.userInfo?.username }}</strong>
         </p>
         <p>
-          账号职能：<el-tag type="warning" size="small">{{ functionText }}</el-tag>
+          账号职能：<MetaChip>{{ functionText }}</MetaChip>
         </p>
       </div>
 
@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import MetaChip from '../../components/MetaChip.vue';
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { functionLabel } from '@campus/shared';

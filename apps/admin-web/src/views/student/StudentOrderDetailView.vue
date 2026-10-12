@@ -6,7 +6,13 @@
 
     <div v-loading="loading">
       <!-- 1. 状态条 -->
-      <el-alert :title="statusTitle" :description="statusTip" :type="statusAlertType" show-icon :closable="false" class="status-banner" />
+      <div class="status-banner">
+        <span class="status-banner__mark"><StatusRing :status="order?.status" /></span>
+        <div class="status-banner__body">
+          <div class="status-banner__title">{{ statusTitle }}</div>
+          <div class="status-banner__tip">{{ statusTip }}</div>
+        </div>
+      </div>
 
       <!-- 2. 基本信息 -->
       <el-card shadow="never" class="block">
@@ -32,7 +38,7 @@
         <template #header><span class="block-title">现场维修实况对比（Visual Diff）</span></template>
         <div class="diff-grid">
           <div class="diff-pane">
-            <el-tag type="info" effect="plain" class="diff-badge">报修初始实况</el-tag>
+            <MetaChip class="diff-badge">报修初始实况</MetaChip>
             <p class="diff-desc">{{ evaluation.description || order.description || '—' }}</p>
             <div v-if="evaluation.faultImages && evaluation.faultImages.length" class="image-row">
               <el-image
@@ -52,7 +58,7 @@
           <div class="diff-divider"><el-icon :size="20" class="diff-arrow"><Right /></el-icon></div>
 
           <div class="diff-pane">
-            <el-tag type="primary" effect="plain" class="diff-badge">完工防伪实况</el-tag>
+            <MetaChip class="diff-badge">完工防伪实况</MetaChip>
             <p class="diff-desc">{{ evaluation.repairSummary || '师傅现场处置中或尚未上报' }}</p>
             <div v-if="evaluation.repairImages && evaluation.repairImages.length" class="image-row">
               <el-image
@@ -166,6 +172,8 @@
 </template>
 
 <script setup lang="ts">
+import StatusRing from '../../components/StatusRing.vue';
+import MetaChip from '../../components/MetaChip.vue';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -217,16 +225,6 @@ const statusTip = computed(() => {
     case 'COMPLETED': return '工单已圆满验收结单';
     case 'CANCELLED': return '工单已核实作废';
     default: return '';
-  }
-});
-
-const statusAlertType = computed<'success' | 'warning' | 'info' | 'error' | 'primary'>(() => {
-  switch (order.value.status) {
-    case 'COMPLETED': return 'success';
-    case 'REWORK_PENDING': return 'error';
-    case 'PENDING_ACCEPTANCE': return 'primary';
-    case 'IN_PROGRESS': case 'ASSIGNED': return 'warning';
-    default: return 'info';
   }
 });
 
@@ -290,8 +288,44 @@ async function onSubmitEvaluation() {
 .page-head {
   margin-bottom: 14px;
 }
+/*
+ * 状态条（§5 的 V7 修订）。
+ *
+ * 改前是 `<el-alert :type="statusAlertType">`，而 `statusAlertType` 是一段**手写的 switch**，
+ * 把 `order.status` 逐个映射成 EP 语义色 —— 那是「工单状态 → 颜色」的**第三个**投影
+ * （另两个是 `OrderStatusLabels` 与 `StatusRing`），既重复、又与「状态一律走 9px 圆环」冲突。
+ *
+ * 现在：**横幅本身中性**（发丝线 + 白底），色相只留给里面那个 `StatusRing`。
+ */
 .status-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
   margin-bottom: 14px;
+}
+.status-banner__mark {
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding-top: 3px;
+}
+.status-banner__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.status-banner__title {
+  color: var(--ink);
+  font-size: var(--fs-base);
+  line-height: 1.7;
+}
+.status-banner__tip {
+  color: var(--muted);
+  font-size: var(--fs-base);
+  line-height: 1.7;
 }
 .block {
   margin-bottom: 14px;

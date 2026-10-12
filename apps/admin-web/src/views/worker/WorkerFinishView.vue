@@ -193,7 +193,15 @@
               <span class="picker-stock">当前库存: {{ part.stockQuantity }} {{ part.unit }}</span>
             </div>
           </div>
-          <el-icon :size="18" color="#1677FF" v-if="part.stockQuantity > 0"><Plus /></el-icon>
+          <!--
+            这枚「加入」图标的 `color="#1677FF"` 已去掉：它**既是被废弃的品牌蓝，
+            又是 §3.2 锁定的 `--h3 维修中` 同一个色号** —— 在一个「挑耗材」的按钮上
+            出现「维修中」的色相，正是「一个色相两个意思」。
+            去掉后图标继承 `currentColor`，跟随所在按钮（主按钮白、次按钮墨）。
+            ⚠️ 它此前一直是**隐形**的：注释配对规则把上面 `accept="image/*"` 里的 `/*`
+            当成注释起点，吞掉了这一整段（见 §23.6）。
+          -->
+          <el-icon :size="18" v-if="part.stockQuantity > 0"><Plus /></el-icon>
         </div>
       </div>
     </el-dialog>
