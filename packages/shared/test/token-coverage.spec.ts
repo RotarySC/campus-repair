@@ -35,8 +35,6 @@ const DEFINITION_SITE = 'styles/tokens.css';
 const UNMIGRATED = new Set([
   'App.vue',
   'components/AssistantWidget.vue',
-  'components/NotificationCenterDrawer.vue',
-  'components/WorkOrderTimeline.vue',
   'views/auth/RegisterView.vue',
   // 控制台概览：只剩「故障大类占比」那张饼图的**分类色板**。D 定义了状态色与中性色，
   // 没有定义分类色板，而 8 个扇区压成灰阶不可读——这是待决策项，不是遗漏（见该文件内注释）。
@@ -62,7 +60,10 @@ const MIGRATED = [
   // ---- 第二期第一批（V7 状态圆环铺开，随该批一起迁干净）----
   'views/worker/WorkbenchView.vue',
   'views/student/StudentOrderListView.vue',
-  'views/profile/PersonalCenterView.vue'
+  'views/profile/PersonalCenterView.vue',
+  // ---- 第二期第二批（两个共享组件；它们被多页复用，单位改动收益最高）----
+  'components/WorkOrderTimeline.vue',
+  'components/NotificationCenterDrawer.vue'
 ];
 
 const HEX = /#[0-9A-Fa-f]{3,8}\b/g;

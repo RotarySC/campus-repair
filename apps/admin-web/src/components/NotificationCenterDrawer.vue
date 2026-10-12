@@ -23,14 +23,26 @@
         @click="handleItemClick(item)"
       >
         <div class="card-top">
-          <div class="card-badge" :class="`badge-${item.category}`">
+          <!--
+            通知类型徽标**一律中性**（发丝线 + `--muted`）。
+            原先 6 种类型各有「浅底 + 同色文字」，而**通知类型不是 §3.2 锁定的 8 个状态色相之一**——
+            给它上色就等于新增色相。
+            特别注意：6 个里有 3 个是预警类（返工提醒 / 超时预警 / 库存预警），
+            但**刻意不给它们单独套 `--alert`**：抽屉里 6 种类型同处一条流，
+            若把 3 个染成警戒色，那个色相就从「需要注意」漂移成「这是第 3 类」——
+            一个色相两个意思，正是 D 要消灭的东西。类型的区分由中文标签承担。
+          -->
+          <div class="card-badge">
             {{ NotificationCategoryLabels[item.category] || item.category }}
           </div>
           <span class="card-time">{{ formatDateTime(item.createdAt) }}</span>
         </div>
 
         <div class="card-title">
-          <span v-if="item.isRead === 0" class="unread-dot"></span>
+          <!-- 未读＝**需要你处理**，正是 §3.3 的「实心＝警戒」语义，所以走同一个 9px 实心点
+               （刻意开 `variant="dot"` 让无文案的标记也能渲染，见 StatusRing）。
+               原先是个自造的 6px 红点：几何和语义都与别处的标记不一致。 -->
+          <StatusRing v-if="item.isRead === 0" variant="dot" />
           {{ item.title }}
         </div>
 
@@ -113,6 +125,7 @@ import {
   BroadcastNotificationDTO,
   formatDateTime
 } from '@campus/shared';
+import StatusRing from './StatusRing.vue';
 
 const emit = defineEmits<{
   (e: 'unread-updated'): void;
@@ -248,7 +261,7 @@ async function submitBroadcast() {
   justify-content: space-between;
   align-items: center;
   padding-bottom: 12px;
-  border-bottom: 1px solid #F3F4F6;
+  border-bottom: var(--hairline) solid var(--line);
   margin-bottom: 12px;
 }
 .toolbar-actions {
@@ -264,20 +277,25 @@ async function submitBroadcast() {
   gap: 10px;
 }
 .notification-card {
-  background: #FFFFFF;
-  border: 1px solid #E5E7EB;
-  border-radius: 6px;
+  background: var(--surface);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
   padding: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 .notification-card:hover {
-  background: #F9FAFB;
-  border-color: #D1D5DB;
+  background: var(--canvas);
+  border-color: var(--line);
 }
-.notification-card.is-unread {
-  background: #F0F7FF;
-  border-color: #BAE0FF;
+/*
+ * 未读**不再用浅蓝底**（原 `#F0F7FF` + `#BAE0FF` 边框）。
+ * 色块是 D 要消灭的那种「用面积表达状态」，而未读的信号已经收进那个 9px 实心点里。
+ * 这里改成**中性层级**：未读标题 `--ink`、已读降到 `--muted`——§3.5 说的
+ * 「层级靠字号 + 颜色建立」（颜色指中性色阶，不是色相）。
+ */
+.notification-card.is-unread .card-title {
+  color: var(--ink);
 }
 
 .card-top {
@@ -285,63 +303,36 @@ async function submitBroadcast() {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
+  gap: 8px;
 }
 .card-badge {
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-.badge-ORDER_DISPATCH {
-  background: #FFF7E6;
-  color: #FA8C16;
-}
-.badge-ORDER_FLOW {
-  background: #E6F4FF;
-  color: #1677FF;
-}
-.badge-REWORK_ALERT {
-  background: #FFF1F0;
-  color: #F5222D;
-}
-.badge-SLA_ALERT {
-  background: #FFFBE6;
-  color: #D46B08;
-}
-.badge-STOCK_WARNING {
-  background: #FEFFE6;
-  color: #D4B106;
-}
-.badge-BROADCAST {
-  background: #F9F0FF;
-  color: #722ED1;
+  border-radius: 0;
+  font-weight: var(--fw-normal);
+  color: var(--muted);
+  border: var(--hairline) solid var(--line);
 }
 
 .card-time {
   font-size: 11px;
-  color: #9CA3AF;
+  color: var(--faint);
 }
 
 .card-title {
   font-size: 13px;
-  font-weight: 600;
-  color: #1F2937;
+  font-weight: var(--fw-medium);
+  /* 缺省（已读）弱一档；未读由上方 `.is-unread` 提到 --ink */
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
 }
-.unread-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: #FF4D4F;
-  display: inline-block;
-}
 
 .card-content {
-  font-size: 12px;
-  color: #4B5563;
+  font-size: var(--fs-base);
+  color: var(--muted);
   line-height: 1.5;
 }
 
@@ -351,17 +342,17 @@ async function submitBroadcast() {
   align-items: center;
   margin-top: 8px;
   padding-top: 6px;
-  border-top: 1px dashed #F3F4F6;
+  border-top: var(--hairline) dashed var(--line);
 }
 .related-order-link {
   font-size: 11px;
-  color: #1677FF;
+  color: var(--el-color-primary);
 }
 
 .notification-pagination {
   display: flex;
   justify-content: center;
   padding-top: 12px;
-  border-top: 1px solid #F3F4F6;
+  border-top: var(--hairline) solid var(--line);
 }
 </style>
