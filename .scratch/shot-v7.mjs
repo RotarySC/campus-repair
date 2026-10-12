@@ -52,7 +52,7 @@ async function evalJs(target, expr, attempts = 3) {
 }
 
 const shots = [];
-async function shoot(user, path, name) {
+async function shoot(user, path, name, extra) {
   const auth = await login(user);
   const { targetId } = await (await fetch(`${PROXY}/new`, { method: 'POST', body: `${ORIGIN}/login` })).json();
   await sleep(1200);
@@ -80,6 +80,11 @@ async function shoot(user, path, name) {
     await sleep(600);
   }
   await sleep(800); // 再给渲染一拍
+  // 可选的交互步骤：有些页面的关键内容要点一下才出现（例如完工填报的耗材列表要先选件）
+  if (extra) {
+    await evalJs(targetId, extra).catch(() => {});
+    await sleep(1800);
+  }
   const info = await evalJs(
     targetId,
     `JSON.stringify({w:innerWidth,h:document.documentElement.scrollHeight,rings:document.querySelectorAll('.status-ring').length,cells:[...document.querySelectorAll('.el-table__cell .el-tag,.rl-card .el-tag')].map(t=>t.textContent.trim())})`
@@ -116,6 +121,24 @@ await shoot('admin', '/reports/orders', 'report-admin');
 await shoot('admin', '/dispatch', 'dispatch-admin');
 // 进销存：第二期第四批；BEFORE 是「半迁移」状态，AFTER 应当与其他页自洽
 await shoot('admin', '/inventory', 'inventory-admin');
+// 完工填报：**不在主探针的六页矩阵里**，只能靠这张图 + 静态棘轮兜着。
+// （`.scratch/assert-form-layout.mjs` 覆盖这一页，但它走 raw CDP，而代理占着浏览器唯一的槽位。）
+await shoot('worker01', '/worker/finish/1006', 'finish-worker01');
+// ⚠️ 上面那张是**空壳**——不是「页面坏了」，而是：
+//   ① 该单没选耗材，列表为空；
+//   ② 这页唯一的 StatusRing 就是「超出库存上限」，**正常情况本来就该是 0 个圆环**
+//      （所以 `rings: 0` 是个**会误导人的读数**，不能当判据）；
+//   ③ 代理的 `/screenshot` 只截**视口**，耗材小节在下方，压根没进画面。
+//    因此要先点开弹窗选一件，再把该小节滚进视口。
+await shoot(
+  'worker01',
+  '/worker/finish/1006',
+  'finish-parts-worker01',
+  `(()=>{const b=[...document.querySelectorAll('button')].find(x=>/耗材/.test(x.innerText));b?.click();` +
+    `return new Promise(r=>setTimeout(()=>{[...document.querySelectorAll('.picker-item')]` +
+    `.find(x=>!x.classList.contains('disabled-part'))?.click();setTimeout(()=>{` +
+    `document.querySelector('.consume-header')?.scrollIntoView({block:'center'});setTimeout(r,900)},1200)},1500))})()`
+);
 
 writeFileSync(`${OUT}/summary.json`, JSON.stringify(shots, null, 2));
 console.log('\n=== 截图汇总 ===');

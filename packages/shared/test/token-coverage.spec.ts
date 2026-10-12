@@ -43,8 +43,7 @@ const UNMIGRATED = new Set([
   'views/spatial/SpatialManageView.vue',
   'views/student/StudentOrderDetailView.vue',
   'views/student/StudentSubmitRepairView.vue',
-  'views/system/UserManageView.vue',
-  'views/worker/WorkerFinishView.vue'
+  'views/system/UserManageView.vue'
 ]);
 
 /** 第一期已经迁干净、**必须保持 0 色值**的文件 */
@@ -65,7 +64,9 @@ const MIGRATED = [
   // ---- 第二期第三批（本仓最大的单文件：76 处）----
   'views/dispatch/DispatchCenterView.vue',
   // ---- 第二期第四批（进销存；做完这一批，§11.1 裁决 1 的「半迁移页」状态消失）----
-  'views/inventory/InventoryManageView.vue'
+  'views/inventory/InventoryManageView.vue',
+  // ---- 第二期第五批 ----
+  'views/worker/WorkerFinishView.vue'
 ];
 
 const HEX = /#[0-9A-Fa-f]{3,8}\b/g;

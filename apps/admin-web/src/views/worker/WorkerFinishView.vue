@@ -95,11 +95,20 @@
                 规格: {{ item.part.specification || '标准' }} |
                 单价: ¥{{ item.part.guidePrice.toFixed(2) }} / {{ item.part.unit }}
               </div>
-              <div class="part-stock" :class="{ 'low-stock': item.part.stockQuantity <= item.part.safetyStockThreshold }">
+              <div class="part-stock" :class="{ 'is-low': item.part.stockQuantity <= item.part.safetyStockThreshold }">
                 库房现存: {{ item.part.stockQuantity }} {{ item.part.unit }}
-                <span v-if="item.consumeQuantity > item.part.stockQuantity" class="over-warning">
-                  (已超出库存上限!)
-                </span>
+                <!--
+                  「已超出库存上限」是**真的警戒**（提交前必须改），所以给它 §3.3 的实心圆点，
+                  而不是又一段红字——色相归圆点，文字一律中性。
+                  原先这里是红色 `(已超出库存上限!)`，而同一个「库存不够」在整仓还有另外两套颜色
+                  （库存数量列的红药丸、进销存 KPI 的红卡），那些已在前一批中性化。
+                -->
+                <StatusRing
+                  v-if="item.consumeQuantity > item.part.stockQuantity"
+                  variant="dot"
+                  label="已超出库存上限"
+                  class="over-warning"
+                />
               </div>
             </div>
 
@@ -194,6 +203,7 @@ import { ElMessage, type FormInstance, type FormRules, type UploadFile, type Upl
 import { ArrowLeft, Delete, Plus, Search } from '@element-plus/icons-vue';
 import { useAuthStore, httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
+import StatusRing from '../../components/StatusRing.vue';
 import {
   DispatchOrderItemVO,
   SparePartVO,
@@ -466,12 +476,12 @@ async function onSubmitFinish() {
 }
 
 .section-title {
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .watermark-tip {
-  font-size: 12px;
-  color: #9CA3AF;
+  font-size: var(--fs-base);
+  color: var(--faint);
   line-height: 1.5;
   margin-top: 8px;
 }
@@ -496,7 +506,7 @@ async function onSubmitFinish() {
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 0;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: var(--hairline) solid var(--line);
 }
 
 .part-info {
@@ -506,29 +516,32 @@ async function onSubmitFinish() {
 
 .part-name {
   font-size: 14px;
-  font-weight: 600;
-  color: #1F2937;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
 }
 
 .part-meta {
-  font-size: 12px;
-  color: #4B5563;
+  font-size: var(--fs-base);
+  color: var(--muted);
   margin-top: 4px;
 }
 
+/* 库房现存：两档**只差中性层级**（原先绿 / 琥珀）。「库存够不够」不是工单状态，
+   色相不服务它——真正需要拦住的「超出库存上限」由那个实心圆点说（见模板注释）。 */
 .part-stock {
-  font-size: 12px;
-  color: #52C41A;
+  font-size: var(--fs-base);
+  color: var(--muted);
   margin-top: 2px;
 }
 
-.part-stock.low-stock {
-  color: #FA8C16;
+.part-stock.is-low {
+  color: var(--ink);
+  font-weight: var(--fw-medium);
 }
 
+/* 超出库存上限：颜色与形状都由 StatusRing 的实心圆点承担，这里只留间距 */
 .over-warning {
-  color: #F5222D;
-  font-weight: 600;
+  margin-inline-start: 6px;
 }
 
 .part-action {
@@ -543,14 +556,15 @@ async function onSubmitFinish() {
   align-items: baseline;
   padding: 12px 0 0;
   font-size: 13px;
-  color: #4B5563;
+  color: var(--muted);
 }
 
+/* 耗材总金额**不再染红**——金额大小不是警戒，它是这一单的成本；层级靠字号 + 中性墨色 */
 .cost-amount {
-  font-size: 16px;
-  font-weight: bold;
-  color: #F5222D;
-  margin-left: 4px;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
+  margin-inline-start: 4px;
 }
 
 .submit-row {
@@ -584,35 +598,35 @@ async function onSubmitFinish() {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  border-radius: 8px;
-  background-color: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  border-radius: var(--radius-card);
+  background-color: var(--surface);
+  border: var(--hairline) solid var(--line);
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
 
 .picker-item:hover {
-  border-color: #1677FF;
+  border-color: var(--el-color-primary);
 }
 
 .picker-item.disabled-part {
   opacity: 0.5;
-  background-color: #F9FAFB;
+  background-color: var(--canvas);
   cursor: not-allowed;
 }
 
 .picker-part-name {
   font-size: 14px;
-  font-weight: 600;
-  color: #1F2937;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .picker-part-sub {
-  font-size: 12px;
-  color: #9CA3AF;
+  font-size: var(--fs-base);
+  color: var(--faint);
   margin-top: 4px;
 }
 
@@ -620,15 +634,17 @@ async function onSubmitFinish() {
   display: flex;
   gap: 16px;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 
+/* 单价与库存：**都不该是彩色**——它们是候选列表里的两条属性，不是状态。
+   原先单价是红的、库存是蓝的，同一屏里两个色相在说「这是数字」。 */
 .picker-price {
-  color: #F5222D;
-  font-weight: 600;
+  color: var(--ink);
+  font-weight: var(--fw-medium);
 }
 
 .picker-stock {
-  color: #1677FF;
+  color: var(--muted);
 }
 </style>
