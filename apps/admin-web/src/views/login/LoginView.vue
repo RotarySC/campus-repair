@@ -124,16 +124,25 @@ onMounted(() => {
   width: 100%;
   min-height: 100vh;
   /*
-    ⛔ **这是本次实施停下的位置**。规范 §4.5 把「深蓝渐变」这一条指向 §4.6 的 G1
-    （生成式登录页背景，走出图主机通路）。G1 落地时这里改成
-    `background: var(--canvas) url(/login-bg.webp) center / cover no-repeat`，
-    提示词必须把 D 变成约束：低对比、低细节、大留白、无强渐变、可压到极小体积。
+    G1 生成式背景（规范 §4.6）。`--canvas` 是图片没加载出来时的兜底，不是主视觉。
 
-    在此之前本行**刻意保持原样**：替换它需要先有那张图，另一半（2px 圆角 / 删阴影 / 标题 600）
-    已经落地（见下）。已知代价：这是试点切片里**唯一**仍违反 V4「自写 chrome 不得出现 #1677FF」
-    的地方，因为渐变里那一段就是品牌蓝——它是 G1 的待办，不是遗漏。
+    出图参数（用户指定）：Qwen-Image-2.1 + **Turbo LoRA** + **TE-Speed** 加速节点 + **20 步**，1536×864。
+    ⚠️ 为什么必须**显式**写 `steps=20`：`turbo=True` 会把「没表态」的步数补成 16
+    （`qwen21_build.build()` 第 457~464 行），不显式给就会被悄悄改成 16 步。
+
+    这张图按「低对比、低细节、大留白、无强渐变、可压到极小体积」五条判据选，
+    判据定义与三个候选的逐项实测在 `.scratch/gen-login-bg.py` / 会话目录的 `g1/metrics.json`。
+    中选者实测：p1=174 / p50=231 / p99=243、边缘能量 3.04、中央 std 4.17（边缘 17.35）、
+    四象限极差 6.08、WebP q=88 = **21.6 KB**。
+
+    原先这里是深蓝渐变（`linear-gradient(135deg,#0B132B,#1C2541,#1677FF)`）——
+    它曾是自写 chrome 里最后一处品牌蓝，随 G1 一起退场。
   */
-  background: linear-gradient(135deg, #0B132B 0%, #1C2541 50%, #1677FF 100%);
+  background-color: var(--canvas);
+  background-image: url('/login-bg.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 .login-card {
   width: 440px;

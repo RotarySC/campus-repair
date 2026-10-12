@@ -59,7 +59,6 @@ const UNMIGRATED = new Set([
   'views/dispatch/DispatchCenterView.vue',
   'views/error/ForbiddenView.vue',
   'views/inventory/InventoryManageView.vue',
-  'views/login/LoginView.vue',
   'views/profile/PersonalCenterView.vue',
   'views/spatial/SpatialManageView.vue',
   'views/student/StudentOrderDetailView.vue',
@@ -74,6 +73,7 @@ const MIGRATED = [
   'components/ResponsiveTable.vue',
   'components/StatusRing.vue',
   'layouts/AdminLayout.vue',
+  'views/login/LoginView.vue',
   'views/analytics/WorkOrderReportView.vue'
 ];
 
@@ -107,7 +107,7 @@ console.log('\n===== ① token 覆盖棘轮 =====');
   const unexpected = offenders.filter((o) => o.rel !== DEFINITION_SITE && !UNMIGRATED.has(o.rel));
   check(`扫描 ${scanned} 个源文件：色值字面量只出现在已登记名单内`, unexpected.length === 0, unexpected.map((o) => `${o.rel}(${o.hits})`).join(', '));
   const regressed = offenders.filter((o) => MIGRATED.includes(o.rel));
-  check('第一期已迁移的 4 个文件保持 0 色值', regressed.length === 0, regressed.map((o) => o.rel).join(', '));
+  check(`第一期已迁移的 ${MIGRATED.length} 个文件保持 0 色值`, regressed.length === 0, regressed.map((o) => o.rel).join(', '));
   check('名单里已迁干净的文件已销账（无残留）', UNMIGRATED.size === offenders.filter((o) => UNMIGRATED.has(o.rel)).length, `${UNMIGRATED.size} 个名单项`);
 }
 
@@ -202,7 +202,10 @@ const SNAPSHOT = `(() => {
       titleWeight: cs(document.querySelector('.title'), 'font-weight'),
       titleColor: cs(document.querySelector('.title'), 'color'),
       btnBg: cs(loginBtn, 'background-color'), btnRadius: cs(loginBtn, 'border-radius'), btnFontSize: cs(loginBtn, 'font-size'),
-      containerBg: (cs(document.querySelector('.login-container'), 'background-image') || '').slice(0, 60)
+      containerBg: (cs(document.querySelector('.login-container'), 'background-image') || '').slice(0, 140),
+      containerBgFallback: cs(document.querySelector('.login-container'), 'background-color'),
+      bgSize: cs(document.querySelector('.login-container'), 'background-size'),
+      bgPosition: cs(document.querySelector('.login-container'), 'background-position')
     } : null
   });
 })()`;
@@ -326,7 +329,27 @@ console.log('\n===== ⑥ 登录页（§4.5，止于 G1） =====');
   check('标题色 --ink', L?.titleColor === 'rgba(0, 0, 0, 0.9)', L?.titleColor);
   check('主按钮已是新主色 #0052D9', L?.btnBg === 'rgb(0, 82, 217)', L?.btnBg);
   check('按钮圆角 2px、字号 12px（§4.2 用变量能覆盖到的那部分）', L?.btnRadius === '2px' && L?.btnFontSize === '12px', `${L?.btnRadius} / ${L?.btnFontSize}`);
-  check('深蓝渐变**仍在**（G1 未落地，这是刻意的停点）', !!L && L.containerBg.includes('linear-gradient'), L?.containerBg);
+  /*
+    ⚠️ **这一条是改写过的旧断言，不是回归。**
+    G1 之前它断言的是「深蓝渐变仍在」——那是当时刻意留下的停点（规范 §4.5 把渐变指向 §4.6）。
+    图落地之后就该反过来：**渐变没了、图在了**。
+  */
+  check(
+    '背景已换成 G1 生成图（是 url(...)，且不再是 linear-gradient）',
+    !!L && L.containerBg.includes('login-bg.webp') && !L.containerBg.includes('linear-gradient'),
+    L?.containerBg
+  );
+  check('背景底色兜底是 --canvas（图片没加载出来时的退路）', L?.containerBgFallback === 'rgb(242, 244, 248)', L?.containerBgFallback);
+  check('背景 cover 铺满、居中', L?.bgSize === 'cover' && L?.bgPosition === '50% 50%', `${L?.bgSize} / ${L?.bgPosition}`);
+}
+
+// 图片**真的在服务端**、且**真的小**——用独立的 HTTP 请求验，不靠页面自述
+{
+  const res = await fetch(`${ORIGIN}/login-bg.webp`);
+  const bytes = (await res.arrayBuffer()).byteLength;
+  check('GET /login-bg.webp → 200', res.ok, `HTTP ${res.status}`);
+  check('Content-Type 是 image/webp', (res.headers.get('content-type') || '').includes('image/webp'), res.headers.get('content-type') || '(无)');
+  check('体积 ≤ 120 KB（「可压到极小体积」）', bytes > 0 && bytes <= 120 * 1024, `${(bytes / 1024).toFixed(1)} KB`);
 }
 
 /* ---------- ⑦ 五档矩阵（同源 iframe 驱动宽度） ---------- */

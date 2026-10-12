@@ -44,8 +44,6 @@ const UNMIGRATED = new Set([
   'views/dispatch/DispatchCenterView.vue',
   'views/error/ForbiddenView.vue',
   'views/inventory/InventoryManageView.vue',
-  // 登录页：只剩 `linear-gradient(...)` 里那一段品牌蓝，等 G1 的生成式背景替换（规范 §4.5 → §4.6）
-  'views/login/LoginView.vue',
   'views/profile/PersonalCenterView.vue',
   'views/spatial/SpatialManageView.vue',
   'views/student/StudentOrderDetailView.vue',
@@ -61,6 +59,8 @@ const MIGRATED = [
   'components/ResponsiveTable.vue',
   'components/StatusRing.vue',
   'layouts/AdminLayout.vue',
+  // 登录页的深蓝渐变已由 G1 的生成式背景替换（规范 §4.6），品牌蓝随之退场
+  'views/login/LoginView.vue',
   'views/analytics/WorkOrderReportView.vue'
 ];
 
