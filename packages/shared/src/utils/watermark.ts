@@ -3,6 +3,12 @@
  * 在现场完工照片右下角压制包含工单编号、维修师傅姓名、当前时间戳的半透明防伪底卡与文字
  */
 
+import {
+  BRAND_MARK_PATHS,
+  BRAND_MARK_STROKE_WIDTH,
+  BRAND_MARK_VIEWBOX
+} from '../constants/brand';
+
 export interface WatermarkOptions {
   orderNo: string;
   workerName: string;
@@ -87,7 +93,15 @@ export function addWatermarkToImage(file: File | Blob, options: WatermarkOptions
         const m3 = ctx.measureText(line3).width;
         const maxTextWidth = Math.max(m1, m2, m3);
 
-        const cardWidth = maxTextWidth + padding * 2;
+        /*
+         * 品牌标识占位（§4.6 的 A6）。尺寸**跟着 fontSize 走**，所以它和文字永远是同一个比例：
+         * 2.4 倍字号 = 38px @16px 字，塞得进三行文字的高度（3 × 1.45 字号 = 4.35 字号），
+         * 所以底卡的**高度不用动**，只有宽度变。
+         */
+        const markSize = Math.round(fontSize * 2.4);
+        const markGap = padding;
+
+        const cardWidth = markSize + markGap + maxTextWidth + padding * 2;
         const cardHeight = lineHeight * 3 + padding * 2;
 
         const cardX = width - cardWidth - margin;
@@ -111,7 +125,31 @@ export function addWatermarkToImage(file: File | Blob, options: WatermarkOptions
         ctx.closePath();
         ctx.fill();
 
-        // 4. 绘制文字 (高对比度白字 + 轻微阴影)
+        // 4. 绘制品牌标识（矢量）。底卡左侧、与三行文字垂直居中。
+        /*
+         * 用 `Path2D` 而不是贴一张 PNG：路径来自 `@campus/shared` 的 `BRAND_MARK_PATHS`，
+         * 与侧边栏 `BrandMark.vue`、`public/favicon.svg` 是**同一份几何**——
+         * 放大了也不会糊，也不会成为第三个「长得略不一样的品牌标识」。
+         * 不画在底卡外：照片本身可能有复杂纹理，白描边压在暗底卡上才有稳定对比。
+         */
+        const markScale = markSize / BRAND_MARK_VIEWBOX;
+        ctx.save();
+        ctx.translate(cardX + padding, cardY + (cardHeight - markSize) / 2);
+        ctx.scale(markScale, markScale);
+        ctx.lineWidth = BRAND_MARK_STROKE_WIDTH; // viewBox 单位，乘上 markScale 才是屏幕像素
+        ctx.lineCap = 'square';
+        ctx.lineJoin = 'miter';
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
+        for (const d of BRAND_MARK_PATHS) {
+          ctx.stroke(new Path2D(d));
+        }
+        ctx.restore();
+
+        // 5. 绘制文字 (高对比度白字 + 轻微阴影)
         ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
         ctx.shadowBlur = 4;
         ctx.shadowOffsetX = 1;
@@ -119,7 +157,7 @@ export function addWatermarkToImage(file: File | Blob, options: WatermarkOptions
         ctx.fillStyle = '#FFFFFF';
         ctx.textBaseline = 'top';
 
-        const textStartX = cardX + padding;
+        const textStartX = cardX + padding + markSize + markGap;
         const textStartY = cardY + padding;
 
         ctx.fillText(line1, textStartX, textStartY);
@@ -128,7 +166,7 @@ export function addWatermarkToImage(file: File | Blob, options: WatermarkOptions
 
         ctx.restore();
 
-        // 5. 导出处理后的图片 Blob
+        // 6. 导出处理后的图片 Blob
         canvas.toBlob(
           (blob) => {
             if (blob) resolve(blob);

@@ -2,9 +2,24 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>校园设施报修运维综合管理平台</title>
+
+    <!--
+      PWA 主屏图标与 manifest（§4.6 的 A5）。
+      · apple-touch-icon 必须**单独一节**：iOS 不读 manifest 的 icons，只认这个 link。
+      · theme-color 取 --surface(#FFFFFF) 而不是品牌蓝 —— D 的口径是「色相只服务状态语义」，
+        装到主屏后顶部状态栏跟着品牌蓝走，等于凭空多出一块没有语义的色。
+      · background_color 取 --canvas(#F2F4F8)，是启动闪屏的底色，与页面底色一致。
+      · 图标几何来自 packages/shared 的 BRAND_MARK_PATHS，与 favicon.svg / 侧边栏同源；
+        PNG 由 .scratch/make-pwa-icons.mjs 生成（改了几何要重跑）。
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="校园报修" />
   </head>
   <body>
     <div id="app"></div>

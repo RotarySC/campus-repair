@@ -1,0 +1,111 @@
+feat(web): 资产线第四批 —— A5 PWA 图标与 manifest、A6 水印品牌标记
+
+矢量资产 A1~A7 至此全部落地。
+
+## A5：manifest.webmanifest + 5 张位图
+
+  pwa-192 / pwa-512              any      k=0.72
+  pwa-maskable-192 / -512        maskable k=0.60
+  apple-touch-icon.png (180)     iOS 单独认
+
+两个 k 是算术不是手感：maskable 会被裁到内切 80% 圆，图形（描边外扩后
+21.2×16.8 viewBox 单位）对角线 k×27.05，取 0.60 时半对角线 0.34S < 0.4S；
+any 档没有裁切，0.72 更饱满。
+
+为什么走浏览器栅格化：manifest 图标必须是 PNG，而仓库里没有任何图像库，
+也不该为了 5 个静态图标引一个带原生依赖的包。手边已经有一个真浏览器（CDP 代理），
+SVG → <img> → <canvas> → toDataURL('image/png') 是零依赖、且与最终显示环境
+同一个渲染引擎的通路。配方入库：.scratch/make-pwa-icons.mjs
+
+几何不在脚本里抄一份：脚本 import('/@fs/.../packages/shared/src/constants/brand.ts')，
+取的是 Vite 正在服务的那份源码；抄一份的话，改了几何忘了重跑，图标会悄悄停在旧图上。
+
+background_color / theme_color 取自 token 层（--canvas / --surface）；check-pwa.mjs
+有一条判据直接把 manifest 的值和 tokens.css 逐字符比。theme_color 取白而非品牌蓝：
+装到主屏后状态栏跟着品牌蓝走，等于凭空多出一块没有语义的色。
+
+## 品牌标识：从「两处人工同步」变成「一处 + 机器判据」
+
+A6 需要把标识画到 canvas 上，于是它有了第三个消费者，而 BrandMark.vue 原先只有
+一句人工承诺：「几何与 favicon.svg 必须逐字节一致；改一处必须同步另一处。」
+人工承诺会漂移，而且漂移了没人发现——三处长得略不一样的品牌标识是最难发现的
+一类缺陷（每处单独看都「像」）。
+
+  public/favicon.svg        静态文件，浏览器直接取 —— 唯一必须手写的
+  components/BrandMark.vue  内联 SVG    → 改为 v-for 数据驱动
+  utils/watermark.ts        Path2D      → 新增消费者
+  public/pwa-*.png          5 张位图    → 由脚本从 brand.ts 生成
+
+抽出 packages/shared/src/constants/brand.ts。静态那份用回归锁住：
+brand-mark.spec.ts 逐字节比对 favicon.svg 的 d 与 BRAND_MARK_PATHS，并反向证明
+两个 TS 文件里没有第三份手抄的几何（只写前一条的话，它们完全可以再硬编码一遍 d
+而断言照样全绿）。
+
+负向对照实测：把 favicon.svg 一条路径末位的 8 改成 9，用例立刻变红并打印两边数组；
+还原后复跑 5 passed。
+
+## A6：水印里的矢量标记
+
+用 Path2D 描 BRAND_MARK_PATHS——矢量，放大了不糊，也不成为第四个「略不一样的标识」。
+markSize = fontSize × 2.4，跟着字号走，塞得进三行文字的高度，所以底卡只变宽不变高；
+文字整体右移，标识与文字之间留一条干净的隔离带。
+
+判据必须看像素：这个函数没有返回值可供断言（只回一个 Blob），而「标识画上去了」
+和「标识没画、但文字恰好占住了那块地方」在任何结构断言下都一样。所以测试图造成纯色
+（#DDD），三类像素天然可分（底卡≈93 / 墨迹255 / 画布221），再量列分布：
+
+  PASS ③ 底卡左侧那块里有白色墨迹          — 左侧墨迹簇宽 46px
+  PASS ④ 标识与文字之间有一条干净的隔离带  — 隔离带 24px
+  PASS ⑤ 文字确实让位了  — 底卡左沿 744 → 标识 [767,812] → 文字左沿 837
+
+③ 与 ⑤ 必须成对：若标识没画、文字也没让位，文字会从底卡左沿起笔，
+③ 就被「文字填满左区」满足而恒真地通过。
+
+## 把一类反复发生的人为失误变成机器判据
+
+本会话里「在模板字面量的注释里又写了一个反引号」发生了 4 次。每次代价一样：
+整条探针一行都跑不了，而报错位置离真因（一行注释）很远——得先怀疑 DOM 变了、
+接口挂了，才想到去读那一行注释。四处脚本都就地写了警告，但警告是给人看的，
+而人已经忘了 4 次。
+
+新增 packages/shared/test/probes-parse.spec.ts：对每个 .scratch/*.mjs 跑一次
+node --check（只解析、不执行——那些脚本一 import 就会打网络、开标签页、改文件）。
+放 vitest 是因为探针不能检查自己（解析不过就根本跑不起来），而 vitest run 是
+验收的固定动作。带反向自证：现场造一个自伤文件，断言它必须被判为解析失败。
+
+## 三条自己踩的量具坑
+
+1. 圆角抗锯齿被当成墨迹：底卡圆角外侧是画布本色 #DDD（221 > 200），按「>200 即墨迹」
+   判，最左 4 列永远是"墨迹"，③ 假报 FAIL。判据没错，是量具把底卡外面的背景算进来了。
+2. 截图只截到整图的一角：水印卡在右下角、在视口外，第一张实拍图里根本没有卡片。
+3. 品牌标识探针取了文档里第一个 .brand-mark，而它在 display:none 的折叠分支里
+   （localStorage.admin_sidebar_collapsed 被上次探针留下 1），量到 0×0。
+   与 el-popover 那次同族：拿到反直觉的数字时，先怀疑量具。
+
+## 顺带勘误：我自己数错的探针条数
+
+上一批报告里写的 check-level-icons 6 / check-category-icons 13 / shot-forbidden 14
+都是错的——那是从 Select-Object -Last N 的截断日志尾巴里用眼睛数的。
+真值 9 / 14 / 15。§17.5/17.9/18.7/19.6 已就地改正。另 check-dict-codes 记成
+「15 PASS / 2 SKIP」是算术上不可能的（15 条 = 10 自检 + 5 页面，2 SKIP ⇒ 最多 13 PASS），
+真值 13 PASS / 2 SKIP。教训与 §17.5 同族：数断言也得用量具。
+
+## 验收（现测）
+
+  check-pwa.mjs                → 22 PASS / 0 FAIL（新增）
+  check-watermark.mjs          → 6 PASS / 0 FAIL（新增）
+  check-brand-mark.mjs         → 6 PASS / 0 FAIL（新增）
+  shot-forbidden.mjs           → 15 PASS / 0 FAIL
+  check-category-icons.mjs     → 14 PASS / 0 FAIL / 0 SKIP
+  check-level-icons.mjs        → 9 PASS / 0 FAIL
+  check-dict-codes.mjs         → 13 PASS / 2 SKIP / 0 FAIL
+  check-valuetype.mjs          → 5 PASS / 0 FAIL
+  assert-visual-language.mjs   → 197 PASS / 0 FAIL / 0 重试
+  vitest run（packages/shared） → 45/45（+brand-mark 5 +probes-parse 3）
+  tsc（shared）/ vue-tsc（admin）→ 双双 exit 0
+  色值字面量                    → 仍 14 处（只有 DashboardView）
+
+## 资产线剩余
+
+G2（空状态插画 2–3 张，位图/生成式）必做；G3（演示故障照片）可选。
+两条挂起决策：分类色板（DashboardView 的 14 处色值）、非状态类彩色控件 53 处。
