@@ -126,11 +126,31 @@ console.log('\n===== ① token 覆盖棘轮 =====');
 
 /* ==================== 传输层：web-access 代理 ==================== */
 
-const proxyPost = async (path, body) => {
-  const res = await fetch(`${PROXY}${path}`, { method: 'POST', body });
-  const json = await res.json();
-  if (json.error) throw new Error(`${path} → ${json.error}`);
-  return json;
+/**
+ * 代理偶发抽一下（造图侧 AGENTS.md 实测：隧道 3~5 秒中断、可用率 99.895%），
+ * 而一次 `/eval` 超时**会把整条探针打挂**——实测跑到 180 条时崩过，前面全绿也没用，
+ * 因为走不到汇总。
+ *
+ * 所以这里重试，并且**把重试次数报进汇总**：
+ * 悄悄吞掉重试就等于把「跑得稳」这件事也一并藏了，
+ * 「这次绿了」和「这次没靠重试绿」是两件事。
+ */
+let retries = 0;
+const proxyPost = async (path, body, attempts = 3) => {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const res = await fetch(`${PROXY}${path}`, { method: 'POST', body });
+      const json = await res.json();
+      if (json.error) throw new Error(`${path} → ${json.error}`);
+      if (i > 1) retries++;
+      return json;
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts) await new Promise((r) => setTimeout(r, 1500 * i));
+    }
+  }
+  throw lastErr;
 };
 
 const health = await (await fetch(`${PROXY}/health`)).json().catch(() => null);
@@ -527,25 +547,33 @@ console.log('\n===== ⑨ 实心圆＝警戒（§3.3 ＋ §4.6 G4） =====');
   }
 }
 
-/* ---------- ⑦ 五档矩阵（同源 iframe 驱动宽度） ---------- */
+/* ---------- ⑦ 五档矩阵（同源 iframe 驱动宽度） ----------
+   ⚠️ **一次 `/eval` 只驱动一个宽度**。第一版是把 5 个宽度塞进同一个 eval
+   （5 × 2.2 s 的 iframe 等待 ≈ 一次 eval 跑 15 s），结果第 180 条之后
+   撞上代理的 `Runtime.evaluate` 超时，**整条探针当场崩掉**——前面 180 条全绿也没用，
+   因为没走到汇总。
+   代理/隧道偶发抽一下是这个环境的既有事实（造图侧 AGENTS.md 实测：3~5 秒中断，
+   可用率 99.895%）。对策有两层：
+     · 把长 eval 拆成短 eval（下面这样）——**从源头缩短单次往返**；
+     · `proxyPost` 带重试，且**把重试次数报到汇总里**——不能悄悄吞掉，
+       「跑得绿」和「跑得稳」是两件事。 */
 console.log('\n===== ⑦ 五档真机矩阵（390 / 768 / 1272 / 1440 / 2524） =====');
 for (const page of [...PAGES, ...MATRIX_EXTRA]) {
-  const matrix = JSON.parse(await evalJs(`(async () => {
-    const widths = [390, 768, 1272, 1440, 2524];
-    const out = [];
-    const wait = (ms) => new Promise(r => setTimeout(r, ms));
-    for (const w of widths) {
+  const matrix = [];
+  for (const width of [390, 768, 1272, 1440, 2524]) {
+    matrix.push(JSON.parse(await evalJs(`(async () => {
+      const wait = (ms) => new Promise(r => setTimeout(r, ms));
       const f = document.createElement('iframe');
-      f.style.cssText = 'position:fixed;left:0;top:0;width:' + w + 'px;height:800px;border:0;z-index:999999;visibility:hidden';
+      f.style.cssText = 'position:fixed;left:0;top:0;width:${width}px;height:800px;border:0;z-index:999999;visibility:hidden';
       f.src = ${JSON.stringify(page.path)};
       document.body.appendChild(f);
       await new Promise(res => { f.onload = res; });
-      await wait(2200);
+      await wait(2000);
       const d = f.contentDocument, win = f.contentWindow;
       const root = d.documentElement;
       const btns = [...d.querySelectorAll('.el-button')];
-      out.push({
-        w, innerWidth: win.innerWidth,
+      const out = {
+        w: ${width}, innerWidth: win.innerWidth,
         overflowX: root.scrollWidth - root.clientWidth,
         hasTable: !!d.querySelector('.rl-table-wrapper .el-table'),
         cardCount: d.querySelectorAll('.rl-card').length,
@@ -553,12 +581,11 @@ for (const page of [...PAGES, ...MATRIX_EXTRA]) {
         buttonCount: btns.length,
         // §3.6 让按钮变宽，最可能的坏结果是**被挤出视口**（而非页面整体溢出）
         maxButtonRight: btns.length ? Math.max(...btns.map((b) => b.getBoundingClientRect().right)) : 0
-      });
+      };
       f.remove();
-      await wait(200);
-    }
-    return JSON.stringify(out);
-  })()`));
+      return JSON.stringify(out);
+    })()`)));
+  }
   for (const m of matrix) {
     check(`${page.name} @${m.w}：无横向溢出`, m.overflowX === 0, `溢出 ${m.overflowX}px`);
     check(`${page.name} @${m.w}：无意外 el-empty`, m.emptyCount === 0, `${m.emptyCount} 个`);
@@ -580,6 +607,6 @@ for (const page of [...PAGES, ...MATRIX_EXTRA]) {
   }
 }
 
-console.log(`\n[${fail === 0 ? 'ALL PASS' : fail + ' FAILED'}]`);
+console.log(`\n[${fail === 0 ? 'ALL PASS' : fail + ' FAILED'}]  （代理重试 ${retries} 次）`);
 await closeTab();
 process.exit(fail === 0 ? 0 : 1);
