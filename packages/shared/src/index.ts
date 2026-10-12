@@ -9,6 +9,7 @@ export * from './types/assistant';
 export * from './constants/status';
 export * from './constants/policy';
 export * from './constants/org';
+export * from './constants/spatial';
 export * from './api/http';
 export * from './utils/compressor';
 export * from './utils/watermark';

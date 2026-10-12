@@ -41,6 +41,22 @@ async function login(username) {
 
 const CODE_RE = /^[A-Z][A-Z_]{2,}$/;
 
+/*
+ * **判据自检**（不依赖页面）。
+ *
+ * 为什么需要：本判据的"通过"形态是「什么都没扫到」——那太容易变成恒真。
+ * 左边的四个是本季度**真实出现过**的裸码（`DORMITORY`/`TEACHING` 来自空间字典的树节点，
+ * `PLUMBER` 来自工种，`REWORK_PENDING` 是工单状态的形状），正则必须命中；
+ * 右边四个是合法文案，正则**不得**误判。
+ * 两端一起锁，才说明"0 个违规"是有意义的信息。
+ */
+for (const bad of ['DORMITORY', 'TEACHING', 'OFFICE', 'PLUMBER', 'REWORK_PENDING']) {
+  check(`判据自检：${bad} 会被判为裸码`, CODE_RE.test(bad));
+}
+for (const ok of ['学生宿舍', 'BX20261010000105', '正常在架', '二级细类', '服务质保口碑']) {
+  check(`判据自检：${ok} 不会被误判`, !CODE_RE.test(ok));
+}
+
 const PAGES = [
   { user: 'admin', path: '/spatial', name: '空间与分类字典' },
   { user: 'admin', path: '/dispatch', name: '后勤调度中心' },
@@ -79,8 +95,20 @@ for (const p of PAGES) {
 
   const res = JSON.parse(
     await evalJs(`(() => {
-      const scope = document.querySelectorAll('.el-table__cell .el-tag, .rl-card .el-tag, .category-card .el-tag');
-      const texts = [...scope].filter(t => !t.closest('.hidden-columns')).map(t => t.textContent.trim());
+      /*
+       * ⚠️ **范围必须够宽，而且不按"可见"过滤**。两次都踩过：
+       * · 第一版限死在「表格单元格 / 卡片」里，**漏掉了藏在 el-tree 节点里的裸码**
+       *   （空间字典页楼栋旁的 DORMITORY / TEACHING / OFFICE）；
+       * · 第二版改成全页 el-tag 后又加了 offsetParent !== null，**又把覆盖缩回去了**——
+       *   分类字典在**另一个 Tab** 里，它的标签仍在 DOM 中（切过去就能看见），
+       *   实测标签数从 29 掉到 5。**"可见性过滤"是排查"面板归属"时的手段，用错了场合。**
+       * 现在只排除 ElTable 在 hidden-columns 里的那次不可见重渲染（那是实现细节，不是内容）。
+       *
+       * ⚠️ 本段住在模板字面量里：**注释中不许出现反引号**（这个坑本会话踩了三次，
+       *    前两次在 assert-visual-language.mjs 与 check-level-icons.mjs）。
+       */
+      const all = [...document.querySelectorAll('.el-tag')].filter(t => !t.closest('.hidden-columns'));
+      const texts = all.map(t => t.textContent.trim());
       return JSON.stringify({ count: texts.length, texts: [...new Set(texts)] });
     })()`)
   );

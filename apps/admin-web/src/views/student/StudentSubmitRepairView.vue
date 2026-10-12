@@ -33,6 +33,7 @@
             label="空间节点"
             placeholder="请选择校区/楼栋/房间"
             class="field-cascader"
+            level-icon-kind="space"
             @change="onSpaceChange"
           />
           <span v-if="spaceFullPathName" class="path-hint">{{ spaceFullPathName }}</span>

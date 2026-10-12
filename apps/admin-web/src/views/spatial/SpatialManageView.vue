@@ -18,13 +18,24 @@
           <template #default="{ node, data }">
             <div class="tree-node-row">
               <span class="node-title">
-                <el-tag size="small" :type="getLevelTagType(data.levelType)" style="margin-right: 8px;">
+                <!--
+                  V4：层级改用**图标 + 中性文字**。原先是一个按层级染色的 `el-tag`
+                  （`getLevelTagType()` 给 校区/组团/楼栋/房间 配了 红/橙/蓝/绿 四个 EP 语义色），
+                  而**层级是分类，不是状态**——那四个色在这里没有任何语义，只是「四个不一样的颜色」。
+                  换成图标后颜色维度整个消失：图标继承 `currentColor`，文字走中性令牌。
+                -->
+                <span class="level-tag">
+                  <LevelIcon kind="space" :level="data.levelType" />
                   {{ getLevelLabel(data.levelType) }}
-                </el-tag>
+                </span>
                 <strong>{{ data.name }}</strong>
                 <span class="full-path">({{ data.fullPathName }})</span>
-                <el-tag v-if="data.buildingNature" size="small" effect="plain" style="margin-left: 8px;">
-                  {{ data.buildingNature }}
+                <!-- 🐞 原先直接渲染 `data.buildingNature`，于是同一页里
+                     「建筑性质」下拉框是中文（学生宿舍/教学科研/…），树节点上却是
+                     **`DORMITORY` / `TEACHING` / `OFFICE`** —— 与工种那两个裸码同一族。
+                     现在两处共用 `BuildingNatureLabels` 这一处声明。 -->
+                <el-tag v-if="data.buildingNature" size="small" effect="plain" style="margin-inline-start: 8px;">
+                  {{ buildingNatureLabelOf(data.buildingNature) }}
                 </el-tag>
               </span>
 
@@ -202,11 +213,14 @@
         </el-form-item>
         <el-form-item v-if="nodeForm.levelType === 3" label="建筑性质">
           <el-select v-model="nodeForm.buildingNature" placeholder="请选择建筑性质">
-            <el-option label="学生宿舍" value="DORMITORY" />
-            <el-option label="教学科研" value="TEACHING" />
-            <el-option label="行政办公" value="OFFICE" />
-            <el-option label="公共场馆" value="VENUE" />
-            <el-option label="室外公共" value="OUTDOOR" />
+            <!-- 选项由 shared 的 `BuildingNatureLabels` 生成：**一处声明、两处消费**
+                 （这里 + 树节点上的标签），新增一个性质只改那一个文件 -->
+            <el-option
+              v-for="opt in BuildingNatureOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item v-if="nodeForm.levelType === 3" label="楼栋责任人">
@@ -285,9 +299,10 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { branchLabel, WorkerSkillLabels } from '@campus/shared';
+import { branchLabel, WorkerSkillLabels, BuildingNatureOptions, buildingNatureLabelOf } from '@campus/shared';
 import { httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
+import LevelIcon from '../../components/LevelIcon.vue';
 
 const activeTab = ref('spatial');
 const onlyEnabled = ref(false);
@@ -339,15 +354,13 @@ function getLevelLabel(level: number) {
   }
 }
 
-function getLevelTagType(level: number) {
-  switch (level) {
-    case 1: return 'danger';
-    case 2: return 'warning';
-    case 3: return 'primary';
-    case 4: return 'success';
-    default: return 'info';
-  }
-}
+/*
+ * `getLevelTagType()` **已删除**（V4）：它把四个层级映射成四个 EP 语义色
+ * （校区=danger 红 / 组团=warning 橙 / 楼栋=primary 蓝 / 房间=success 绿）。
+ * 层级是**分类**不是状态，这四个色纯属装饰——而且它们还借用了「危险/警告」这两个
+ * 有确定含义的语义档去表示「校区/组团」，属于 AGENTS.md 说的「一个色相两个意思」。
+ * 现在层级由 `LevelIcon` 的图形承担。
+ */
 
 async function loadSpatialTree() {
   try {
@@ -563,10 +576,20 @@ onMounted(() => {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 层级标记：图标 + 中性文字（V4）。图标 16px、继承 currentColor；文字比节点名弱一档。 */
+.level-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-right: 8px;
+  color: var(--muted);
+  font-size: var(--fs-base);
+}
 .full-path {
   font-size: var(--fs-base);
   color: var(--faint);
-  margin-left: 6px;
+  margin-inline-start: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -23,6 +23,7 @@
                   :options="spatialOptions"
                   label="空间位置"
                   placeholder="四级空间网格树"
+                  level-icon-kind="space"
                   @change="onSpaceChange"
                 />
               </el-form-item>

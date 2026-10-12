@@ -70,6 +70,7 @@
                 label="学院/部门"
                 :placeholder="orgPlaceholder"
                 separator=" "
+                level-icon-kind="org"
                 @change="onOrgChange"
               />
               <!--
@@ -86,6 +87,7 @@
                 :options="spaceOptions"
                 label="默认报修空间"
                 placeholder="选择默认宿舍/办公房间"
+                level-icon-kind="space"
                 @change="onSpaceChange"
               />
             </el-form-item>

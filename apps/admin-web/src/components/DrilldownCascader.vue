@@ -99,6 +99,7 @@
               :aria-selected="node[valueKey] === selectedId"
               @click="pick(node)"
             >
+              <LevelIcon v-if="levelIconKind" :kind="levelIconKind" :level="node.levelType" class="dd-option__icon" />
               <span class="dd-option__label">{{ node[labelKey] }}</span>
               <el-icon v-if="hasChildren(node)" class="dd-option__more" aria-hidden="true"><ArrowRight /></el-icon>
               <el-icon v-else-if="node[valueKey] === selectedId" class="dd-option__check" aria-hidden="true">
@@ -134,6 +135,7 @@ let uidSeq = 0;
 import { computed, nextTick, ref, watch } from 'vue';
 import { ArrowDown, ArrowLeft, ArrowRight, Check, CircleClose } from '@element-plus/icons-vue';
 import { useFormItem, useFormSize } from 'element-plus';
+import LevelIcon from './LevelIcon.vue';
 
 interface DrillNode {
   [key: string]: any;
@@ -160,6 +162,19 @@ const props = withDefaults(
     panelWidth?: string;
     /** 触发器里各级名称的连接符；默认 ` / `（空间/分类用），单位字典传空格以与库中 department 文案一致 */
     separator?: string;
+    /**
+     * 选项行前显示**层级图标**（规范 §4.6 的 V4）。
+     *
+     * ⚠️ **默认关闭**，因为它是**树相关的**，而本组件是通用的：5 个既有调用方里，
+     * 空间选择器要 `'space'`、单位字典要 `'org'`、故障分类**两个都不是**
+     * （分类的层级是 大类/二级细类，属 V3 的分类图标，不是层级图标）。
+     * 不传就一行不渲染，既有调用方行为**逐字节不变**。
+     *
+     * 层级取自**节点自己的 `levelType`**，而不是"当前下钻到第几层"：
+     * 单位字典的根「所属单位」与「2024级」都是 `level_type = 1`
+     * （见 AGENTS.md「两个必须能分开念」那条），按下钻深度推会算错一级。
+     */
+    levelIconKind?: 'org' | 'space';
   }>(),
   {
     valueKey: 'id',
@@ -172,7 +187,8 @@ const props = withDefaults(
     label: '',
     emptyText: '暂无可选项',
     panelWidth: 'min(360px, 92vw)',
-    separator: ' / '
+    separator: ' / ',
+    levelIconKind: undefined
   }
 );
 
@@ -597,6 +613,15 @@ function onTriggerKeydown(event: KeyboardEvent) {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* 层级图标（V4）：16px、继承行内颜色，所以选中态会跟着变主色 */
+.dd-option__icon {
+  flex: none;
+  color: var(--muted);
+}
+.dd-option[aria-selected='true'] .dd-option__icon {
+  color: var(--el-color-primary);
 }
 
 .dd-option__more {
