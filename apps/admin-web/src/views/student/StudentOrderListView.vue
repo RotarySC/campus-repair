@@ -23,10 +23,18 @@
         empty-text="暂无报修工单，点击右上角「提交报修」发起第一条报修"
         @row-click="openDetail"
       >
+        <!-- ⚠️ 紧急度在宽档表格里**原先没有这个插槽**（只写了 `card: 'tag'`）。
+             `ResponsiveTable` 的宽档对无插槽的列只挂 `prop`，`el-table` 于是直接渲染字段原值——
+             用户看到的是 `2` 和 `1`，一个只对机器有意义的数字。窄档卡片走 `cardTag()` 反而是对的。
+             补上插槽顺带修掉它：加急＝§3.3 的实心圆（警戒），普通＝中性字。 -->
+        <template #col-urgencyLevel="{ row }">
+          <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" />
+          <span v-else class="urgency-normal">普通</span>
+        </template>
+
         <template #col-status="{ row }">
-          <el-tag :type="orderStatusTagType(row.status)" effect="light">
-            {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
-          </el-tag>
+          <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
+          <StatusRing :status="row.status" />
         </template>
       </ResponsiveTable>
 
@@ -51,9 +59,10 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { EditPen } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
-import { DispatchOrderItemVO, OrderStatusLabels, orderStatusTagType } from '@campus/shared';
+import { DispatchOrderItemVO, OrderStatusLabels } from '@campus/shared';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
+import StatusRing from '../../components/StatusRing.vue';
 
 const router = useRouter();
 
@@ -76,7 +85,10 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     align: 'center',
     card: 'tag',
     cardTag: (row) =>
-      row.urgencyLevel === 2 ? { text: '加急', type: 'danger' } : { text: '普通', type: 'info' }
+      row.urgencyLevel === 2
+        ? // 加急＝警戒：实心圆（§3.3）。它没有工单状态码，色相恒为 `--alert`
+          { text: '加急', type: 'ring', variant: 'dot' }
+        : { text: '普通', type: 'info' }
   },
   {
     key: 'status',
@@ -86,7 +98,9 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      type: orderStatusTagType(row.status)
+      // §5 的 V7 修订：卡片形态与表格形态共用同一份状态色值
+      type: 'ring',
+      status: row.status
     })
   },
   {
@@ -149,8 +163,12 @@ onMounted(fetchData);
   margin-top: 12px;
 }
 .muted {
-  color: #9ca3af;
-  font-size: 12px;
+  color: var(--faint);
+  font-size: var(--fs-base);
+}
+/* 「普通」不加急时不该有颜色——它不是状态，只是「没有需要提醒的事」 */
+.urgency-normal {
+  color: var(--faint);
 }
 /* 子组件内部的表格行：整行可点（scoped 对子组件根内元素需 :deep） */
 :deep(.el-table__row) {

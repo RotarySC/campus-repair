@@ -66,7 +66,14 @@ const text = computed(() => {
  * 它落在 `--h8`（回落色）上。实测确认它被 `visibility:hidden` 挡住、肉眼不可见，
  * 但一个「什么也不说的标记」本就不该存在。
  */
-const visible = computed(() => !!text.value || !!props.status);
+const visible = computed(() => !!text.value || !!props.status || props.variant === 'dot');
+//                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^
+// `variant="dot"` **本身就是那句断言**（「这里需要注意」），不是从数据投影出来的——
+// 所以它不依赖 status/label 就能成立。第二期加这一条是为了写得出「只有点、没有字」的警戒标记
+// （师傅工作台的挂起原因条：点 + 原因原文，不必再让圆环复述一遍「已挂起」，
+//   那一行同一屏的状态列已经有 `--h4` 圆环了）。
+// 空心圆环（`variant="ring"`）**保持不变**：它必须由 status 投影，否则就是第 10.4 条那个
+// 「EP 在 .hidden-columns 里以 row:{} 重渲染插槽、凭空多出一个空圆环」的坑。
 </script>
 
 <style scoped>

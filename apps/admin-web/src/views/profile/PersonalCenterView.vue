@@ -142,7 +142,10 @@
             <el-col v-for="card in repairCards" :key="card.label" :xs="12" :sm="8" :md="8">
               <div class="mini-kpi">
                 <div class="mini-kpi__label">{{ card.label }}</div>
-                <div class="mini-kpi__value" :style="{ color: card.color }">
+                <!-- 这里原先给六张卡各绑一个色值（累计报修蓝/待派单橙/在办紫…）。
+                     D 把彩色收归状态语义，而**同一个状态色相只活在圆环那 2px 描边上**，
+                     不是拿来当六个大数字的配色（§3.4 的「安静」正是这么来的）。 -->
+                <div class="mini-kpi__value">
                   {{ card.value }}<span class="mini-kpi__unit">{{ card.unit }}</span>
                 </div>
               </div>
@@ -167,9 +170,9 @@
             @row-click="openOrderDetail"
           >
             <template #col-status="{ row }">
-              <el-tag :type="orderStatusTagType(row.status)" effect="light">
-                {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
-              </el-tag>
+              <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字
+                   （口径与工作台、我的工单、工单报表一致：**同一个状态在任何页都同一个色相**） -->
+              <StatusRing :status="row.status" />
             </template>
             <!-- 宽档表格直接渲染原始 ISO（带 T 与微秒）会换行，这里统一成「YYYY-MM-DD HH:mm」 -->
             <template #col-createdAt="{ row }">
@@ -253,7 +256,6 @@ import {
   PASSWORD_PATTERN,
   PASSWORD_RULE_MESSAGE,
   WorkerSkillLabels,
-  orderStatusTagType,
   formatDateTime
 } from '@campus/shared';
 import type { OrgBranch } from '@campus/shared';
@@ -268,6 +270,7 @@ import type {
 import { useViewport } from '../../composables/useViewport';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import StatusRing from '../../components/StatusRing.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 
 const { isNarrowPhone } = useViewport();
@@ -369,17 +372,18 @@ const passwordRules: FormRules = {
   ]
 };
 
-/** 报修概览 KPI：空值一律渲染 `—`，不伪造兜底数字 */
+/** 报修概览 KPI：空值一律渲染 `—`，不伪造兜底数字。
+ *  ⚠️ 这里**不再带 `color` 字段**（原先六张卡六个色值）。见模板内注释与 §3.4。 */
 const repairCards = computed(() => {
   const s = repairSummary.value;
   const num = (v: number | undefined) => (s ? String(v ?? 0) : '—');
   return [
-    { label: '累计报修', value: num(s?.totalCount), unit: '单', color: '#1677FF' },
-    { label: '待派单', value: num(s?.pendingDispatchCount), unit: '单', color: '#FA8C16' },
-    { label: '在办', value: num(s?.processingCount), unit: '单', color: '#722ED1' },
-    { label: '待验收', value: num(s?.pendingAcceptanceCount), unit: '单', color: '#13C2C2' },
-    { label: '已结单', value: num(s?.completedCount), unit: '单', color: '#52C41A' },
-    { label: '已作废', value: num(s?.cancelledCount), unit: '单', color: '#8C8C8C' }
+    { label: '累计报修', value: num(s?.totalCount), unit: '单' },
+    { label: '待派单', value: num(s?.pendingDispatchCount), unit: '单' },
+    { label: '在办', value: num(s?.processingCount), unit: '单' },
+    { label: '待验收', value: num(s?.pendingAcceptanceCount), unit: '单' },
+    { label: '已结单', value: num(s?.completedCount), unit: '单' },
+    { label: '已作废', value: num(s?.cancelledCount), unit: '单' }
   ];
 });
 
@@ -396,7 +400,9 @@ const orderColumns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      type: orderStatusTagType(row.status)
+      // §5 的 V7 修订：卡片形态与表格形态共用同一份状态色值
+      type: 'ring',
+      status: row.status
     })
   },
   { key: 'spaceFullPath', label: '报修位置', minWidth: 130, showOverflowTooltip: true },
@@ -700,7 +706,7 @@ onMounted(async () => {
   margin-bottom: 14px;
 }
 .block-title {
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 .panel-header {
   display: flex;
@@ -710,14 +716,14 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 .text-muted {
-  color: #9ca3af;
+  color: var(--faint);
   font-size: 13px;
 }
 .field-note {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 1.5;
-  color: #9ca3af;
+  color: var(--faint);
 }
 
 /* 账户概览 */
@@ -739,9 +745,12 @@ onMounted(async () => {
   overflow: hidden;
   line-height: 0;
 }
+/* 头像底色是**中性**的：D 的规矩是「彩色只服务状态语义」（V4 修订），
+   而「无头像时的首字母底色」不是任何状态。可点提示由 hover 遮罩承担，
+   不靠一个 72px 的饱和蓝块——那正是 D 要消灭的「用面积表达」。 */
 .account-avatar {
-  background-color: #1677ff;
-  color: #ffffff;
+  background-color: var(--ink);
+  color: var(--surface);
   font-size: 26px;
 }
 .avatar-mask {
@@ -753,9 +762,10 @@ onMounted(async () => {
   justify-content: center;
   gap: 2px;
   border-radius: 50%;
-  background-color: rgba(0, 0, 0, 0.45);
-  color: #ffffff;
-  font-size: 12px;
+  /* --scrim 就是 rgba(0,0,0,.45)（tokens.css 里注明与头像遮罩同值，故共用一处） */
+  background-color: var(--scrim);
+  color: var(--surface);
+  font-size: var(--fs-base);
   line-height: 1.2;
   text-align: center;
   opacity: 0;
@@ -783,38 +793,41 @@ onMounted(async () => {
   align-self: flex-start;
 }
 .account-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
 }
 .account-line {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--muted);
   /* 用 overflow-wrap 而不是 word-break:break-all：否则「2026-09-13 01:45」会被从数字中间掰断 */
   overflow-wrap: break-word;
 }
 
-/* 报修概览 */
+/* 报修概览 —— 与控制台概览的 `.kpi-card` / `.kpi-value` / `.kpi-unit` 同口径（跨页一致）：
+   发丝线边框 + 0 圆角、大数字**常规字重**、单位比数字弱一档。 */
 .mini-kpi {
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
   padding: 10px 12px;
   margin-bottom: 10px;
 }
 .mini-kpi__label {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--fs-base);
+  color: var(--muted);
 }
 .mini-kpi__value {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--fs-xl);
+  /* §3.5：KPI 大数字也是常规字重（实测 400 命中 988 次）。原先这里是 600。 */
+  font-weight: var(--fw-normal);
   line-height: 1.4;
+  color: var(--ink);
 }
 .mini-kpi__unit {
-  font-size: 12px;
-  font-weight: 400;
-  color: #6b7280;
-  margin-left: 2px;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-normal);
+  color: var(--faint);
+  margin-inline-start: 2px;
 }
 .rating-row {
   display: flex;
@@ -825,12 +838,12 @@ onMounted(async () => {
 }
 .rating-label {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--muted);
 }
 .recent-head {
   font-size: 13px;
-  font-weight: 600;
-  color: #1f2937;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
   margin-bottom: 8px;
 }
 
@@ -842,7 +855,7 @@ onMounted(async () => {
 }
 .load-text {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--muted);
   white-space: nowrap;
 }
 </style>

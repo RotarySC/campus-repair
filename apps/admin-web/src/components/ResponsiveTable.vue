@@ -25,8 +25,18 @@
           :fixed="col.fixed"
           :show-overflow-tooltip="col.showOverflowTooltip"
         >
-          <template v-if="isSlotted(col)" #default="scope">
-            <slot :name="`col-${col.key}`" v-bind="scope" />
+          <!--
+            ⚠️ `col.valueType` 必须在这里也生效——**这是 2026-10-12 修掉的一个真实缺陷**。
+            原先只有 `isSlotted(col)` 这一条判据，于是 `valueType` 只喂给了窄档卡片的 `display()`，
+            宽档表格直接渲染字段原值：实测「提单时间」显示成 `2026-10-10T10:54:58.685822`
+            （带 T、带微秒，还会撑成两行），「耗材费」显示成 `0` / `53`（没有 ¥）。
+            **几何断言全绿**——没有任何一条断言在看「这一格显示的是什么」；
+            是看截图时才发现的（见 .scratch/check-valuetype.mjs，现已变成断言）。
+            插槽优先：同时给了插槽与 `valueType` 时以插槽为准（各页的自定义格式更具体）。
+          -->
+          <template v-if="isSlotted(col) || col.valueType" #default="scope">
+            <slot v-if="isSlotted(col)" :name="`col-${col.key}`" v-bind="scope" />
+            <template v-else>{{ display(scope.row, col) }}</template>
           </template>
         </el-table-column>
       </el-table>
@@ -59,6 +69,7 @@
                 class="rl-card__ring"
                 :status="tag.status"
                 :label="tag.text"
+                :variant="tag.variant"
               />
               <span v-else class="rl-card__tag" :class="`is-${tag.type || 'info'}`">{{ tag.text }}</span>
             </template>
@@ -108,6 +119,11 @@ export interface CardTag {
   type?: CardTagType;
   /** `type: 'ring'` 时为必填：工单状态码，圆环色相由它推导（§4.3）。其他档位忽略。 */
   status?: string;
+  /**
+   * §3.3 的标记语义，**只对 `type: 'ring'` 有效**：`'dot'` 实心＝警戒，缺省 `'ring'` 空心＝分类。
+   * 给「加急」这类**不是工单状态、但需要注意**的标记用——它没有状态码，色相恒为 `--alert`。
+   */
+  variant?: 'ring' | 'dot';
 }
 
 /** 正文字段在卡片上的呈现方式；自定义渲染请改用同名具名插槽 `col-<key>` */
@@ -122,7 +138,13 @@ export interface TableColumn<T = any> {
   align?: 'left' | 'center' | 'right';
   fixed?: boolean | 'left' | 'right';
   showOverflowTooltip?: boolean;
-  /** 卡片正文的取值格式（缺省按原样输出，空值渲染为 `—`） */
+  /**
+   * 取值格式（`datetime` / `money` / `date` / `boolean`）。
+   * **宽档表格与窄档卡片都走它**——两档共用一个格式化出口，否则会出现
+   * 「卡片上是 `2026-10-10 10:54`、表格里是 `2026-10-10T10:54:58.685822`」这种同一份数据的两种长相
+   * （2026-10-12 实测过，见模板里那段注释与 `.scratch/check-valuetype.mjs`）。
+   * 缺省按原样输出，空值渲染为 `—`。
+   */
   valueType?: CardValueType;
   /**
    * 窄档卡片布局角色：

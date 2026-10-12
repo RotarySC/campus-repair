@@ -58,14 +58,15 @@
         <template #col-orderNo="{ row }">
           <span class="order-no-wrap">
             <span class="order-no">{{ row.orderNo }}</span>
-            <el-tag v-if="row.urgencyLevel === 2" type="danger" size="small">加急</el-tag>
+            <!-- 加急＝警戒：§3.3 的「实心圆」，不是又一个彩色胶囊。
+                 原先这里是 `el-tag type="danger"`（红底白字），是本页除状态列外最响的一处颜色。 -->
+            <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" />
           </span>
         </template>
 
         <template #col-status="{ row }">
-          <el-tag :type="orderStatusTagType(row.status)" effect="light">
-            {{ OrderStatusLabels[row.status] || row.status }}
-          </el-tag>
+          <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
+          <StatusRing :status="row.status" />
         </template>
 
         <!-- 承诺截止：挂起期间 SLA 冻结，显示冻结说明而不是一个会误导人的日期 -->
@@ -90,7 +91,10 @@
         <template #col-description="{ row }">
           <div class="fault-desc" :title="row.description">{{ row.description }}</div>
           <div v-if="row.status === 'SUSPENDED' && row.dispatchReason" class="suspend-banner">
-            <el-icon :size="14"><WarningFilled /></el-icon>
+            <!-- 警戒走**填充**而不是颜色面积（§3.3 / §4.6 G4 口径）：
+                 9px 实心点 + 中性字 + 发丝线边框。原先这里是 `WarningFilled` 图标
+                 + 琥珀底 + 琥珀边 + 琥珀字——四个颜色维度在说同一件事，而事情只有一件。 -->
+            <StatusRing variant="dot" />
             <span>{{ row.dispatchReason }}</span>
           </div>
         </template>
@@ -277,13 +281,11 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Phone,
-  Search,
-  WarningFilled
+  Search
 } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
 import {
   OrderStatusLabels,
-  orderStatusTagType,
   DispatchOrderItemVO,
   WorkerWorkbenchCountVO,
   WorkerOrderListResultVO,
@@ -292,6 +294,7 @@ import {
 } from '@campus/shared';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
+import StatusRing from '../../components/StatusRing.vue';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 
 const router = useRouter();
@@ -343,7 +346,10 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      type: orderStatusTagType(row.status)
+      // §5 的 V7 修订：窄档卡片与宽档表格**共用同一份状态色值**（`ResponsiveTable` 的 ring 档
+      // 会把它渲染成 9px 圆环，见该组件 `CardTag.type` 的注释）
+      type: 'ring',
+      status: row.status
     })
   },
   { key: 'categoryFullName', label: '故障细类', minWidth: 130, showOverflowTooltip: true },
@@ -601,10 +607,11 @@ async function submitTransfer() {
 
 <style scoped>
 /*
- * 视觉语言与其余页面一致（口径见 docs/20260906-1430-…-frontend-design.md §3.3）：
+ * 视觉语言：方向 D（口径见 docs/20261012-1330-…-visual-language-d-design.md §3、§5 的 V1~V15）。
  * 根节点 16px 内边距、内容装进 el-card shadow="never"、宽档表格 / 窄档卡片共用一份列定义
- * （components/ResponsiveTable.vue）、状态一律 el-tag。
- * 颜色只用设计文档 §3.1 的令牌与品牌主色 #1677FF。
+ * （components/ResponsiveTable.vue）、**状态一律 StatusRing 圆环**（V7）。
+ * 颜色只取 styles/tokens.css 的令牌：品牌蓝 #1677FF 已退场（§4.2），彩色只服务状态语义
+ * ——而状态色相只活在圆环的 2px 描边上，一个色值字面量都不该出现在本文件里。
  */
 .worker-workbench {
   padding: 16px;
@@ -635,8 +642,8 @@ async function submitTransfer() {
 
 /* 与完工页 .section-title 同口径（600 字重），抽屉里没有 el-card #header 可用 */
 .drawer-section-title {
-  font-weight: 600;
-  color: #1F2937;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
   margin: 16px 0 10px;
 }
 
@@ -645,7 +652,7 @@ async function submitTransfer() {
 }
 
 .muted {
-  color: #9CA3AF;
+  color: var(--faint);
 }
 
 .tag-gap {
@@ -662,23 +669,26 @@ async function submitTransfer() {
 }
 
 .order-no {
-  font-weight: 600;
-  color: #1F2937;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
   font-size: 13px;
 }
 
-/* 挂起期间 SLA 冻结：显示冻结说明而不是一个会误导人的截止时间 */
+/* 挂起期间 SLA 冻结：显示冻结说明而不是一个会误导人的截止时间。
+   **不再叠一层琥珀色**——同一行的状态列已经有 `--h4` 圆环在说「已挂起」，
+   这里再用颜色复述一遍就是「一个状态两种表达」（V9 的由来）。 */
 .sla-frozen {
-  color: #D46B08;
-  font-weight: 500;
+  color: var(--muted);
+  font-weight: var(--fw-medium);
 }
 
-/* 报修人 = 一键拨号（设计文档 §8.3 的 tel: 语义，收进内容列省掉一列按钮） */
+/* 报修人 = 一键拨号（设计文档 §8.3 的 tel: 语义，收进内容列省掉一列按钮）。
+   可点 → 走 EP 主色令牌（§4.2：品牌蓝退场后由 `--el-color-primary` 承担「可交互」这一档） */
 .tel-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #1677FF;
+  color: var(--el-color-primary);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -689,13 +699,13 @@ async function submitTransfer() {
 
 /* 号码比姓名弱一档：姓名是识别信息，号码是可读但不抢视线的辅助信息 */
 .tel-number {
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--fs-base);
+  color: var(--faint);
 }
 
 /* 仅窄档卡片：故障描述块 */
 .fault-desc {
-  color: #4B5563;
+  color: var(--muted);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -703,15 +713,17 @@ async function submitTransfer() {
   overflow: hidden;
 }
 
+/* G4 口径（§4.6）：提示条**不用图像、不用彩底彩边**——
+   实心点 + 中性字 + 发丝线边框。与进销存的低库存横幅是同一个形状（跨页一致）。 */
 .suspend-banner {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: #D46B08;
-  background-color: #FFFBE6;
-  border: 1px solid #FFE58F;
-  border-radius: 4px;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  background: transparent;
+  border: var(--hairline) solid var(--line);
+  border-radius: 0;
   padding: 6px 10px;
   margin-top: 8px;
 }

@@ -44,3 +44,10 @@ docs/
 
 # 视觉伴侣（brainstorming 的 mockup 产物与过程记录，本地会话临时文件）
 .superpowers/
+
+# 探针的**临时产物**：截图与 stdout 存档。
+# 探针脚本本身（.scratch/*.mjs）是入库的——它们是可复跑的判据；
+# 但它们吐出来的图与日志是**一次性的观测**，入库只会让 git status 长满噪声。
+.scratch/v7-shots/
+.scratch/probe-out*.txt
+

@@ -129,9 +129,13 @@ describe('状态 → 色相 / 语义档的映射', () => {
     expect(ORDER_STATUS_HUE_KEYS).toContain(STATUS_HUE_FALLBACK);
   });
 
-  it('锁死 orderStatusTagType 的既有档位——4 个页面在用它，不许顺手改', () => {
+  it('锁死 orderStatusTagType 的既有档位——它是「另一份投影」，不许顺手改', () => {
     // 这张表是**跨页一致**的契约（AGENTS.md「orderStatusTagType() 是全仓唯一一份」）。
-    // 圆环上线后它仍然服务尚未迁移的页面，行为必须逐值不变。
+    // ⚠️ 2026-10-12 第二期起它**已经没有调用点**了（V7 让状态一律走 StatusRing，
+    //    见 `status-ring-v7.spec.ts`）。保留它是 §5 V9 的「两份投影、一处来源」：
+    //    `ORDER_STATUS_HUE` 是唯一色值来源，圆环与标签都从它派生。
+    //    **不要因为「没人用」就删掉**——删了等于把这份契约一起删掉；
+    //    也**不要**把它接回去渲染状态列，那是 V7 的倒退。
     expect(orderStatusTagType(OrderStatusEnum.COMPLETED)).toBe('success');
     expect(orderStatusTagType(OrderStatusEnum.PENDING_ACCEPTANCE)).toBe('primary');
     expect(orderStatusTagType(OrderStatusEnum.REWORK_PENDING)).toBe('danger');

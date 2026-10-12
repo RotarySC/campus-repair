@@ -44,13 +44,10 @@ const UNMIGRATED = new Set([
   'views/dispatch/DispatchCenterView.vue',
   'views/error/ForbiddenView.vue',
   'views/inventory/InventoryManageView.vue',
-  'views/profile/PersonalCenterView.vue',
   'views/spatial/SpatialManageView.vue',
   'views/student/StudentOrderDetailView.vue',
-  'views/student/StudentOrderListView.vue',
   'views/student/StudentSubmitRepairView.vue',
   'views/system/UserManageView.vue',
-  'views/worker/WorkbenchView.vue',
   'views/worker/WorkerFinishView.vue'
 ]);
 
@@ -61,7 +58,11 @@ const MIGRATED = [
   'layouts/AdminLayout.vue',
   // 登录页的深蓝渐变已由 G1 的生成式背景替换（规范 §4.6），品牌蓝随之退场
   'views/login/LoginView.vue',
-  'views/analytics/WorkOrderReportView.vue'
+  'views/analytics/WorkOrderReportView.vue',
+  // ---- 第二期第一批（V7 状态圆环铺开，随该批一起迁干净）----
+  'views/worker/WorkbenchView.vue',
+  'views/student/StudentOrderListView.vue',
+  'views/profile/PersonalCenterView.vue'
 ];
 
 const HEX = /#[0-9A-Fa-f]{3,8}\b/g;

@@ -45,37 +45,31 @@ const check = (name, ok, detail = '') => {
 /* ==================== ① token 覆盖棘轮（静态） ==================== */
 
 /**
- * 仍含色值字面量的文件 = **第二期要铺开的 9 页 + 尚未迁移的共享组件**。
- * 必须与 `packages/shared/test/token-coverage.spec.ts` 的 UNMIGRATED 名单一致——
- * 那边是随 CI 跑的守卫，这边只是重复一次让本探针自洽。
+ * 名单**从唯一来源读取**，不在这里再抄一份。
+ *
+ * ⚠️ 这里原先硬编码抄了一份，2026-10-12 就因此挂过一次：第二期把 3 个文件迁干净、
+ * 改了 spec 那份名单，探针这份没跟着改，于是「已销账」那条断言报 **17 个名单项**——
+ * 探针测的是自己抄来的旧名单。**两处声明 = 下一个「同一个状态两种颜色」**
+ * （AGENTS.md 为 `orderStatusTagType()` 反复警告过的那件事）。
+ * 改成从 `token-coverage.spec.ts` 抽取后，源列表一改两处同时生效。
+ *
+ * 解析器坏掉时**抛异常而不是回一条空名单**：空名单会让「子集」与「已销账」两条断言恒真。
  */
-const UNMIGRATED = new Set([
-  'App.vue',
-  'components/AssistantWidget.vue',
-  'components/NotificationCenterDrawer.vue',
-  'components/WorkOrderTimeline.vue',
-  'views/auth/RegisterView.vue',
-  'views/dashboard/DashboardView.vue',
-  'views/dispatch/DispatchCenterView.vue',
-  'views/error/ForbiddenView.vue',
-  'views/inventory/InventoryManageView.vue',
-  'views/profile/PersonalCenterView.vue',
-  'views/spatial/SpatialManageView.vue',
-  'views/student/StudentOrderDetailView.vue',
-  'views/student/StudentOrderListView.vue',
-  'views/student/StudentSubmitRepairView.vue',
-  'views/system/UserManageView.vue',
-  'views/worker/WorkbenchView.vue',
-  'views/worker/WorkerFinishView.vue'
-]);
+function listFromSpec(name) {
+  const specPath = join(ROOT, 'packages', 'shared', 'test', 'token-coverage.spec.ts');
+  const src = readFileSync(specPath, 'utf8');
+  const start = src.indexOf(`const ${name}`);
+  if (start === -1) throw new Error(`token-coverage.spec.ts 里找不到 ${name}——探针与守卫的契约断了`);
+  const open = src.indexOf('[', start);
+  const close = src.indexOf(']', open);
+  if (open === -1 || close === -1) throw new Error(`${name} 的数组字面量找不到起止`);
+  const items = [...src.slice(open, close).matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  if (!items.length) throw new Error(`${name} 解析出 0 项——解析器坏了，不是名单为空`);
+  return items;
+}
+const UNMIGRATED = new Set(listFromSpec('UNMIGRATED'));
+const MIGRATED = listFromSpec('MIGRATED');
 const DEFINITION_SITE = 'styles/tokens.css';
-const MIGRATED = [
-  'components/ResponsiveTable.vue',
-  'components/StatusRing.vue',
-  'layouts/AdminLayout.vue',
-  'views/login/LoginView.vue',
-  'views/analytics/WorkOrderReportView.vue'
-];
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -211,6 +205,17 @@ const SNAPSHOT = `(() => {
     } : null,
     dot: dotMark ? { w: cs(dotMark, 'width'), border: cs(dotMark, 'border-top-width'), fill: cs(dotMark, 'background-color'), color: cs(dots[0], 'color') } : null,
     hueByLabel: (() => { const o = {}; for (const r of rings) { const l = r.querySelector('.status-ring__label'); if (l) o[l.textContent.trim()] = cs(r, 'color'); } return o; })(),
+    /*
+     * V7（第二期）：表格单元格 / 卡片**内部**的 el-tag 文案。
+     * 刻意把范围限制在 .el-table__cell 与 .rl-card 里，而不是全页 .el-tag——
+     * 页头的筛选控件、el-select 多选标签也会渲染成 .el-tag，文案可能与状态同名
+     * （例如一个「待派单」筛选胶囊），全页查会把它误报成「状态回退成了标签」。
+     *
+     * ⚠️ 本段住在 SNAPSHOT 这个**模板字面量**里：注释里**不许出现反引号**，
+     * 否则会提前终止模板串（实测：一个反引号换来一句 SyntaxError: Unexpected identifier）。
+     */
+    cellTagTexts: [...document.querySelectorAll('.el-table__cell .el-tag, .rl-card .el-tag')]
+      .filter(t => !t.closest('.hidden-columns')).map(t => t.textContent.trim()),
     table: th ? {
       headerBg: cs(th, 'background-color'), headerColor: cs(th, 'color'), headerWeight: cs(th, 'font-weight'),
       headerBorderBottom: cs(th, 'border-bottom-width'), headerBorderColor: cs(th, 'border-bottom-color'),
@@ -402,6 +407,19 @@ const hueWrong = Object.entries(report.hueByLabel).filter(([label, rgb]) => EXPE
 check(`圆环色相逐值符合 §3.2 锁定表（页上出现 ${Object.keys(report.hueByLabel).length} 个状态）`, hueWrong.length === 0, hueWrong.map(([l, c]) => `${l}=${toHex(c)}≠${EXPECTED_HUE[l]}`).join(', '));
 const missing = Object.keys(EXPECTED_HUE).filter((l) => !(l in report.hueByLabel));
 console.log(`INFO  演示数据里未出现、因而未被核对的状态标签：${missing.join('、') || '（无）'}`);
+
+// ---- V7（第二期）：状态只经由 StatusRing 渲染 ----
+// 静态那一半在 `packages/shared/test/status-ring-v7.spec.ts`（判据是 `orderStatusTagType(` 的调用点为 0，
+// **覆盖全仓**）；这里量的是另一半：**圆环在真实浏览器里确实渲染成了圆环**，
+// 且单元格里没有退回成带底色的 `el-tag`。静态判「代码怎么写」、实机判「页面长什么样」，缺一不可。
+const cellTags = report.cellTagTexts || [];
+const statusTags = cellTags.filter((t) => t in EXPECTED_HUE);
+check('V7：表格/卡片单元格里没有状态文案的 el-tag（状态全部走圆环）', statusTags.length === 0, statusTags.join(', '));
+check(
+  'V7：工单报表的状态圆环确实渲染出来了（反向自证，否则上一条恒真）',
+  Object.keys(report.hueByLabel).length > 0,
+  `实测 ${Object.keys(report.hueByLabel).length} 个状态：${Object.keys(report.hueByLabel).join('、')}`
+);
 
 console.log('\n===== ④ §3.4 表格口径 =====');
 if (report.table) {
