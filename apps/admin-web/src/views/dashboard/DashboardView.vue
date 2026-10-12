@@ -23,7 +23,10 @@
       <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :md="8" :lg="4">
         <el-card shadow="never" class="kpi-card">
           <div class="kpi-title">{{ card.label }}</div>
-          <div class="kpi-value" :style="{ color: card.color }">
+          <!-- KPI 大数字**不再逐卡配色**：§3.5「层级靠字号 + 颜色建立，不靠加粗」，
+               而 §5 的 V4 修订把彩色收归状态语义——6 张卡各自的蓝/橙/绿/红/赭是纯装饰。
+               6 个颜色退场后，本页唯一允许出现的色相是状态圆环（§3.3）。 -->
+          <div class="kpi-value">
             {{ card.value }}<span class="kpi-unit">{{ card.unit }}</span>
           </div>
           <div class="kpi-sub">{{ card.sub }}</div>
@@ -176,13 +179,13 @@ const kpiCards = computed(() => {
   const avgHours = Number(kpi.value.averageResponseHours);
   const score = Number(kpi.value.satisfactionScore);
   return [
-    { label: '累计报修总量', value: kpi.value.totalOrderCount, unit: '单', sub: '全校区台账', color: '#1677FF' },
-    { label: '今日新增提单', value: kpi.value.todayNewOrderCount, unit: '单', sub: '实时接报调度', color: '#FA8C16' },
-    { label: '当前在修在办', value: kpi.value.activeProcessingCount, unit: '单', sub: '现场施工推进', color: '#2F54EB' },
-    { label: '完工闭环率', value: kpi.value.completionRatePercent, unit: '%', sub: '验收结单水准', color: '#52C41A' },
+    { label: '累计报修总量', value: kpi.value.totalOrderCount, unit: '单', sub: '全校区台账' },
+    { label: '今日新增提单', value: kpi.value.todayNewOrderCount, unit: '单', sub: '实时接报调度' },
+    { label: '当前在修在办', value: kpi.value.activeProcessingCount, unit: '单', sub: '现场施工推进' },
+    { label: '完工闭环率', value: kpi.value.completionRatePercent, unit: '%', sub: '验收结单水准' },
     // 无完工单 / 无有效评价时后端返回 0，此处显示占位符而不是伪造的均值
-    { label: '平均响应解决耗时', value: avgHours > 0 ? avgHours : '—', unit: avgHours > 0 ? '小时' : '', sub: '提单至竣工核销', color: '#FA541C' },
-    { label: '师生好评综合均分', value: score > 0 ? score : '—', unit: score > 0 ? '★' : '', sub: '服务质检口碑', color: '#D48806' }
+    { label: '平均响应解决耗时', value: avgHours > 0 ? avgHours : '—', unit: avgHours > 0 ? '小时' : '', sub: '提单至竣工核销' },
+    { label: '师生好评综合均分', value: score > 0 ? score : '—', unit: score > 0 ? '★' : '', sub: '服务质检口碑' }
   ];
 });
 
@@ -270,31 +273,68 @@ async function fetchAllData() {
   }
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: '#FFFFFF',
-  borderColor: '#E5E7EB',
-  borderWidth: 1,
-  textStyle: { color: '#1F2937' },
-  extraCssText: 'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);'
-};
-const AXIS_LABEL = { color: '#6B7280', fontSize: 11 };
-const SPLIT_LINE = { lineStyle: { color: '#F0F2F5' } };
+/**
+ * ECharts 只吃**具体色值**，拿不到 CSS 变量，所以这里从 `:root` 读令牌。
+ *
+ * **必须在渲染时读，不能放模块顶层**：模块求值可能早于样式注入，那时会静默走 fallback——
+ * 而 fallback 与令牌是同一个值，于是「读数失败」这件事完全看不出来（假绿灯）。
+ */
+function cssToken(name: string, fallback: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+/** `'#0052D9'` + 0.28 → `'rgba(0, 82, 217, 0.28)'`。面积渐变需要透明度，而令牌给的是 hex。 */
+function withAlpha(color: string, alpha: number): string {
+  const hex = color.trim().replace('#', '');
+  if (hex.length !== 3 && hex.length !== 6) return color;
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  const n = Number.parseInt(full, 16);
+  if (Number.isNaN(n)) return color;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function chartTheme() {
+  const ink = cssToken('--ink', 'rgba(0, 0, 0, 0.9)');
+  const muted = cssToken('--muted', 'rgba(0, 0, 0, 0.7)');
+  const line = cssToken('--line', '#E6E9EF');
+  return {
+    ink,
+    muted,
+    line,
+    surface: cssToken('--surface', '#FFFFFF'),
+    primary: cssToken('--el-color-primary', '#0052D9'),
+    primaryLight: cssToken('--el-color-primary-light-3', '#4D86E4'),
+    /** 「每日完工结单」用**已结单**的状态色相（`--h7`）：这条序列讲的就是结单，不是装饰用色 */
+    completed: cssToken('--h7', '#52C41A'),
+    tooltip: {
+      backgroundColor: cssToken('--surface', '#FFFFFF'),
+      borderColor: line,
+      borderWidth: 1,
+      textStyle: { color: ink },
+      extraCssText: `box-shadow: ${cssToken('--shadow-overlay', '0 8px 24px -4px rgba(0, 0, 0, 0.12)')};`
+    },
+    axisLabel: { color: muted, fontSize: 11 },
+    splitLine: { lineStyle: { color: line } }
+  };
+}
 
 function renderTrendChart(data: TrendChartVO) {
   if (!trendChartRef.value) return;
   if (!trendChart) {
     trendChart = echarts.init(trendChartRef.value);
   }
+  const theme = chartTheme();
 
   trendChart.setOption({
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis', ...TOOLTIP_STYLE },
+    tooltip: { trigger: 'axis', ...theme.tooltip },
     legend: {
       data: ['每日报修提单', '每日完工结单'],
       right: 8,
       top: 0,
       icon: 'roundRect',
-      textStyle: { color: '#6B7280', fontSize: 12 }
+      textStyle: { color: theme.muted, fontSize: 12 }
     },
     grid: { left: 8, right: 16, bottom: 4, top: 40, containLabel: true },
     xAxis: {
@@ -302,15 +342,15 @@ function renderTrendChart(data: TrendChartVO) {
       boundaryGap: false,
       data: data.dates,
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: '#E5E7EB' } },
-      axisLabel: AXIS_LABEL
+      axisLine: { lineStyle: { color: theme.line } },
+      axisLabel: theme.axisLabel
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine: SPLIT_LINE,
-      axisLabel: AXIS_LABEL
+      splitLine: theme.splitLine,
+      axisLabel: theme.axisLabel
     },
     series: [
       {
@@ -319,12 +359,12 @@ function renderTrendChart(data: TrendChartVO) {
         smooth: true,
         showSymbol: false,
         data: data.submitCounts,
-        itemStyle: { color: '#1677FF' },
-        lineStyle: { width: 2, color: '#1677FF' },
+        itemStyle: { color: theme.primary },
+        lineStyle: { width: 2, color: theme.primary },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(22, 119, 255, 0.28)' },
-            { offset: 1, color: 'rgba(22, 119, 255, 0.02)' }
+            { offset: 0, color: withAlpha(theme.primary, 0.28) },
+            { offset: 1, color: withAlpha(theme.primary, 0.02) }
           ])
         }
       },
@@ -334,12 +374,12 @@ function renderTrendChart(data: TrendChartVO) {
         smooth: true,
         showSymbol: false,
         data: data.completedCounts,
-        itemStyle: { color: '#52C41A' },
-        lineStyle: { width: 2, color: '#52C41A' },
+        itemStyle: { color: theme.completed },
+        lineStyle: { width: 2, color: theme.completed },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(82, 196, 26, 0.24)' },
-            { offset: 1, color: 'rgba(82, 196, 26, 0.02)' }
+            { offset: 0, color: withAlpha(theme.completed, 0.24) },
+            { offset: 1, color: withAlpha(theme.completed, 0.02) }
           ])
         }
       }
@@ -352,27 +392,28 @@ function renderSpatialChart(data: SpatialHeatVO[]) {
   if (!spatialChart) {
     spatialChart = echarts.init(spatialChartRef.value);
   }
+  const theme = chartTheme();
 
   const names = data.map(d => d.spaceName);
   const counts = data.map(d => d.orderCount);
 
   spatialChart.setOption({
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...TOOLTIP_STYLE },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...theme.tooltip },
     grid: { left: 8, right: 16, bottom: 4, top: 24, containLabel: true },
     xAxis: {
       type: 'category',
       data: names,
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: '#E5E7EB' } },
-      axisLabel: { ...AXIS_LABEL, interval: 0, rotate: 20 }
+      axisLine: { lineStyle: { color: theme.line } },
+      axisLabel: { ...theme.axisLabel, interval: 0, rotate: 20 }
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine: SPLIT_LINE,
-      axisLabel: AXIS_LABEL
+      splitLine: theme.splitLine,
+      axisLabel: theme.axisLabel
     },
     series: [
       {
@@ -382,10 +423,11 @@ function renderSpatialChart(data: SpatialHeatVO[]) {
         data: counts,
         itemStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#4096FF' },
-            { offset: 1, color: '#1677FF' }
+            { offset: 0, color: theme.primaryLight },
+            { offset: 1, color: theme.primary }
           ]),
-          borderRadius: [4, 4, 0, 0]
+          /* §3.5 圆角区间 0–2px；柱条原来给了 4px（阶外值） */
+          borderRadius: 0
         }
       }
     ]
@@ -403,24 +445,36 @@ function renderSpatialChart(data: SpatialHeatVO[]) {
   });
 }
 
+/**
+ * 故障大类的分类色板。
+ *
+ * ⚠️ **这是本页唯一仍在令牌之外的一处**，刻意保留、登记在案：
+ * 规范 §5 的 V4 修订把口径收成「彩色只服务状态语义」，而饼图需要的是**分类色**——
+ * 语义完全不同的另一种用色。规范 §3 没有定义分类色板，而把 8 个扇区压成灰阶会让饼图
+ * **不可读**（读不出相邻扇区的边界）。这是需要单独决策的一件事，不是实施遗漏；
+ * 在决策之前，保持现状比自造一套色板更安全。
+ */
+const CATEGORY_PIE_PALETTE = ['#1677FF', '#52C41A', '#FAAD14', '#FA541C', '#722ED1', '#13C2C2', '#EB2F96', '#8C8C8C'];
+
 function renderCategoryPie(data: CategoryRatioVO[]) {
   if (!categoryPieRef.value) return;
   if (!categoryPie) {
     categoryPie = echarts.init(categoryPieRef.value);
   }
+  const theme = chartTheme();
 
   const pieData = data.map(d => ({ name: d.categoryName, value: d.count }));
 
   categoryPie.setOption({
     backgroundColor: 'transparent',
-    color: ['#1677FF', '#52C41A', '#FAAD14', '#FA541C', '#722ED1', '#13C2C2', '#EB2F96', '#8C8C8C'],
-    tooltip: { trigger: 'item', ...TOOLTIP_STYLE },
+    color: CATEGORY_PIE_PALETTE,
+    tooltip: { trigger: 'item', ...theme.tooltip },
     legend: {
       orient: 'vertical',
       right: 8,
       top: 'center',
       icon: 'circle',
-      textStyle: { color: '#6B7280', fontSize: 12 }
+      textStyle: { color: theme.muted, fontSize: 12 }
     },
     series: [
       {
@@ -430,8 +484,8 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
         center: ['38%', '50%'],
         avoidLabelOverlap: false,
         itemStyle: {
-          borderRadius: 6,
-          borderColor: '#FFFFFF',
+          borderRadius: 0,
+          borderColor: theme.surface,
           borderWidth: 2
         },
         label: { show: false },
@@ -439,8 +493,8 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
           label: {
             show: true,
             fontSize: 14,
-            fontWeight: 'bold',
-            color: '#1F2937'
+            fontWeight: 'normal',
+            color: theme.ink
           }
         },
         data: pieData
@@ -454,14 +508,15 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 .dashboard-view {
   min-height: calc(100vh - var(--topbar-h, 56px));
   padding: 20px 24px;
-  background-color: #F5F7FA;
+  background-color: var(--canvas);
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+/* §3.5：卡片圆角 0（腾讯云卡片实测 0px，没有一个 ≥8px） */
 .account-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
 
 .account-row {
@@ -481,7 +536,7 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 
 .account-item {
   font-size: 13px;
-  color: #4B5563;
+  color: var(--muted);
 }
 
 .kpi-row,
@@ -492,31 +547,33 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 
 .kpi-card,
 .panel-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
 
 .kpi-title {
   font-size: 13px;
-  color: #6B7280;
+  color: var(--muted);
   margin-bottom: 6px;
 }
 
 .kpi-value {
   font-size: 26px;
-  font-weight: 700;
+  /* §3.5：**KPI 大数字也是常规字重**。层级靠字号 + 颜色建立，不靠加粗（实测 400 命中 988 次） */
+  font-weight: var(--fw-normal);
   line-height: 1.2;
+  color: var(--ink);
 }
 
 .kpi-unit {
   font-size: 13px;
-  font-weight: normal;
-  color: #9CA3AF;
+  font-weight: var(--fw-normal);
+  color: var(--faint);
   margin-inline-start: 4px;
 }
 
 .kpi-sub {
-  font-size: 12px;
-  color: #9CA3AF;
+  font-size: var(--fs-base);
+  color: var(--faint);
   margin-top: 6px;
 }
 
@@ -528,14 +585,14 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 }
 
 .panel-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1F2937;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
 }
 
 .panel-hint {
-  font-size: 12px;
-  color: #9CA3AF;
+  font-size: var(--fs-base);
+  color: var(--faint);
 }
 
 .chart-container {
@@ -550,6 +607,15 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
   height: 300px;
 }
 
+/*
+  荣誉榜名次徽标。
+  原先第 1/2/3 名各配一种彩色（#F5222D 红 / #FA8C16 橙 / #FADB14 黄）——
+  §5 的 V4 修订把口径收成「彩色只服务状态语义」，**名次不是状态** ⇒ 退到中性阶梯：
+  第 1 名 `--ink`、其余 `--muted`。名次层级仍然可读（深浅对比），但不再引入三个色相。
+  ⚠️ 已知重复：`ResponsiveTable` 卡片态里还有一个 `.rl-card__rank`（同为名次徽标）——
+  榜单一页同时给了 `ranked` 与 `#col-rank` 插槽，窄档下名次会**出现两次**。
+  这是本次实施之前就有的问题，登记在案、不在本期动它（改动会牵到榜单的列定义）。
+*/
 .rank-badge {
   display: inline-block;
   width: 20px;
@@ -557,21 +623,13 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
   line-height: 20px;
   border-radius: 50%;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   text-align: center;
-  color: #FFFFFF;
-  background-color: #9CA3AF;
+  color: var(--surface);
+  background-color: var(--muted);
 }
 
 .rank-1 {
-  background-color: #F5222D;
-}
-
-.rank-2 {
-  background-color: #FA8C16;
-}
-
-.rank-3 {
-  background-color: #FAAD14;
+  background-color: var(--ink);
 }
 </style>

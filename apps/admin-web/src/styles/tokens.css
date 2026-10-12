@@ -1,0 +1,100 @@
+/**
+ * 设计令牌层（视觉语言方向 D）—— 只声明变量，不含任何选择器逻辑。
+ *
+ * 职责分离：本文件管「视觉语言的取值」，`responsive.css` 管「窄档（<768px）度量适配」。
+ * 导入位置（main.ts）：必须在 `element-plus/dist/index.css` **之后**（否则 EP 覆盖回去）、
+ * 在 `./styles/responsive.css` **之前**（窄档适配允许按令牌微调）。
+ *
+ * 规范依据：docs/20261012-1330-campus-repair-system-visual-language-d-design.md §3.1~§3.6、§4.1、§4.2。
+ * 口径来源：全部实测自腾讯云控制台（见规范 §1/§3 的逐条标注），非本次凭空拟定。
+ *
+ * ⚠️ 状态色相 `--h1`~`--h8` 与 `packages/shared/src/constants/status.ts` 的 `ORDER_STATUS_HUE`
+ *    是**同一份色值的两处声明**（CSS 一份、TS 一份，CSS 无法 import TS）。
+ *    这与仓库里 `jwt.secret` 默认值两处、密码强度规则两处是同一类取舍：
+ *    **冗余保留，但用回归断言把「两处必须一致」变成机器判据**——
+ *    见 `packages/shared/test/status-hue.spec.ts`（逐值比对本文件）。改任一处的色值都会让它变红。
+ */
+
+:root {
+  /* ==================== §3.1 中性色：一个黑 + 透明度阶梯 ====================
+     腾讯云的口径是「不是四个灰，是同一个黑的四档透明度」，天然保证灰阶永远同色相。
+     本仓今天散着 `#6B7280` / `#9CA3AF` / `#4B5563` 三种不同的灰，就是没有这一层的结果。 */
+  --ink: rgba(0, 0, 0, 0.9); /* 正文、KPI 数字、状态文字 */
+  --muted: rgba(0, 0, 0, 0.7); /* 次级文字、表头 */
+  --faint: rgba(0, 0, 0, 0.5); /* 弱化文字、时间戳 */
+  --disabled: rgba(0, 0, 0, 0.3); /* 禁用态文字（§3.6 按钮禁用态） */
+
+  --line: #e6e9ef; /* 发丝线（表头下沿、卡片描边） */
+  --canvas: #f2f4f8; /* 画布（页面底色） */
+  --surface: #ffffff; /* 卡片、表格、侧边栏 */
+  /* 遮罩层：抽屉/弹窗底下的压暗。不是文字色，不参与上面的透明度阶梯；
+     与个人中心头像遮罩的 rgba(0,0,0,.45) 是同一个值，故共用一处。 */
+  --scrim: rgba(0, 0, 0, 0.45);
+
+  /* ==================== §3.2 工单状态色相（8 个，已锁定） ====================
+     编号按 §3.2 那张两列表**列优先**读序（左列 h1~h4、右列 h5~h8），也就是工单生命周期顺序。
+     色相只活在圆环的 2px 描边上（§3.3），因此**不降饱和**：
+     色相的面积只剩约 100px²，饱和度是那点色相唯一还能被认出来的东西。
+     D 与 C 的根本差别——同一个「安静」，C 靠降低浓度，D 靠缩小面积。 */
+  --h1: #fa8c16; /* 待派单（`MANUAL_DISPATCH` 待人工调度与之同色，理由见 status.ts） */
+  --h2: #13c2c2; /* 待承接 */
+  --h3: #1677ff; /* 维修中 */
+  --h4: #6b7c93; /* 已挂起  ← 由 #FAAD14 改：停滞语义配冷色，且琥珀只剩「待派单」一个主人 */
+  --h5: #722ed1; /* 待验收 */
+  --h6: #f5222d; /* 返工待派 */
+  --h7: #52c41a; /* 已结单 */
+  --h8: #b3b3b3; /* 已作废  ← 由 #8C8C8C 改：作废即褪色 */
+
+  /* 标记语义（§3.3）：实心＝警戒，空心＝分类；两者同为 9px 外径，只差「填充与否」这一个变量。
+     警戒色复用「返工待派」的色相——它不是第 9 个色相，而是同一个「异常」语义。 */
+  --alert: var(--h6);
+
+  /* ==================== §3.5 形状与排版 ==================== */
+  --radius: 2px; /* 腾讯云圆角频次 2px×7 / 4px×5，没有一个 ≥8px */
+  --radius-card: 0; /* 卡片是 0px */
+  --hairline: 0.667px; /* 1.5× DPR 下的「一个物理像素」发丝线；刻意值，不是笔误 */
+  --fs-base: 12px; /* 实测 12px 命中 627 次（16px 178 / 14px 59） */
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fw-normal: 400; /* 实测 400 命中 988 次；层级靠字号 + 颜色建立，不靠加粗 */
+  --fw-medium: 600; /* 600 仅 23 次，是上限 */
+  /* 阴影几乎不用，浮层才用（§3.5：全站只有 4 种，最淡的是 rgba(0,0,0,.05) 0 1px 4px） */
+  --shadow-overlay: 0 8px 24px -4px rgba(0, 0, 0, 0.12);
+
+  /* ==================== §4.2 Element Plus 主题对齐 ====================
+     这是消除「两个蓝」的手段：`--el-color-primary` 被 `var()` 读取 22 次
+     （AssistantWidget / DrilldownCascader / SuggestionCardList / StudentSubmitRepairView），
+     在 `:root` 覆盖它，EP 组件与这批自写 chrome 会**一起**对齐。
+     品牌蓝 `#1677FF` 退场（§3.6 采纳腾讯云按钮口径），主色改 `#0052D9`。
+
+     ⚠️ **必须连派生档一起覆盖**：EP 的 `light-3/5/7/8/9` 与 `dark-2` 是构建期从
+     `$color-primary` 用 `mix()` 算出的**静态色值**，只改基底会导致
+     「实心按钮是新蓝、同色的 plain 按钮/标签底色还是旧蓝 `#409EFF`」——
+     那只是把「两个蓝」换个地方出现。下列数值 = `mix(#fff, #0052D9, X%)` / `mix(#000, #0052D9, 20%)`。 */
+  --el-color-primary: #0052d9;
+  --el-color-primary-light-3: #4d86e4;
+  --el-color-primary-light-5: #80a9ec;
+  --el-color-primary-light-7: #b3cbf4;
+  --el-color-primary-light-8: #ccdcf7;
+  --el-color-primary-light-9: #e6eefb;
+  --el-color-primary-dark-2: #0042ae;
+
+  /* 圆角 0–2px（§3.5）。只收敛 base/small——
+     `--el-border-radius-round` 留给 `circle`/`round` 的圆形语义（顶栏通知圆钮），
+     §3.6 的「圆角 0」说的是普通按钮，不为它牺牲一个既有的可点提示形态。 */
+  --el-border-radius-base: 2px;
+  --el-border-radius-small: 2px;
+
+  /* 基准字号 12px（§3.5）。EP 的按钮/表单/表格/下拉都从这里取，一处收口。 */
+  --el-font-size-base: 12px;
+
+  /* 发丝线色：`--el-border-color-lighter` 是 EP 组件最常用的一档边框色 */
+  --el-border-color-lighter: #e6e9ef;
+
+  /* 表格（§3.4）：表头**白底**（不是灰底）＋ 文字 --muted ＋ 发丝线；
+     行**不打分隔线**（实测腾讯云 `border-bottom: 0px`）。 */
+  --el-table-header-bg-color: var(--surface);
+  --el-table-header-text-color: var(--muted);
+  --el-table-border-color: var(--line);
+  --el-table-font-size: var(--fs-base);
+}

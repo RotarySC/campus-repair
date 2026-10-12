@@ -324,7 +324,7 @@ onMounted(() => {
   --topbar-h: 56px;
 
   min-height: 100vh;
-  background-color: #f5f7fa;
+  background-color: var(--canvas);
 }
 
 /* ---------- 固定侧边栏 ---------- */
@@ -338,8 +338,8 @@ onMounted(() => {
   width: var(--sidebar-w);
   display: flex;
   flex-direction: column;
-  background-color: #ffffff;
-  border-inline-end: 1px solid #e5e7eb;
+  background-color: var(--surface);
+  border-inline-end: 1px solid var(--line);
   transition: width 0.2s ease;
   overflow: hidden;
 }
@@ -349,13 +349,13 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   /* 品牌区的文字与标识共用一色：BrandMark 用 currentColor 继承，故不必在 .brand-text 再写一遍 */
-  color: #1f2937;
+  color: var(--ink);
   /* 含 1px 下边框，与顶栏同高，两条分隔线落在同一水平线上 */
   box-sizing: border-box;
   height: var(--topbar-h);
   /* 左侧 24px 与 .nav(12) + .nav-item(12) 的图标对齐边一致；右侧收紧给标题栏按钮让位 */
   padding-inline: 24px 8px;
-  border-block-end: 1px solid #f0f2f5;
+  border-block-end: 1px solid var(--line);
   flex-shrink: 0;
 }
 
@@ -384,20 +384,20 @@ onMounted(() => {
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background-color: transparent;
-  color: #6b7280;
+  color: var(--muted);
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .brand-toggle:hover {
-  background-color: #f5f7fa;
-  color: #1677ff;
+  background-color: var(--canvas);
+  color: var(--ink);
 }
 
 .brand-toggle:focus-visible {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
 
@@ -418,22 +418,29 @@ onMounted(() => {
   gap: 12px;
   height: 44px;
   padding-inline: 12px;
-  border-radius: 8px;
-  color: #4b5563;
+  border-radius: var(--radius);
+  color: var(--muted);
   text-decoration: none;
   white-space: nowrap;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .nav-item:hover {
-  background-color: #f5f7fa;
-  color: #1677ff;
+  background-color: var(--canvas);
+  color: var(--ink);
 }
 
+/*
+  选中项：底色 + 字重 + 前缘色条三重区分，**全部中性**。
+  §5 的 V4 修订把口径收成「彩色只服务状态语义」，导航选中态不是状态 ⇒ 品牌蓝退场。
+  ⚠️ 与实测的一处偏离：腾讯云的侧栏选中项**没有前缘色条**（它靠 `#282E40` 那块深底与亮字，
+  在深色外壳里对比足够）。本项目是浅色外壳，`--canvas` 与白底只差一点点，
+  只靠底色 + 字重不足以支撑一级导航的定位，因此保留色条但把它换成中性 `--ink`。
+*/
 .nav-item.is-active {
-  background-color: #eaf2ff;
-  color: #1677ff;
-  font-weight: 600;
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-weight: var(--fw-medium);
 }
 
 /* 活动项用前缘色条强化定位，避免只靠颜色区分 */
@@ -444,7 +451,7 @@ onMounted(() => {
   inset-block: 10px;
   width: 3px;
   border-radius: 0 2px 2px 0;
-  background-color: #1677ff;
+  background-color: var(--ink);
 }
 
 .nav-icon {
@@ -452,7 +459,10 @@ onMounted(() => {
 }
 
 .nav-label {
-  font-size: 14px;
+  /* §3.5 基准字号 12px（实测腾讯云 12px 命中 627 次，14px 仅 59）。
+     导航是侧栏正文，跟着基准走；EP 侧（--el-font-size-base）本轮已收到 12px，
+     这里若留在 14px 会出现「导航比正文字还大」的反常层级。 */
+  font-size: var(--fs-base);
 }
 
 /* ---------- 内容区 ---------- */
@@ -495,15 +505,16 @@ onMounted(() => {
   justify-content: space-between;
   gap: 16px;
   padding-inline: 24px;
-  background-color: #ffffff;
-  border-block-end: 1px solid #e5e7eb;
+  background-color: var(--surface);
+  border-block-end: 1px solid var(--line);
 }
 
 .page-title {
   margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  color: #1f2937;
+  /* §3.5 字号阶梯：12 / 16 / 20；17px 是阶外值，归到 16px */
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -523,20 +534,21 @@ onMounted(() => {
   height: 40px;
   padding-inline: 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background-color: transparent;
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
 .user-chip:hover {
-  background-color: #f5f7fa;
+  background-color: var(--canvas);
 }
 
+/* 头像原为品牌蓝实心；§5 的 V4 修订后彩色只服务状态语义 ⇒ 退到中性墨色（对比度反而更高） */
 .user-avatar {
-  background-color: #1677ff;
-  color: #ffffff;
-  font-size: 13px;
+  background-color: var(--ink);
+  color: var(--surface);
+  font-size: var(--fs-base);
 }
 
 .user-meta {
@@ -548,13 +560,13 @@ onMounted(() => {
 
 .user-name {
   font-size: 13px;
-  font-weight: 600;
-  color: #1f2937;
+  font-weight: var(--fw-medium);
+  color: var(--ink);
 }
 
 .user-role {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .page-scroll {
@@ -580,17 +592,17 @@ onMounted(() => {
   height: 36px;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background-color: transparent;
-  color: #4b5563;
+  color: var(--muted);
   cursor: pointer;
   flex-shrink: 0;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .hamburger-btn:hover {
-  background-color: #f5f7fa;
-  color: #1677ff;
+  background-color: var(--canvas);
+  color: var(--ink);
 }
 
 /* 遮罩仅窄屏生效；桌面档永不渲染视觉 */
@@ -608,7 +620,10 @@ onMounted(() => {
 
   .sidebar-drawer-open .sidebar {
     transform: translateX(0);
-    box-shadow: 0 0 24px rgba(15, 23, 42, 0.18);
+    /* V15「禁止自造阴影」的唯一例外场景：抽屉是**浮层**，§3.5 允许浮层用阴影。
+       原先这里是就地写死的 `0 0 24px rgba(15,23,42,.18)`，现改用令牌 --shadow-overlay，
+       全站浮层从此只有一个阴影值。 */
+    box-shadow: var(--shadow-overlay);
   }
 
   .sidebar-collapsed .sidebar {
@@ -635,7 +650,7 @@ onMounted(() => {
     position: fixed;
     inset: 0;
     z-index: 19;
-    background-color: rgba(15, 23, 42, 0.4);
+    background-color: var(--scrim);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;

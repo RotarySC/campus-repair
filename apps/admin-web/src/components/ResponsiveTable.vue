@@ -2,12 +2,14 @@
   <div class="responsive-list" :class="{ 'is-card-mode': isCardMode }">
     <!-- 宽档：保持既有 el-table 交互（固定列/行点击等全部不变） -->
     <div v-if="!isCardMode" class="rl-table-wrapper">
+      <!--
+        无 `border`、无 `stripe`：§3.4 实测腾讯云的行是 `border-bottom: 0px`、表头白底无格线。
+        竖线与斑马纹是「表格噪声」，D 把它们去掉，层级改用发丝线（见下方 .rl-table-wrapper 样式）。
+      -->
       <el-table
         v-loading="loading"
         :data="items"
         :empty-text="emptyText"
-        border
-        stripe
         style="width: 100%;"
         :row-class-name="clickable ? 'rl-clickable-row' : ''"
         @row-click="onRowClick"
@@ -49,14 +51,17 @@
               </template>
               <template v-else>{{ titleColumn ? display(item, titleColumn) : '—' }}</template>
             </span>
-            <span
-              v-for="tagCol in tagColumns"
-              :key="tagCol.key || tagCol.label"
-              class="rl-card__tag"
-              :class="`is-${cardTag(item, tagCol).type || 'info'}`"
-            >
-              {{ cardTag(item, tagCol).text }}
-            </span>
+            <!-- 卡片形态与表格形态**共用同一份状态色值**（§4.3 的契约变更），
+                 `type: 'ring'` 的标签渲染成 9px 圆环，其余仍是语义小胶囊（非状态类标签仍走 el-tag 风格） -->
+            <template v-for="tag in cardTags(item)" :key="tag.key">
+              <StatusRing
+                v-if="tag.type === 'ring'"
+                class="rl-card__ring"
+                :status="tag.status"
+                :label="tag.text"
+              />
+              <span v-else class="rl-card__tag" :class="`is-${tag.type || 'info'}`">{{ tag.text }}</span>
+            </template>
           </div>
           <el-icon v-if="clickable" class="rl-card__arrow"><ArrowRight /></el-icon>
         </header>
@@ -89,13 +94,20 @@ import { computed, useSlots } from 'vue';
 import { ArrowRight } from '@element-plus/icons-vue';
 import { formatDate, formatDateTime } from '@campus/shared';
 import { useViewport } from '../composables/useViewport';
+import StatusRing from './StatusRing.vue';
 
-/** 卡片标题行里的小标签配色（与 el-tag 的语义色一致） */
-export type CardTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info';
+/**
+ * 卡片标题行里的小标签配色。
+ * `'ring'` 是视觉语言方向 D 新增的一档（§4.3 契约变更）：渲染成 9px 状态圆环而不是彩色胶囊，
+ * 色相由 `CardTag.status` 推导——**卡片形态与表格形态共用同一份色值**。
+ */
+export type CardTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'ring';
 
 export interface CardTag {
   text: string;
   type?: CardTagType;
+  /** `type: 'ring'` 时为必填：工单状态码，圆环色相由它推导（§4.3）。其他档位忽略。 */
+  status?: string;
 }
 
 /** 正文字段在卡片上的呈现方式；自定义渲染请改用同名具名插槽 `col-<key>` */
@@ -142,7 +154,7 @@ const props = withDefaults(
     clickable?: boolean;
     /** 列表项主键字段；缺省回退到下标 */
     itemKey?: string;
-    /** 榜单类列表：卡片标题前显示序号徽标（第 1~3 名高亮） */
+    /** 榜单类列表：卡片标题前显示序号徽标（第 1 名加重、其余中性） */
     ranked?: boolean;
     /**
      * 切换为卡片布局的**视口宽度阈值（px）**：`viewportWidth < cardBelow` 即用卡片。
@@ -215,8 +227,12 @@ function isEmpty(item: T, col: TableColumn<T>): boolean {
 const visibleBodyColumns = (item: T) =>
   bodyColumns.filter((col) => !(col.cardHideEmpty && isEmpty(item, col)));
 
-function cardTag(item: T, col: TableColumn<T>): CardTag {
-  return col.cardTag ? col.cardTag(item) : { text: display(item, col) };
+/** 标题行的标签集合。每个标签算一次 `cardTag()`——此前模板里调了两遍（文案一遍、配色一遍）。 */
+function cardTags(item: T): Array<CardTag & { key: string }> {
+  return tagColumns.map((col) => ({
+    ...(col.cardTag ? col.cardTag(item) : { text: display(item, col) }),
+    key: col.key || col.label
+  }));
 }
 
 function onRowClick(row: T) {
@@ -225,11 +241,51 @@ function onRowClick(row: T) {
 </script>
 
 <style scoped>
+/* ---------- 宽档：§3.4 实测口径 ----------
+   表头**白底**由 tokens.css 的 `--el-table-header-bg-color` 全局提供（§4.2 指定在 :root 覆盖）；
+   此处补的是「表头/行的内边距、发丝线、行不打分隔线」这三条**结构**口径（§4.4：落在本组件）。 */
 .rl-table-wrapper {
   width: 100%;
   overflow-x: auto;
 }
 
+.rl-table-wrapper :deep(.el-table) {
+  font-size: var(--fs-base);
+}
+
+.rl-table-wrapper :deep(.el-table th.el-table__cell) {
+  padding: 13px 10px;
+  border-radius: 0;
+  /* 0.667px = 1.5× DPR 下的一个物理像素发丝线（§3.4 刻意值，不是笔误） */
+  border-bottom: var(--hairline) solid var(--line);
+  /* §3.5：层级靠字号 + 颜色，不靠加粗 */
+  font-weight: var(--fw-normal);
+  color: var(--muted);
+}
+
+/*
+  §3.4 的 `13px 10px` / `14px 10px` 是**整个单元格**的度量。EP 把水平内边距放在内层
+  `.cell` 上（默认 12px），若不归零就会与外层叠加成 22px——那既不是实测值，
+  也会把「状态列只有 100px 宽」这种列挤到换行。归零后总水平内边距正好是 10px。
+*/
+.rl-table-wrapper :deep(.el-table .cell) {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.rl-table-wrapper :deep(.el-table td.el-table__cell) {
+  padding: 14px 10px;
+  /* 实测腾讯云 `border-bottom: 0px` —— 行不打分隔线 */
+  border-bottom: 0;
+}
+
+/* EP 在 inner-wrapper 上画了一条 1px 外框底线，一并收成发丝线同色 */
+.rl-table-wrapper :deep(.el-table__inner-wrapper::before) {
+  height: var(--hairline);
+  background-color: var(--line);
+}
+
+/* ---------- 窄档卡片 ---------- */
 .rl-cards {
   display: flex;
   flex-direction: column;
@@ -238,11 +294,11 @@ function onRowClick(row: T) {
 }
 
 .rl-card {
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #fff;
+  /* V15：圆角 0–2px、**禁止自造阴影**（原先 8px 圆角 + 0 1px 2px 投影） */
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
   padding: 12px 14px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .rl-card--clickable {
@@ -250,7 +306,7 @@ function onRowClick(row: T) {
 }
 
 .rl-card--clickable:active {
-  background: #f5f7fa;
+  background: var(--canvas);
 }
 
 .rl-card__head {
@@ -259,7 +315,7 @@ function onRowClick(row: T) {
   justify-content: space-between;
   gap: 8px;
   padding-bottom: 10px;
-  border-bottom: 1px dashed #ebeef5;
+  border-bottom: 1px dashed var(--line);
 }
 
 .rl-card__title {
@@ -270,77 +326,82 @@ function onRowClick(row: T) {
   min-width: 0;
 }
 
+/*
+  序号徽标：原先第 1/2/3 名各配一种彩色（#F5222D / #FA8C16 / #FADB14）。
+  §5 的 V4 修订把口径收成「**彩色只服务状态语义**」，名次不是状态 ⇒ 退到中性阶梯。
+  名次层级改用中性色的深浅（第 1 名 --ink，其余 --muted），不再新增色相。
+*/
 .rl-card__rank {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #e5e7eb;
-  color: #4b5563;
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--muted);
+  color: var(--surface);
+  font-size: var(--fs-base);
+  /* §3.5：600 是字重上限 */
+  font-weight: var(--fw-medium);
   line-height: 20px;
   text-align: center;
 }
 
 .rl-card__rank.is-1 {
-  background: #f5222d;
-  color: #fff;
-}
-.rl-card__rank.is-2 {
-  background: #fa8c16;
-  color: #fff;
-}
-.rl-card__rank.is-3 {
-  background: #fadb14;
-  color: #7c5c00;
+  background: var(--ink);
 }
 
 .rl-card__title-text {
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   font-size: 14px;
-  color: #1f2937;
+  color: var(--ink);
   word-break: break-all;
 }
 
+.rl-card__ring {
+  flex-shrink: 0;
+}
+
+/*
+  非状态类标签（条线、库存等）仍是语义小胶囊；配色改为**引用 EP 自己的语义色变量**，
+  不再抄一份近似 hex——这样它们会跟着 EP 主题一起变，且本文件不出现任何色值字面量。
+*/
 .rl-card__tag {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 18px;
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   border: 1px solid transparent;
 }
 
 .rl-card__tag.is-primary {
-  color: #1677ff;
-  background: #e8f3ff;
-  border-color: #b9dbff;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-8);
 }
 .rl-card__tag.is-success {
-  color: #15803d;
-  background: #eafaf0;
-  border-color: #b7ebc6;
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-8);
 }
 .rl-card__tag.is-warning {
-  color: #b45309;
-  background: #fff7e6;
-  border-color: #ffd591;
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-8);
 }
 .rl-card__tag.is-danger {
-  color: #b91c1c;
-  background: #fff1f0;
-  border-color: #ffa39e;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-8);
 }
 .rl-card__tag.is-info {
-  color: #6b7280;
-  background: #f3f4f6;
-  border-color: #e5e7eb;
+  color: var(--muted);
+  background: var(--canvas);
+  border-color: var(--line);
 }
 
 .rl-card__arrow {
   flex-shrink: 0;
-  color: #c0c4cc;
+  color: var(--faint);
   margin-top: 2px;
 }
 
@@ -361,14 +422,14 @@ function onRowClick(row: T) {
 
 .rl-card__row dt {
   flex: 0 0 84px;
-  color: #909399;
+  color: var(--muted);
 }
 
 .rl-card__row dd {
   flex: 1;
   min-width: 0;
   margin: 0;
-  color: #303133;
+  color: var(--ink);
   word-break: break-all;
 }
 
@@ -380,6 +441,6 @@ function onRowClick(row: T) {
   gap: 8px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px dashed #ebeef5;
+  border-top: 1px dashed var(--line);
 }
 </style>

@@ -168,16 +168,16 @@
           empty-text="暂无符合条件的工单"
         >
           <template #col-orderNo="{ row }">
-            <span style="font-family: monospace; font-weight: 600;">{{ row.orderNo }}</span>
-            <el-tag v-if="row.urgencyLevel === 2" type="danger" size="small" effect="dark" style="margin-left: 4px;">
-              加急
-            </el-tag>
+            <span class="order-no">{{ row.orderNo }}</span>
+            <!-- 加急＝警戒：§3.3 的「实心圆」而不是又一个彩色胶囊。
+                 原先这里是 `el-tag type="danger" effect="dark"`（实心红底白字，本页最响的一处），
+                 现在换成 9px 实心点 + 中性字——**信号的形状变了，强度没降**。 -->
+            <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" class="urgency-dot" />
           </template>
 
           <template #col-status="{ row }">
-            <el-tag size="small" :type="getStatusTagType(row.status)">
-              {{ OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status }}
-            </el-tag>
+            <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
+            <StatusRing :status="row.status" />
           </template>
 
           <template #col-timeline="{ row }">
@@ -227,8 +227,9 @@ import {
 import { httpClient } from '../../stores/auth';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
+import StatusRing from '../../components/StatusRing.vue';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
-import type { CardTagType, TableColumn } from '../../components/ResponsiveTable.vue';
+import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   OrderStatusLabels,
   WorkerSkillLabels,
@@ -255,9 +256,11 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     width: 100,
     align: 'center',
     card: 'tag',
+    // 'ring' = 9px 状态圆环，与宽档表格的 `#col-status` 共用同一份色值（§4.3 的契约变更）
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      type: getStatusTagType(row.status)
+      type: 'ring',
+      status: row.status
     })
   },
   { key: 'spaceFullPath', label: '报修空间位置', minWidth: 180, showOverflowTooltip: true },
@@ -452,22 +455,12 @@ async function handleArchiveClick() {
     }
   } catch (e) {}
 }
-
-function getStatusTagType(status: string): CardTagType {
-  switch (status) {
-    case 'COMPLETED': return 'success';
-    case 'REWORK_PENDING': return 'danger';
-    case 'SUSPENDED': return 'warning';
-    case 'IN_PROGRESS': return 'primary';
-    default: return 'info';
-  }
-}
 </script>
 
 <style scoped>
 .report-view {
   min-height: calc(100vh - var(--topbar-h, 56px));
-  background-color: #F5F7FA;
+  background-color: var(--canvas);
   display: flex;
   flex-direction: column;
 }
@@ -479,12 +472,13 @@ function getStatusTagType(status: string): CardTagType {
   gap: 16px;
 }
 
+/* §3.5：卡片圆角 0 */
 .search-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
 
 .table-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
 .report-table {
   display: block;
@@ -500,10 +494,15 @@ function getStatusTagType(status: string): CardTagType {
 }
 .result-count {
   font-size: 13px;
-  color: #6B7280;
+  color: var(--muted);
 }
+/*
+  这里原本写的是 `#1890FF` —— 全仓的**第三种蓝**（既不是 EP 的 #409EFF，也不是品牌 #1677FF，
+  而且它连 §3.1 之前那份文档令牌都不属于，是就地敲进去的）。
+  「共检索到 N 条」是要读的数字，不是需要强调的色块 ⇒ 归到 --ink。
+*/
 .result-count strong {
-  color: #1890FF;
+  color: var(--ink);
 }
 
 .actions-right {
@@ -517,5 +516,15 @@ function getStatusTagType(status: string): CardTagType {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+/* 单号用等宽字体便于逐位核对；字重回到 §3.5 的上限 600 */
+.order-no {
+  font-family: monospace;
+  font-weight: var(--fw-medium);
+}
+
+.urgency-dot {
+  margin-inline-start: 6px;
 }
 </style>

@@ -123,14 +123,27 @@ onMounted(() => {
   /* 不用 100vw：vw 含滚动条宽度，会把页面撑出横向滚动（实测 390px 视口下溢出 32px） */
   width: 100%;
   min-height: 100vh;
+  /*
+    ⛔ **这是本次实施停下的位置**。规范 §4.5 把「深蓝渐变」这一条指向 §4.6 的 G1
+    （生成式登录页背景，走出图主机通路）。G1 落地时这里改成
+    `background: var(--canvas) url(/login-bg.webp) center / cover no-repeat`，
+    提示词必须把 D 变成约束：低对比、低细节、大留白、无强渐变、可压到极小体积。
+
+    在此之前本行**刻意保持原样**：替换它需要先有那张图，另一半（2px 圆角 / 删阴影 / 标题 600）
+    已经落地（见下）。已知代价：这是试点切片里**唯一**仍违反 V4「自写 chrome 不得出现 #1677FF」
+    的地方，因为渐变里那一段就是品牌蓝——它是 G1 的待办，不是遗漏。
+  */
   background: linear-gradient(135deg, #0B132B 0%, #1C2541 50%, #1677FF 100%);
 }
 .login-card {
   width: 440px;
   padding: 40px;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  background: var(--surface);
+  /* §4.5：12px 圆角 → 2px（§3.5 的圆角区间是 0–2px） */
+  border-radius: var(--radius);
+  /* §4.5：删除 `box-shadow: 0 12px 32px rgba(0,0,0,.2)`（V3/V15 禁止自造阴影），
+     改用 --line 边框分层 */
+  border: 1px solid var(--line);
 }
 .login-header {
   text-align: center;
@@ -139,13 +152,14 @@ onMounted(() => {
 .title {
   margin: 0;
   font-size: 24px;
-  color: #1F2937;
-  font-weight: 700;
+  color: var(--ink);
+  /* §4.5：标题 700 → 600（§3.5 实测 700 全站只有 1 次，600 是字重上限） */
+  font-weight: var(--fw-medium);
 }
 .subtitle {
   margin: 8px 0 0 0;
   font-size: 14px;
-  color: #6B7280;
+  color: var(--muted);
 }
 .captcha-row {
   display: flex;
@@ -155,8 +169,8 @@ onMounted(() => {
 .captcha-img {
   height: 40px;
   cursor: pointer;
-  border-radius: 4px;
-  border: 1px solid #E5E7EB;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
 }
 .login-btn {
   width: 100%;
