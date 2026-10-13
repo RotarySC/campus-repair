@@ -83,12 +83,20 @@ function isDestructive(comp: string, dynamic: boolean, staticType: string | unde
  *     / `SuggestionCardList` 四个文件修到 0，条目已删；`PersonalCenterView` 由 2 降到 1）；
  *   · C 组 #6「助手置信度三档」与 #1/#2/#3 一起走 `MetaChip`。
  *
+ * 2026-10-13 第三批（B5 + 补上 `error` 口径）：11 → **10**。
+ *   · B5「提交评价随评分变红」→ 按钮恒为主操作色、旁边那条 `el-alert type="error"` 改走 G4
+ *     `AlertBanner`（`StudentOrderDetailView` 条目已删）；
+ *   · 顺带发现 `SEMANTIC` 少了 `el-alert` 的 **`error`** 档（那是 `el-button` 的语汇，
+ *     而 alert 用 `error`）—— 补上之后同族的 `DispatchCenterView` 那处也一并改掉。
+ *   · ⚠️ **`B` 组到此清零**：`el-button` 已无任何不合规实例
+ *     （破坏性操作那 11 处走 `isDestructive` 例外，不在本表）。
+ *
  * ⚠️ **`views/dashboard/DashboardView.vue` 那 1 处是「有意识冻结」，不是欠账** ——
  * 用户 2026-10-13 裁定：`<el-tag type="success">系统运行正常</el-tag>` **保留绿 tag**。
  * 它与 D 组那 9 处同类（见独立文档 §4）：**棘轮对它的语义是冻结（数量不许涨），不是催办**。
  * 所以它**不会**被「已修干净必须销账」抓走，也**不该**被人顺手"修掉"。
  *
- * 剩下的 11 = B5(1) + 冻结的 1 + D组(9)。
+ * 剩下的 10 = 冻结的 1 + D组(9)。**B5 做完之后，这份表里没有"待拍板"的东西了。**
  */
 const ALLOWANCE: Record<string, number> = {
   'App.vue': 1,
@@ -97,7 +105,6 @@ const ALLOWANCE: Record<string, number> = {
   'views/dashboard/DashboardView.vue': 1,
   'views/error/ForbiddenView.vue': 1,
   'views/profile/PersonalCenterView.vue': 1,
-  'views/student/StudentOrderDetailView.vue': 1,
   'views/student/StudentSubmitRepairView.vue': 1,
   'views/worker/WorkbenchView.vue': 1,
   'views/worker/WorkerFinishView.vue': 1
@@ -179,7 +186,19 @@ const stripComments = (text: string): string => stripCommentsText(text);
  * 但这个"恰好"不该被依赖。
  */
 const TAG = /<(el-tag|el-alert|el-button)\b(?:"[^"]*"|[^>"])*>/g;
-const SEMANTIC = ['success', 'warning', 'danger', 'info', 'primary'];
+
+/**
+ * 语义档的**并集**。
+ *
+ * ⚠️ 这里曾经只写 `success|warning|danger|info|primary` —— 那是 **`el-button` 的语汇**。
+ * 而 `el-alert` 的档位是 **`success | warning | info | error`**，四个里
+ * **`error` 从来没被计入**：`<el-alert type="error">` 是**彩底 + 彩边 + 彩色图标**的红条，
+ * 与 `warning` 同族，却因为不在表里而**整个隐形**（2026-10-13 发现，当时全仓 2 处）。
+ *
+ * 教训与 §23.6 同族：**一份"语义色名单"是两个组件库语汇的并集，只抄了其中一半，
+ * 漏掉的那一半不会报错、只会静默地不计入。**
+ */
+const SEMANTIC = ['success', 'warning', 'danger', 'error', 'info', 'primary'];
 
 interface Hit {
   comp: string;
@@ -310,6 +329,16 @@ describe('非状态类彩色控件棘轮（§12.5 / §23）', () => {
     expect(hitsIn('<el-tag type="warning">x</el-tag>')).toHaveLength(1);
     expect(hitsIn('<el-alert\n  type="warning"\n  :closable="false"\n/>')).toHaveLength(1);
     expect(hitsIn('<el-tag :type="a === 1 ? \'warning\' : \'info\'">x</el-tag>')).toHaveLength(1);
+    /*
+     * ⚠️ **`el-alert` 的 `error` 档**必须被抓到。
+     * 它曾经不在 `SEMANTIC` 里 —— 那份表抄的是 `el-button` 的语汇
+     * （`success|warning|danger|info|primary`），而 alert 用的是 `error`。
+     * 于是 `<el-alert type="error">`（红底红边红图标的警示条）**整个隐了形**，
+     * 2026-10-13 补口径时全仓还有 2 处。
+     * 这条反向自证就是钉住那个补丁：**下次谁把 `error` 删掉，这里会红。**
+     */
+    expect(hitsIn('<el-alert type="error" :closable="false" />')).toHaveLength(1);
+    expect(hitsIn('<el-alert type="error">x</el-alert>')[0]).toMatchObject({ compliant: false });
     // **主操作色按钮必须合规** —— 否则这份棘轮会把 38 处正确的按钮全算成违规
     expect(hitsIn('<el-button type="primary">确定</el-button>')[0]).toMatchObject({ compliant: true });
     expect(hitsIn('<el-button type="success">导出</el-button>')[0]).toMatchObject({ compliant: false });

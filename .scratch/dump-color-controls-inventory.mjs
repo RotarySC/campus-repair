@@ -17,7 +17,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'apps', 'admin-web', 'src');
-const VALUES = ['success', 'warning', 'danger', 'info', 'primary'];
+/**
+ * ⚠️ 与 `color-controls.spec.ts` 的 `SEMANTIC` **同源**：`el-button` 的语汇
+ * （success|warning|danger|info|primary）与 `el-alert` 的语汇（……|**error**）的**并集**。
+ * 缺 `error` 会让 `<el-alert type="error">` 隐形。
+ */
+const VALUES = ['success', 'warning', 'danger', 'error', 'info', 'primary'];
 
 function stripCommentsText(src) {
   const s = src.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));

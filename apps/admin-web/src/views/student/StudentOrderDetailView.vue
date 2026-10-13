@@ -146,14 +146,22 @@
           </div>
         </template>
 
-        <el-alert
-          v-if="ratingStar > 0 && ratingStar <= 2"
-          type="error"
-          show-icon
-          :closable="false"
-          title="打分 ≤ 2 星将立即触发【差评返工督办】流程！工单将被置顶由后勤主管调度二次上门整改，请详细说明未解决问题。"
-          class="rework-alert"
-        />
+        <!--
+          ⚠️ 2026-10-13（B5 落地）：`el-alert type="error"` → **`AlertBanner`**（§4.6 G4 口径：
+          实心圆点 ＋ 中性字 ＋ 发丝线边框），与全仓其余 5 处警示条同一个形状。
+
+          两件事一起做，因为它们是**同一件事的两个颜色通道**：
+          · B5 本身是下面那颗按钮「随评分变红」（`:type="ratingStar <= 2 ? 'danger' : 'primary'"`）；
+          · 而这条 `type="error"` 的红色警示条**已经在说同一句话**了。
+          按钮那条去掉之后，如果警示条还是彩底彩边，等于"同一件事两处颜色"只少了一处。
+
+          顺带说明：`type="error"` 里的 **`error` 根本不在棘轮的口径里**
+          （`color-controls.spec.ts` 的 `SEMANTIC` 是 `success|warning|danger|info|primary`，
+          那是 `el-button` 的语汇；`el-alert` 用 `error`）。所以它一直是**隐形的**，见设计文档 §26.10。
+        -->
+        <AlertBanner v-if="ratingStar > 0 && ratingStar <= 2">
+          打分 ≤ 2 星将立即触发【差评返工督办】流程！工单将被置顶由后勤主管调度二次上门整改，请详细说明未解决问题。
+        </AlertBanner>
 
         <el-input
           v-model="comment"
@@ -168,7 +176,19 @@
         />
 
         <div class="panel-actions">
-          <el-button :type="ratingStar <= 2 ? 'danger' : 'primary'" size="large" :loading="evaluating" @click="onSubmitEvaluation">
+          <!--
+            ⚠️ 2026-10-13（B5 落地）：**去掉随评分变红的按钮**（原 `:type="ratingStar <= 2 ? 'danger' : 'primary'"`），
+            按钮恒为主操作色。
+
+            为什么去掉不丢信息 —— 这件事**已经有两个更好的载体**：
+             ① **按钮文案本身就变了**：≤2 星时是「提交差评并申请返工」，≥3 星时是「确认验收结单」；
+             ② 上方那条 G4 警示条会同时出现。
+            而「红色按钮」在这里还有第三个坏处：它是**提交前**的一次颜色闪烁，
+            容易被读成"这个按钮坏了"而不是"你要给差评了"。
+
+            这也是本批最后一件欠账：`ALLOWANCE` 的 B 组到此清零（B 组只剩这一处）。
+          -->
+          <el-button type="primary" size="large" :loading="evaluating" @click="onSubmitEvaluation">
             {{ ratingStar <= 2 ? '提交差评并申请返工' : '确认验收结单' }}
           </el-button>
         </div>
@@ -180,6 +200,7 @@
 <script setup lang="ts">
 import StatusRing from '../../components/StatusRing.vue';
 import MetaChip from '../../components/MetaChip.vue';
+import AlertBanner from '../../components/AlertBanner.vue';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -434,9 +455,9 @@ async function onSubmitEvaluation() {
   background: var(--el-color-primary);
   color: var(--surface);
 }
-.rework-alert {
-  margin-bottom: 12px;
-}
+/* ⚠️ 原先这里有一条 `.rework-alert { margin-bottom: 12px }` —— 那是给上面那条 `el-alert` 用的。
+   它换成 `AlertBanner` 之后，间距由组件自带（16px，与其余 5 处警示条统一；
+   本仓刻意要消灭的正是「同一个提示条两种间距」）。**规则一并删掉**，别留着当化石。 */
 .comment-input {
   max-width: 640px;
 }

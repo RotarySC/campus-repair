@@ -363,12 +363,18 @@
       width="540px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        title="该工单因师生打出 ≤2 星差评转入返工督办。主管可决策退回原师傅限期整改，或指定资深技师二次上门。"
-        type="error"
-        :closable="false"
-        style="margin-bottom: 16px;"
-      />
+      <!--
+        ⚠️ 2026-10-13：`el-alert type="error"` → **`AlertBanner`**（§4.6 G4 口径），
+        与同页另外两处警示条、以及全仓其余位置同一个形状。
+
+        这一处是**棘轮的一处盲区**：`color-controls.spec.ts` 的 `SEMANTIC` 原先是
+        `success|warning|danger|info|primary` —— 那是 **`el-button` 的语汇**；
+        而 `el-alert` 用的档位是 **`error`**，所以 `type="error"` **一直没被计入**。
+        本轮把 `error` 补进口径（见该 spec 的注释），并把两处一并改掉。
+      -->
+      <AlertBanner>
+        该工单因师生打出 ≤2 星差评转入返工督办。主管可决策退回原师傅限期整改，或指定资深技师二次上门。
+      </AlertBanner>
 
       <el-form label-position="top">
         <el-form-item label="返工工单">

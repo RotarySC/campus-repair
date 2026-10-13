@@ -127,35 +127,139 @@ check('三档·提示档：未读点渲染色是中性 --faint（不再是警戒
 check('提示档不是全仓唯一的色（反向确认它确实不是红）', !drawer.colors.includes(RED), drawer.colors.join(' , '));
 check('三档共用同一几何：点一律 6px', drawer.sizes.length === 1 && drawer.sizes[0] === '6px', drawer.sizes.join(' , '));
 
-/* ==================== ⑤ 呼吸实测（相位采样） ==================== */
+/* ==================== ⑤ 呼吸实测（相位采样，采样对象是**光晕**） ==================== */
 console.log('\n===== ⑤ 呼吸：手动推进动画相位，看它是不是真的在动 =====');
 const breathe = await visit('admin', '/reports/orders', `(()=>{
   const d=[...document.querySelectorAll('.status-ring--dot')].find(x=>x.textContent.includes('加急'));
   if(!d) return JSON.stringify({error:'报表页找不到「加急」点'});
   const m=d.querySelector('.status-ring__mark');
-  const anims=m.getAnimations();
-  if(!anims.length) return JSON.stringify({error:'没有拿到 Animation 对象'});
-  const a=anims[0];
-  const dur=Number(getComputedStyle(m).animationDuration.replace('s',''))*1000;
-  a.pause();
-  const at=(t)=>{ a.currentTime=t; return Number(getComputedStyle(m).opacity).toFixed(2); };
+  const after=()=>getComputedStyle(m,'::after');
+  const dur=Number(after().animationDuration.replace('s',''))*1000;
+  if(!dur) return JSON.stringify({error:'光晕没有动画时长（::after 上没挂动画？）'});
+  const st=document.createElement('style');
+  document.head.appendChild(st);
+  const at=(f)=>{
+    st.textContent='.status-ring--dot.is-breathing .status-ring__mark::after{animation-delay:'
+      + (-f*dur/1000) + 's !important;animation-play-state:paused !important;}';
+    void m.offsetHeight;                       // 强制一次重算，确保读到的是新相位
+    const s=after();
+    return {o:Number(s.opacity).toFixed(3), tf:s.transform};
+  };
+  const p=[0,0.25,0.5,0.75,1].map(at);
+  st.remove();
   return JSON.stringify({
-    dur, name:getComputedStyle(m).animationName, iter:getComputedStyle(m).animationIterationCount,
-    p0:at(0), p25:at(dur*0.25), p50:at(dur*0.5), p75:at(dur*0.75), p100:at(dur),
-    transform:getComputedStyle(m).transform, shadow:getComputedStyle(m).boxShadow
+    dur,
+    markAnim:getComputedStyle(m).animationName,          // 点自己**不该**有动画
+    markOpacity:Number(getComputedStyle(m).opacity).toFixed(2),
+    haloW:after().width, dotW:getComputedStyle(m).width,
+    haloShadow:after().boxShadow + ' | ' + getComputedStyle(m).boxShadow,
+    p0:p[0], p25:p[1], p50:p[2], p75:p[3], p100:p[4]
   });
 })()`);
 if (breathe.error) {
-  check('呼吸实测：拿到动画对象', false, breathe.error);
+  check('呼吸实测：拿到相位数据', false, breathe.error);
 } else {
-  const vals = [breathe.p0, breathe.p25, breathe.p50, breathe.p75, breathe.p100].map(Number);
-  check('呼吸实测：动画对象存在且无限循环', breathe.iter === 'infinite', `${breathe.name} / ${breathe.iter} / ${breathe.dur}ms`);
-  check('呼吸实测：**相位之间确实在变**（声明了动画 ≠ 生效了）', new Set(vals.slice(0, 4)).size > 2, vals.slice(0, 4).join(' → '));
-  check('呼吸实测：谷值明显低于峰值（能看出来，不是微动）', Math.min(...vals) <= 0.45, `min=${Math.min(...vals)} max=${Math.max(...vals)}`);
-  check('呼吸实测：一个周期首尾回到峰值（循环无跳变）', vals[0] === vals[4], `${vals[0]} vs ${vals[4]}`);
-  check('呼吸只动 opacity：transform 与 box-shadow 都不许动（V15 无自造阴影）', breathe.transform === 'none' && breathe.shadow === 'none', `${breathe.transform} / ${breathe.shadow}`);
-  console.log(`INFO  ${breathe.dur}ms 内四个相位 opacity：${vals.slice(0, 4).join(' → ')}（0% → 25% → 50% → 75%）`);
+  const o = [breathe.p0, breathe.p25, breathe.p50, breathe.p75, breathe.p100].map((x) => Number(x.o));
+  const tf = [breathe.p0.tf, breathe.p25.tf, breathe.p50.tf, breathe.p75.tf];
+  check('呼吸实测：光晕有动画且周期落在 1.2~2.4s', breathe.dur >= 1200 && breathe.dur <= 2400, `${breathe.dur}ms`);
+  // 本轮最要紧的一条：光晕在变，**点不动**
+  check('**点本身不动**（animation-name: none，且 opacity 恒为 1）', breathe.markAnim === 'none' && breathe.markOpacity === '1.00', `${breathe.markAnim} / opacity=${breathe.markOpacity}`);
+  check('光晕**相位之间确实在变**（声明了动画 ≠ 生效了）', new Set(o.slice(0, 4)).size > 2, o.slice(0, 4).join(' → '));
+  check('光晕谷值明显低于峰值（看得出来，不是微动）', Math.min(...o) <= 0.12 && Math.max(...o) >= 0.25, `min=${Math.min(...o)} max=${Math.max(...o)}`);
+  check('一个周期首尾回到起始（循环无跳变）', o[0] === o[4], `${o[0]} vs ${o[4]}`);
+  check('光晕**同时向外扩**（transform 在变 —— 只淡不扩就读成"闪烁"）', new Set(tf).size > 1, tf.join(' / '));
+  check('光晕**比点大一圈**（否则被点盖住，等于没有光晕）', parseFloat(breathe.haloW) > parseFloat(breathe.dotW), `光晕 ${breathe.haloW} vs 点 ${breathe.dotW}`);
+  check('**没有 box-shadow**（光晕是伪元素画的圆，V15 无自造阴影）', breathe.haloShadow === 'none | none', breathe.haloShadow);
+  console.log(`INFO  ${breathe.dur}ms 内四个相位：opacity ${o.slice(0, 4).join(' → ')}；transform ${tf[0]} → ${tf[2]}`);
 }
+
+/* ==================== ⑥ 未读标记搬到了右上角（与时间同簇） ==================== */
+console.log('\n===== ⑥ 消息中心：未读标记在右上角、与时间同簇 =====');
+const drawerMeta = await visit('admin', '/', `(()=>{
+  const cards=[...document.querySelectorAll('.notification-card')];
+  const unread=cards.filter(c=>c.classList.contains('is-unread'));
+  if(!unread.length) return JSON.stringify({error:'没有未读卡片可供核对'});
+  const c=unread[0];
+  const meta=c.querySelector('.card-meta');
+  const dot=meta?meta.querySelector('.status-ring--dot'):null;
+  const time=meta?meta.querySelector('.card-time'):null;
+  const title=c.querySelector('.card-title');
+  const cr=c.getBoundingClientRect(), mr=meta?meta.getBoundingClientRect():null, tr=time?time.getBoundingClientRect():null;
+  return JSON.stringify({
+    unreadCount: unread.length,
+    hasMeta: !!meta,
+    dotInMeta: !!dot,
+    dotLeftOfTime: dot && tr ? dot.getBoundingClientRect().right <= tr.left + 1 : null,
+    // 元信息簇必须落在卡片**右侧**（否则谈不上"右上角"）
+    metaAtRight: mr ? (cr.right - mr.right) < (mr.left - cr.left) : null,
+    // 是否与卡片顶部同一行
+    metaNearTop: mr ? (mr.top - cr.top) < 24 : null,
+    // 标题行里**不再**有标记（搬走了）
+    dotInTitle: !!title.querySelector('.status-ring'),
+    dotCount: c.querySelectorAll('.status-ring--dot').length
+  });
+})()`, async (evalJs) => {
+  await evalJs(`(()=>{const b=document.querySelector('button[aria-label="打开站内消息通知中心"]');b.click();return 1})()`);
+  await sleep(1200);
+  await evalJs(`(()=>{const d=document.querySelector('.el-drawer.open');if(d){d.classList.remove('el-drawer-fade-enter-from','el-drawer-fade-enter-active');d.classList.add('el-drawer-fade-enter-to');d.style.transform='none';}return 1})()`);
+  await sleep(600);
+});
+check('反向自证：抽屉里确实有未读卡片', !drawerMeta.error, drawerMeta.error || `${drawerMeta.unreadCount} 张`);
+if (!drawerMeta.error) {
+  check('未读标记在 `.card-meta` 里（与时间同一簇）', drawerMeta.hasMeta && drawerMeta.dotInMeta === true);
+  check('它**在时间的左侧**（`● 时间` 的读法）', drawerMeta.dotLeftOfTime === true, String(drawerMeta.dotLeftOfTime));
+  check('这一簇落在卡片**右侧**（"右上角"）', drawerMeta.metaAtRight === true, String(drawerMeta.metaAtRight));
+  check('这一簇贴在卡片**顶部**那一行', drawerMeta.metaNearTop === true, String(drawerMeta.metaNearTop));
+  check('标题行里**不再**有标记（搬走了，不是复制了一份）', drawerMeta.dotInTitle === false);
+  check('每张未读卡**只有一枚**标记', drawerMeta.dotCount === 1, `${drawerMeta.dotCount} 枚`);
+}
+
+/* ==================== ⑦ B5：提交评价按钮不再随评分变红 ==================== */
+console.log('\n===== ⑦ B5：按钮恒为主色；≤2 星的警告交给 G4 警示条 =====');
+const B5 = `(()=>{
+  const btn=[...document.querySelectorAll('.panel-actions .el-button')][0] || null;
+  const banner=document.querySelector('.alert-banner');
+  return JSON.stringify({
+    hasPanel: !!document.querySelector('.evaluate-panel'),
+    btnText: btn ? btn.textContent.trim() : null,
+    btnIsPrimary: btn ? btn.classList.contains('el-button--primary') : null,
+    btnIsDanger: btn ? btn.classList.contains('el-button--danger') : null,
+    bannerCount: banner ? document.querySelectorAll('.alert-banner').length : 0,
+    bannerText: banner ? banner.innerText.replace(/\\s+/g,' ').trim().slice(0,28) : null,
+    errorAlerts: document.querySelectorAll('.el-alert--error').length
+  });
+})()`;
+const b5low = await visit('student02', '/student/orders/1009', B5, async (evalJs) => {
+  // 打分前先量一次默认态
+  for (let i = 0; i < 24; i++) {
+    if (await evalJs(`!!document.querySelector('.evaluate-panel')`).catch(() => false)) break;
+    await sleep(500);
+  }
+  await sleep(600);
+});
+const b5before = b5low; // 打分前
+// 打 1 星：EP 的 el-rate 在 `.el-rate__item` 上响应点击
+const b5after = await visit('student02', '/student/orders/1009', B5, async (evalJs) => {
+  for (let i = 0; i < 24; i++) {
+    if (await evalJs(`!!document.querySelector('.evaluate-panel')`).catch(() => false)) break;
+    await sleep(500);
+  }
+  await sleep(600);
+  await evalJs(`(()=>{const s=document.querySelectorAll('.el-rate__item');if(!s.length)return 0;
+    const t=s[0]; t.dispatchEvent(new MouseEvent('mousemove',{bubbles:true}));
+    t.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+    t.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+    return 1})()`);
+  await sleep(1000);
+});
+check('反向自证：待验收单渲染出了评价面板', b5before.hasPanel === true, String(b5before.hasPanel));
+check('打分前：按钮是主操作色、且**不是** danger', b5before.btnIsPrimary === true && b5before.btnIsDanger === false, `${b5before.btnText} / primary=${b5before.btnIsPrimary}`);
+check('打分前：没有警示条（≤2 星才出现）', b5before.bannerCount === 0, `${b5before.bannerCount} 条`);
+check('反向自证：打 1 星之后警示条**确实出现了**（否则下面的断言在空集上恒真）', b5after.bannerCount === 1, `${b5after.bannerCount} 条`);
+check('**B5 本体**：打 1 星后按钮**仍是主操作色**（不再随评分变红）', b5after.btnIsPrimary === true && b5after.btnIsDanger === false, `primary=${b5after.btnIsPrimary} danger=${b5after.btnIsDanger}`);
+check('按钮文案仍然说清了后果（"红色"去掉后信息不丢）', (b5after.btnText || '').includes('差评'), b5after.btnText);
+check('警告改由 G4 警示条承担（实心点 + 中性字 + 发丝线）', b5after.bannerCount === 1, `「${b5after.bannerText}…」`);
+check('全页**不再有 `el-alert--error`**（口径补上后一并改掉了）', b5after.errorAlerts === 0, `${b5after.errorAlerts} 个`);
 
 console.log(`\n===== 汇总：${pass} PASS / ${fail} FAIL =====`);
 process.exit(fail ? 1 : 0);

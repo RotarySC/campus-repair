@@ -86,6 +86,9 @@ const hueToken = computed(() => {
  * 为什么给「注意」加动效：这一轮同时做了「甲 + 容器规则 + 三档」，红点从一屏 3 枚降到 1 枚
  * ——**先把它变稀缺，再给稀缺的东西加权**，两者是一对；只做前者会显得红点"没存在感"。
  * 提示档（中性）**不呼吸**：它没有要求读者做任何事。
+ *
+ * ⚠️ 呼吸的**载体是外圈的淡光晕，不是点本身**（2026-10-13 二改，见样式区）：
+ * 点永远满不透明，只有那一圈光在明暗之间来回。
  */
 const breathing = computed(() => props.variant === 'dot' && props.tone === 'alert');
 
@@ -147,39 +150,66 @@ const visible = computed(() => !!text.value || !!props.status || props.variant =
   background: transparent;
 }
 
-/* 实心（标记）：与空心环**只差填充与否**这一条在 2026-10-13 被尺寸一并发散开来，见 VARIANT_SIZE */
+/* 实心（标记）：与空心环「只差填充与否」这一条，2026-10-13 被尺寸一并发散开来（见 VARIANT_SIZE） */
 .status-ring--dot .status-ring__mark {
+  /* 光晕的定位上下文（光晕是它的 ::after） */
+  position: relative;
   background: currentColor;
 }
 
-/* ==================== 呼吸（只有警戒档） ====================
-   只动 `opacity`，不动 `transform`/`box-shadow`：
-   · `opacity` 是可合成的（compositor 友好），一屏几十个也不掉帧；
-   · 6px 的点上做 `scale` 只变化 0.9px，肉眼看不出来，白付一次合成；
-   · 光晕要用 `box-shadow`，而 V15 明令「无自造阴影」。
+/* ==================== 呼吸（只有警戒档）：**点不动，外圈淡光晕在呼吸** ====================
+   2026-10-13 二改。第一版是让**点本身**的 opacity 在 1 ↔ 0.35 之间来回，有两个毛病：
+     ① 谷值那一下点淡成浅粉 —— **"警告会消失"，比不动更差**；
+     ② 点时浓时淡，等于它自己的**可读性**也在变。
+   现在改成用户指定的形态：**点恒为满不透明实心，外圈一圈淡光晕在呼吸**。
+   于是"变"的只有光晕，"在"的一直是那个点。
 
-   谷值取 0.35 而不是 0：**它必须一直"在"，只是时轻时重**——
-   淡到看不见就等于一个会消失的警告，那是比不动更差的效果。 */
-@keyframes status-ring-breathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
+   ⚠️ 光晕用**伪元素**画，刻意**不用 `box-shadow`** —— V15 明令「无自造阴影」。
+   一个填色的圆比一层阴影更可控（几何、层叠、动效都不依赖浏览器怎么展开阴影），
+   而且 `position:absolute` 不占布局。
+
+   ⚠️⚠️ **尺寸必须定死，不能用 `inset: -3px` 去"外扩"**：绝对定位子元素的包含块是
+   父级的**内边距盒**，而 6px 的点带 2px 描边 ⇒ 内边距盒只有 **2px**，
+   `inset: -3px` 只会得到 `2 + 3 + 3 = 8px` 的光晕（**实测就是 8px，只在点外露出 1px**）。
+   所以改成「定死宽高 + `left/top: 50%` + `translate(-50%,-50%)` 居中」。
+   代价是 `transform` 里必须**带上那个居中位移**，否则动画的 `scale()` 会把它覆盖掉、光晕跳位。
+   这个坑值得留一行：**几何一旦依赖"父级盒子怎么算"，就该改成显式尺寸。** */
+.status-ring--dot.is-breathing .status-ring__mark::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  /* 外扩 3px：6px 的点得到 12px 的光晕，也就是 3px 宽的一圈 */
+  width: calc(var(--ring-size) + 6px);
+  height: calc(var(--ring-size) + 6px);
+  border-radius: 100%;
+  background: currentColor;
+  opacity: 0.28;
+  transform: translate(-50%, -50%);
+  animation: status-ring-halo var(--breathe-period) ease-in-out infinite;
 }
 
-.status-ring--dot.is-breathing .status-ring__mark {
-  animation: status-ring-breathe var(--breathe-period) ease-in-out infinite;
+/* 谷值不是 0：光晕淡到 0 就成了"闪烁"，而它要读成"呼吸"。
+   同时只动 `opacity` 与 `transform` —— 两者都是可合成属性，一屏几十枚也不掉帧。
+   ⚠️ 每一帧的 `transform` 都要**重复那个居中位移**（见上面那条注释）。 */
+@keyframes status-ring-halo {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.08;
+    transform: translate(-50%, -50%) scale(1.18);
+  }
 }
 
 /* ⚠️ 前庭失调 / 晕动症用户会被无限动效伤到，且这与「安静」的总体方向相抵。
-   声明了 reduced-motion 就退回**静止的满不透明红点** —— 信息一点不少，只是不动。 */
+   声明了 reduced-motion 就**退回静止的光晕**：形态仍在（那一圈淡色还在），只是不动。 */
 @media (prefers-reduced-motion: reduce) {
-  .status-ring--dot.is-breathing .status-ring__mark {
+  .status-ring--dot.is-breathing .status-ring__mark::after {
     animation: none;
-    opacity: 1;
+    opacity: 0.18;
   }
 }
 

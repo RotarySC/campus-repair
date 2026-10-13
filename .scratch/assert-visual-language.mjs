@@ -277,18 +277,34 @@ const SNAPSHOT = `(() => {
       labelColor: cs(firstLabel, 'color'), labelWeight: cs(firstLabel, 'font-weight'), labelSize: cs(firstLabel, 'font-size')
     } : null,
     /*
-     * §3.3 修订（2026-10-13）：实心标记现在是 6px、并带呼吸动画。
-     * ⚠️ 注意 opacity 这一项在**后台标签**里会停在动画的起始值（主线程不推进过渡，
+     * §3.3 修订（2026-10-13，**二改**）：实心标记 6px；**点本身不动**，
+     * 外圈一圈淡光晕（伪元素 ::after）在呼吸。
+     *
+     * ⚠️ 本段住在 SNAPSHOT 这个**模板字面量**里：**不许出现反引号**（一个都不行）。
+     * 2026-10-13 我为了写"反引号 ::after 反引号"连踩两次 —— 每次都是
+     * probes-parse.spec.ts（node --check 扫全部 .scratch 下的 mjs）当场抓住的。
+     * **判据：改完探针先跑 vitest（含 probes-parse），再跑探针本身。**
+     *
+     * ⚠️ 另外注意 opacity 这一项在**后台标签**里会停在动画的起始值（主线程不推进过渡，
      * 与本仓踩过多次的 el-drawer enter 态同源），所以**不要拿 opacity 当断言**——
-     * 断言一律落在「声明了什么」（animation-name / duration / iteration / timing）上。
+     * 断言一律落在"声明了什么"（animation-name / duration / iteration / timing）上。
      */
     dot: dotMark ? {
       w: cs(dotMark, 'width'), h: cs(dotMark, 'height'),
       border: cs(dotMark, 'border-top-width'),
       fill: cs(dotMark, 'background-color'), color: cs(dots[0], 'color'),
       radius: cs(dotMark, 'border-radius'), opacity: cs(dotMark, 'opacity'),
-      animName: cs(dotMark, 'animation-name'), animDur: cs(dotMark, 'animation-duration'),
-      animIter: cs(dotMark, 'animation-iteration-count'), animTiming: cs(dotMark, 'animation-timing-function'),
+      /* ⚠️ 点**自己**不该有动画（第一版有；二改把它挪到了光晕上）—— 它是那句"一直在"的断言 */
+      markAnim: cs(dotMark, 'animation-name'),
+      /* 光晕：动的只有它 */
+      haloAnim: cs(dotMark, 'animation-name', '::after'),
+      haloDur: cs(dotMark, 'animation-duration', '::after'),
+      haloIter: cs(dotMark, 'animation-iteration-count', '::after'),
+      haloTiming: cs(dotMark, 'animation-timing-function', '::after'),
+      haloOpacity: cs(dotMark, 'opacity', '::after'),
+      haloBg: cs(dotMark, 'background-color', '::after'),
+      haloW: cs(dotMark, 'width', '::after'),
+      haloShadow: cs(dotMark, 'box-shadow', '::after') + ' | ' + cs(dotMark, 'box-shadow'),
       hasBreatheClass: dots[0].classList.contains('is-breathing')
     } : null,
     hueByLabel: (() => { const o = {}; for (const r of rings) { const l = r.querySelector('.status-ring__label'); if (l) o[l.textContent.trim()] = cs(r, 'color'); } return o; })(),
@@ -488,21 +504,44 @@ if (report.dot && report.ring) {
   );
   check('实心标记仍是圆、仍是填充 currentColor', report.dot.radius === '100%' && report.dot.fill === report.dot.color, `${report.dot.radius} / ${report.dot.fill}`);
   check('警戒档带呼吸类（is-breathing）', report.dot.hasBreatheClass === true, String(report.dot.hasBreatheClass));
-  check('呼吸是**无限循环**动画（不是一次性过渡）', report.dot.animName !== 'none' && report.dot.animIter === 'infinite', `${report.dot.animName} / ${report.dot.animIter}`);
-  check('呼吸走 ease-in-out（线性会读成「闪烁」而不是「呼吸」）', report.dot.animTiming === 'ease-in-out', report.dot.animTiming);
-  check('呼吸周期落在 1.2~2.4s（比这快像闪烁、比这慢没人注意）', parseFloat(report.dot.animDur) >= 1.2 && parseFloat(report.dot.animDur) <= 2.4, report.dot.animDur);
+  /*
+   * ⚠️ **这一条是本轮的枢纽**：呼吸的载体是**光晕**，不是点。
+   * 第一版让点自己的 opacity 在 1↔0.35 之间来回，于是"警告会消失"、且点的可读性也在变。
+   * 现在钉死：**点自己的 animation-name 必须是 none**。
+   */
+  check('**点本身不动**（animation-name: none）—— 它必须一直满不透明"在"着', report.dot.markAnim === 'none', String(report.dot.markAnim));
+  check('动的是外圈光晕：有无限循环动画', report.dot.haloAnim !== 'none' && report.dot.haloIter === 'infinite', `${report.dot.haloAnim} / ${report.dot.haloIter}`);
+  check('光晕走 ease-in-out（线性会读成「闪烁」而不是「呼吸」）', report.dot.haloTiming === 'ease-in-out', report.dot.haloTiming);
+  check('光晕周期落在 1.2~2.4s（比这快像闪烁、比这慢没人注意）', parseFloat(report.dot.haloDur) >= 1.2 && parseFloat(report.dot.haloDur) <= 2.4, report.dot.haloDur);
+  check('光晕**比点大一圈**（外扩出来才看得见，否则光晕被点盖住）', parseFloat(report.dot.haloW) > parseFloat(report.dot.w), `光晕 ${report.dot.haloW} vs 点 ${report.dot.w}`);
+  check('光晕与点同色（`currentColor`，不引入第二个色相）', report.dot.haloBg === report.dot.color, `${report.dot.haloBg} vs ${report.dot.color}`);
+  check('光晕是**半透明**的（谷值 0.28 起，不是一块实色饼）', parseFloat(report.dot.haloOpacity) > 0 && parseFloat(report.dot.haloOpacity) < 0.5, report.dot.haloOpacity);
+  check('**没有 box-shadow**（光晕是伪元素画的一个圆，V15 无自造阴影）', report.dot.haloShadow === 'none | none', report.dot.haloShadow);
 }
 
 /* ---- §3.3 修订（2026-10-13）：动效只许动 opacity，且必须给 reduced-motion 退路 ----
    这两条**只能静态读 SFC**：`prefers-reduced-motion` 在探针里没法模拟（代理不暴露
    `Emulation.setEmulatedMedia`），而「关键帧里有什么」本来也是**声明**层面的事实。 */
 const ringSfc = readFileSync(join(SRC, 'components', 'StatusRing.vue'), 'utf8');
-const kfBody = (ringSfc.match(/@keyframes\s+status-ring-breathe\s*\{([\s\S]*?)\n\}/) || [])[1] || '';
+const kfBody = (ringSfc.match(/@keyframes\s+status-ring-halo\s*\{([\s\S]*?)\n\}/) || [])[1] || '';
 const hasRm = /@media\s*\(prefers-reduced-motion:\s*reduce\)/.test(ringSfc) && /animation:\s*none/.test(ringSfc);
+/*
+ * ⚠️ 这条口径 2026-10-13 由「只动 opacity」放宽成「只动 opacity / transform」——
+ * 光晕要在淡出的同时**略向外扩**才读成"呼吸"。两者都是可合成属性，掉帧风险不增。
+ * 但 `box-shadow` 仍然禁止：那既是掉帧大户，也踩 V15「无自造阴影」。
+ */
 check(
-  '呼吸关键帧存在，且**只动 opacity**（动 transform/box-shadow 会掉帧或违反 V15）',
-  kfBody.length > 0 && /opacity/.test(kfBody) && !/transform|box-shadow|filter/.test(kfBody),
-  kfBody.replace(/\s+/g, ' ').trim().slice(0, 90) || '未找到关键帧'
+  '光晕关键帧存在，且只动 opacity / transform（不碰 box-shadow / filter）',
+  kfBody.length > 0 && /opacity/.test(kfBody) && /transform/.test(kfBody) && !/box-shadow|filter/.test(kfBody),
+  kfBody.replace(/\s+/g, ' ').trim().slice(0, 110) || '未找到关键帧'
+);
+const hasPseudoHalo = /\.status-ring--dot\.is-breathing\s+\.status-ring__mark::after\s*\{/.test(ringSfc);
+check(
+  '光晕是**伪元素**画的，不是 box-shadow（V15 无自造阴影）',
+  hasPseudoHalo,
+  // ⚠️ detail 必须**跟着结果走**。我在这同一处栽了两次：把它写成恒定字符串，
+  //    于是出现「PASS + 一句否认它自己的话」。**那种日志比 FAIL 还坏** —— 读者会开始不看 detail。
+  hasPseudoHalo ? '找到 ::after 规则（并已断言它的 box-shadow 是 none）' : '未找到 ::after 规则'
 );
 check(
   '声明了 prefers-reduced-motion 退路（无限动效必须能退回静止）',

@@ -22,7 +22,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'apps', 'admin-web', 'src');
-const VALUES = ['success', 'warning', 'danger', 'info', 'primary'];
+/**
+ * ⚠️ 与 `color-controls.spec.ts` 的 `SEMANTIC` **同源**：这是 `el-button`
+ * （success|warning|danger|info|primary）与 `el-alert`（success|warning|info|**error**）
+ * **两个语汇的并集**。原先只抄了前一半，于是 `<el-alert type="error">` 整个隐形
+ * （2026-10-13 发现，全仓 2 处）。
+ */
+const VALUES = ['success', 'warning', 'danger', 'error', 'info', 'primary'];
 
 /** 引号感知去注释（与棘轮 spec 的 stripCommentsText 同源，见 §23.6） */
 function stripComments(text) {

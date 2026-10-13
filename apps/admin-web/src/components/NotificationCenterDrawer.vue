@@ -40,20 +40,28 @@
           <div class="card-badge">
             {{ NotificationCategoryLabels[item.category] || item.category }}
           </div>
-          <span class="card-time">{{ formatDateTime(item.createdAt) }}</span>
+          <!--
+            ⚠️ 2026-10-13 三改：未读标记**从标题行移到右上角与时间同一簇**。
+            用户指令：「将消息中心的标点放到右上角时间那个位置」。
+
+            为什么这是个改善（不只是搬家）：标记原先在**标题行首**，它把标题的起始位置
+            顶开了一段 —— 一列卡片里有没有未读，标题的**左边缘会不齐**。
+            挪到右上角之后：① 标题左边缘在所有卡片上对齐；② 「有没有未读」与「什么时候发的」
+            这两件同属"这条消息元信息"的东西合成一簇，不必在标题里找。
+
+            它为什么是**提示档中性色**（`tone="muted"`）而不是红：未读＝"有新内容"，
+            不是"有故障"。早先它是红点，理由是「未读＝需要你处理」——那个理由本身站得住，
+            但它**把红的含义从「要动手」扩到了「有新内容」**，而站内信是全站数量最多的东西，
+            高频的红对稀缺性伤害最大（实测：它和「加急」「返工待派」同色并列，
+            三者只剩颜色相同这一个共同点）。
+          -->
+          <span class="card-meta">
+            <StatusRing v-if="item.isRead === 0" variant="dot" tone="muted" />
+            <span class="card-time">{{ formatDateTime(item.createdAt) }}</span>
+          </span>
         </div>
 
         <div class="card-title">
-          <!--
-            ⚠️ 2026-10-13（三档）：`tone="muted"` —— 未读是**提示档**（知道就行），不是警戒。
-            说清这次改动：原先这里是 `variant="dot"`（红），注释理由是「未读＝需要你处理」。
-            那个理由本身站得住，但它**把红点的含义从「要动手」扩到了「有新内容」**，
-            而站内信是**全站数量最多**的东西 —— 高频的红对稀缺性伤害最大
-            （实测：一屏里它和「加急」「返工待派」同色并列，三者只剩颜色相同这一个共同点）。
-            现在它走中性阶梯 `--faint`：形状仍是"这里有一条标记"，颜色不再宣称紧急。
-            （它此前是个自造的 6px 红点，几何与别处不一致，这一条顺带仍然成立。）
-          -->
-          <StatusRing v-if="item.isRead === 0" variant="dot" tone="muted" />
           {{ item.title }}
         </div>
 
@@ -297,7 +305,8 @@ async function submitBroadcast() {
 }
 /*
  * 未读**不再用浅蓝底**（原 `#F0F7FF` + `#BAE0FF` 边框）。
- * 色块是 D 要消灭的那种「用面积表达状态」，而未读的信号已经收进那个 9px 实心点里。
+ * 色块是 D 要消灭的那种「用面积表达状态」，而未读的信号已经收进那一枚 6px 标记里
+ * （2026-10-13 三改：标记从标题行首移到了右上角，与时间同簇，见模板里的注释）。
  * 这里改成**中性层级**：未读标题 `--ink`、已读降到 `--muted`——§3.5 说的
  * 「层级靠字号 + 颜色建立」（颜色指中性色阶，不是色相）。
  */
@@ -321,6 +330,14 @@ async function submitBroadcast() {
   border: var(--hairline) solid var(--line);
 }
 
+/* 右上角那一簇：未读标记 + 时间。两者同属"这条消息的元信息"，靠 6px 的 gap 结成一簇 */
+.card-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
 .card-time {
   font-size: 11px;
   color: var(--faint);
@@ -331,9 +348,8 @@ async function submitBroadcast() {
   font-weight: var(--fw-medium);
   /* 缺省（已读）弱一档；未读由上方 `.is-unread` 提到 --ink */
   color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  /* ⚠️ 这里原先还有 `display:flex; align-items:center; gap:6px` —— 那是为了在行首放
+     未读圆点。标记移到右上角之后它没有第二个子元素了，**留着会让下一个人以为还有东西**。 */
   margin-bottom: 4px;
 }
 
