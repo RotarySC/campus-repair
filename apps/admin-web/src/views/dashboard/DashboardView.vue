@@ -353,6 +353,8 @@ function chartTheme() {
     ink,
     muted,
     line,
+    /** 最弱一档中性（`.5`）。饼图空洞里的**说明文字**用它，不是又一个灰 */
+    faint: cssToken('--faint', 'rgba(0, 0, 0, 0.5)'),
     surface: cssToken('--surface', '#FFFFFF'),
     primary: cssToken('--el-color-primary', '#0052D9'),
     primaryLight: cssToken('--el-color-primary-light-3', '#4D86E4'),
@@ -539,11 +541,43 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
   const theme = chartTheme();
 
   const pieData = data.map(d => ({ name: d.categoryName, value: d.count }));
+  /** 空洞里那个数：**这个饼自己各项之和**，不是另取一个 KPI —— 两处取值就不叫"同一个总量"了 */
+  const pieTotal = pieData.reduce((sum, d) => sum + d.value, 0);
 
   categoryPie.setOption({
     backgroundColor: 'transparent',
     color: categoryPalette(),
     tooltip: { trigger: 'item', ...theme.tooltip },
+    /*
+      空洞（内径 45%，实测半径 68px）里放**总量**。
+      空着的话那 136px 就是整张卡最空的一块 —— 而它恰好是这张图唯一"总"的位置。
+
+      ⚠️ 两处都试过，结论留着免得下一个人再试一遍：
+      · `graphic` + `style.textAlign:'center'` **不居中** —— 实测墨迹左缘正好落在
+        `left:'38%'` 那个点上、整块向右铺开（dx = +36 物理像素）。走 `graphic` 想要居中
+        就得自己算块宽，不值。
+      · `title` 的 `text` + `subtext` **横向会居中，但纵向会偏低** —— 实测整块墨迹中心
+        比饼心低 22 物理像素（≈15 CSS px）。因为 `textVerticalAlign: 'middle'` 居中
+        的是**主文字那一段**，副标题整段挂在它下面、把块的重心拽下去了。
+      ⇒ 最终形态：`title` 只用 `text`，两个样式档走 **rich** 合成一块，
+        `textVerticalAlign: 'middle'` 居中的就是**整块**，于是横纵都对。
+      `left` 必须与 `series.center` 的 `'38%'` 同值（同一组百分比，改一个必须改另一个）。
+    */
+    title: {
+      text: `${pieTotal}\n{caption|报修总量}`,
+      left: '38%',
+      top: '50%',
+      textAlign: 'center',
+      textVerticalAlign: 'middle',
+      textStyle: {
+        // §3.5：层级靠字号 + 颜色建立，**不靠加粗**（`title` 默认是 bold，显式写回 normal）
+        color: theme.ink,
+        fontSize: 26,
+        fontWeight: 'normal',
+        lineHeight: 30,
+        rich: { caption: { color: theme.faint, fontSize: 12, fontWeight: 'normal', lineHeight: 16 } }
+      }
+    },
     legend: {
       orient: 'vertical',
       right: 8,

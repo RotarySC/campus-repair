@@ -105,7 +105,7 @@
                     色相恒为 `--alert`；
                   · 状态标签 `el-tag type="info"` → **空心圆环**（V7）。
                 -->
-                <StatusRing v-if="order.urgencyLevel === 2" variant="dot" label="加急" />
+                <StatusRing v-if="order.urgencyLevel === 2" variant="dot" label="加急" class="status-ring--text-after" />
                 <StatusRing :status="order.status" />
               </div>
               <span class="order-time">{{ formatDateTime(order.createdAt) }}</span>
@@ -287,7 +287,12 @@
                     `isOverloaded` 是"不能再派单"（要动手）—— 两者不是一回事，
                     前者由下面那个中性字重档承担，后者才配警戒档。
                   -->
-                  <StatusRing v-if="worker.isOverloaded" variant="dot" label="已超载" />
+                  <StatusRing
+                    v-if="worker.isOverloaded"
+                    variant="dot"
+                    label="已超载"
+                    class="status-ring--text-before"
+                  />
                   <strong :class="getLoadToneClass(worker)">{{ worker.currentLoad }} / {{ worker.maxLoad }}</strong>
                 </div>
                 <el-progress

@@ -364,6 +364,11 @@ function onRowClick(row: T) {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+  /* `1 1 auto`（不是 `flex: 1`）：`basis:auto` 保住子元素的**内容宽**，
+     否则 `flex-basis:0` 会让标题文字与标签的"假想主尺寸"都变 0、
+     `flex-wrap` 可能先把标签甩到第二行 —— 那是另一个方向的错。
+     这里只需要"标题那一格吃满剩余宽度"这一件事。 */
+  flex: 1 1 auto;
 }
 
 /*
@@ -398,6 +403,20 @@ function onRowClick(row: T) {
 
 .rl-card__ring {
   flex-shrink: 0;
+  /*
+    ⚠️ 2026-10-13（用户定案「甲」）：状态环**靠卡片头右缘**，`margin-inline-start:auto`。
+    改之前环是**紧跟在标题文字后面**的，于是标题一宽环就跟着跑：
+    实测普通卡片环左缘恒在 182px，而**带「加急」的那张是 224px（右移 42px）**——
+    同一个状态在不同卡片上不在同一条竖线上，看着像坏了。
+    右对齐之后一排环的**右缘**成一条线（`justify-content: space-between` 的卡片头本就是
+    这个意图，`.rl-card__title` 没有 `flex:1` 才让它一直没生效）。
+
+    残留（**已知未消除**）：环的**左**缘仍随标签长度差最多 24px
+    （「已结单」3 字 vs 「待人工调度」5 字）。要消掉它得给标签定宽（`min-width:5em`），
+    而那会把"最长标签恰好是 5 字"变成一个**隐式假设** —— 多一个字就静默破功。
+    右对齐读起来是"右侧一列标签"，不是参差，所以到此为止。
+  */
+  margin-inline-start: auto;
 }
 
 /*
@@ -410,6 +429,8 @@ function onRowClick(row: T) {
   而这正是这批在消灭的那类漂移。C 组落地后它是**卡片形态唯一的中性档**，所以必须与 MetaChip 同源。
 */
 .rl-card__tag {
+  /* 与 `.rl-card__ring` 同一条：卡片标签靠右缘成一条线（见下面 `.rl-card__title` 的注释） */
+  margin-inline-start: auto;
   flex-shrink: 0;
   font-size: var(--fs-base);
   line-height: 18px;

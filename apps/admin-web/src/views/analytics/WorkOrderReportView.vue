@@ -180,8 +180,16 @@
             <span class="order-no">{{ row.orderNo }}</span>
             <!-- 加急＝警戒：§3.3 的「实心圆」而不是又一个彩色胶囊。
                  原先这里是 `el-tag type="danger" effect="dark"`（实心红底白字，本页最响的一处），
-                 现在换成 9px 实心点 + 中性字——**信号的形状变了，强度没降**。 -->
-            <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" class="urgency-dot" />
+                 现在换成 6px 实心点 + 中性字——**信号的形状变了，强度没降**。
+                 间距走 `--text-after`（`--mark-gap` 12px），**不是**本页自己写一个 6px：
+                 6px 是 StatusRing 内部的**绑定距**，用它当"与前一个词的间距"会让
+                 「加急」读成单号的尾巴（见 components/StatusRing.vue 的注释）。 -->
+            <StatusRing
+              v-if="row.urgencyLevel === 2"
+              variant="dot"
+              label="加急"
+              class="status-ring--text-after"
+            />
           </template>
 
           <template #col-status="{ row }">
@@ -256,14 +264,31 @@ const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
 
-/** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
+/**
+ * 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片。
+ *
+ * ⚠️ 2026-10-13：`orderNo` 的宽度由 **170 → 196**。
+ *    170 是**只按单号算的**（16 字符等宽 ≈99px + 单元格内边距 24 ≈ 123，留了很宽的余量），
+ *    没算那个内联的「加急」标记：99 + 12（`--mark-gap`）+ 6（点）+ 6（绑定距）+ 24（「加急」）
+ *    = **147px**，而 170 的内容盒只有 **146px** —— **预算比盒子多 1px**。
+ *    196 这个数**不是我拍的**：`WorkbenchView` 的注释里早就算过同一笔账
+ *    （「工单号 196 = 16 字符 ≈125px + 内联「加急」42 + 间距 + 单元格内边距 24」），
+ *    两页对同一件事应该是同一个预算。
+ */
 const columns: TableColumn<DispatchOrderItemVO>[] = [
-  { key: 'orderNo', label: '工单单号', width: 170, card: 'title' },
+  { key: 'orderNo', label: '工单单号', width: 196, card: 'title' },
   {
     key: 'status',
     label: '状态',
     width: 100,
-    align: 'center',
+    /*
+      ⚠️ 2026-10-13：**去掉了 `align: 'center'`**（用户要求「对表格做对齐处理」）。
+      居中把一个**宽度不定**的组（环 + 标签：三字 39px / 四字 51px / 五字 63px）摆到列中央，
+      于是**每一行的环都落在不同的 x 上** —— 实测左缘 479 / 473 / 467，参差 12px。
+      同一列里重复出现的标记应当**排成一条竖线**；`StatusRing` 的色相已经在讲"是哪一格"，
+      x 再抖一次只会让人以为还有别的信息。
+      左对齐后环左缘恒为单元格内容左缘（实测 475）。
+    */
     card: 'tag',
     // 'ring' = 9px 状态圆环，与宽档表格的 `#col-status` 共用同一份色值（§4.3 的契约变更）
     cardTag: (row) => ({
@@ -531,9 +556,5 @@ async function handleArchiveClick() {
 .order-no {
   font-family: monospace;
   font-weight: var(--fw-medium);
-}
-
-.urgency-dot {
-  margin-inline-start: 6px;
 }
 </style>

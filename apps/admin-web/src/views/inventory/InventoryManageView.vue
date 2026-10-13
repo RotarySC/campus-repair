@@ -133,8 +133,15 @@
             <span class="part-name">{{ row.partName }}</span>
             <!-- 低库存＝警戒：**实心圆点 + 文字**（§3.3），不再是一个实心红底标签。
                  「低库存」这件事在本页原先有**四处**表达（名称旁的实心红胶囊、数量上的红底药丸、
-                 KPI 卡的浅红底 + 红数字、页顶横幅），这里收成一处。 -->
-            <StatusRing v-if="row.isLowStock" variant="dot" label="低库存" class="part-flag" />
+                 KPI 卡的浅红底 + 红数字、页顶横幅），这里收成一处。
+                 间距走 `--text-after`（`--mark-gap` 12px）——
+                 ⚠️ **必须大于 StatusRing 内部的 6px 绑定距**，否则「低库存」读成物料名的尾巴。 -->
+            <StatusRing
+              v-if="row.isLowStock"
+              variant="dot"
+              label="低库存"
+              class="status-ring--text-after"
+            />
           </template>
 
           <template #col-categoryType="{ row }">
@@ -859,9 +866,6 @@ async function handleExportAdvice() {
 /* ---------- 原先写死在模板内联 style 里的几处（内联特异性高于类，必须换成类才收得进口径） ---------- */
 .part-name {
   font-weight: var(--fw-normal);
-}
-.part-flag {
-  margin-inline-start: 6px;
 }
 .cell-muted {
   color: var(--faint);

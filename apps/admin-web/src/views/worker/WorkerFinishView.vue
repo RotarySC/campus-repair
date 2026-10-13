@@ -107,7 +107,7 @@
                   v-if="item.consumeQuantity > item.part.stockQuantity"
                   variant="dot"
                   label="已超出库存上限"
-                  class="over-warning"
+                  class="status-ring--text-after"
                 />
               </div>
             </div>
@@ -560,10 +560,7 @@ async function onSubmitFinish() {
   font-weight: var(--fw-medium);
 }
 
-/* 超出库存上限：颜色与形状都由 StatusRing 的实心圆点承担，这里只留间距 */
-.over-warning {
-  margin-inline-start: 6px;
-}
+/* 超出库存上限：颜色与形状都由 StatusRing 的实心圆点承担，间距走 `--text-after` 那个类 */
 
 .part-action {
   display: flex;
@@ -642,7 +639,9 @@ async function onSubmitFinish() {
   color: var(--ink);
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 「缺货 / 紧缺」标记与名称同处一条 flex 行，间距用**同一个** `--mark-gap`：
+     这里如果自己写 6px，就又变成"标记是名称的一部分"了（与行内那两个类同一条理由）。 */
+  gap: var(--mark-gap);
 }
 
 .picker-part-sub {

@@ -134,6 +134,29 @@ const visible = computed(() => !!text.value || !!props.status || props.variant =
   --breathe-period: 1.8s;
 }
 
+/*
+  ==================== 行内用法：标记 ↔ 相邻文字的间距（2026-10-13 新增，规范 §29） ====================
+
+  `.status-ring` 自己的 `gap: 6px` 是「标记 ↔ **它自己的标签**」的**绑定距**——
+  那 6px 说的是"这个点属于「加急」这两个字"。
+
+  ⚠️ 于是**行内标记与前面那个词的间距不能也是 6px**：两个距一样时，眼睛读到的是
+  「一个词 + 它的修饰」，而不是「两个并列的词」。实测的后果就是
+  `BX20261013000101●加急`、`网络信息模块●低库存` —— 「加急」看着像单号的尾巴。
+  取 `--mark-gap`（12px = 2× 绑定距），标记才读成**新起的那个词**。
+
+  两个方向各一个类，**不合并成 `margin-inline: 12px`**：
+  标记处在单元格/行首时（`AlertBanner`、页顶「缺料警戒」）多出来的左外边距
+  会把它推进去、与上面的标题错开——那类**独立站位**的标记不该加任何类。
+*/
+.status-ring--text-after {
+  margin-inline-start: var(--mark-gap);
+}
+
+.status-ring--text-before {
+  margin-inline-end: var(--mark-gap);
+}
+
 .status-ring__mark {
   flex: none;
   width: var(--ring-size);

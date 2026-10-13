@@ -33,7 +33,7 @@
               工单报表 / 调度中心 / 我的工单 / 师傅工作台四处早已是实心圆点，
               同一条信息在第五个页面换了长相，正是「跨页一致」要消灭的那类漂移。
             -->
-            <StatusRing v-if="order.urgencyLevel === 2" variant="dot" label="加急" />
+            <StatusRing v-if="order.urgencyLevel === 2" variant="dot" label="加急" class="status-ring--text-after" />
             <span v-else>普通</span>
           </el-descriptions-item>
         </el-descriptions>

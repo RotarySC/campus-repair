@@ -243,6 +243,7 @@
                         v-if="workerProfile.loadRate >= 100"
                         variant="dot"
                         label="负荷已满"
+                        class="status-ring--text-before"
                       />
                       {{ workerProfile.currentLoad }} / {{ workerProfile.maxLoad }} 单
                     </span>

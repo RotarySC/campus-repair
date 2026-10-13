@@ -60,7 +60,7 @@
             <span class="order-no">{{ row.orderNo }}</span>
             <!-- 加急＝警戒：§3.3 的「实心圆」，不是又一个彩色胶囊。
                  原先这里是 `el-tag type="danger"`（红底白字），是本页除状态列外最响的一处颜色。 -->
-            <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" />
+            <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" class="status-ring--text-after" />
           </span>
         </template>
 

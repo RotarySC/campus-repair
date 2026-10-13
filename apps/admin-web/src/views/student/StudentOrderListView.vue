@@ -28,7 +28,7 @@
              用户看到的是 `2` 和 `1`，一个只对机器有意义的数字。窄档卡片走 `cardTag()` 反而是对的。
              补上插槽顺带修掉它：加急＝§3.3 的实心圆（警戒），普通＝中性字。 -->
         <template #col-urgencyLevel="{ row }">
-          <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" />
+          <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" class="status-ring--text-after" />
           <span v-else class="urgency-normal">普通</span>
         </template>
 
