@@ -132,10 +132,19 @@
               <span>期望时段: {{ order.appointmentPeriod }}</span>
             </div>
 
-            <!-- 待办流转根因提示横幅：G4 口径（实心点 + 中性字 + 发丝线边框），
-                 与师傅工作台的挂起原因条**同一个形状** -->
+            <!--
+              待办流转备注横幅。
+              ⚠️ 2026-10-13（三档）：**点去掉了**，只留横幅（发丝线边框 + 中性字）。
+              理由是实测出来的 —— 这个 `dispatchReason` 是「**最近一条流转备注**」
+              （`WorkOrderService` 的 `lastLog.getReasonOrRemark()`），
+              演示库上取到的真实取值里，"师生验收通过，评价 5 星""智能匹配成功""系统自动核销"
+              这类**正向/中性**占了绝大多数，只有"师生评价 1 星"一条是真警戒。
+              给一个 11/12 时候并不紧急的字段配红点，等于把"最近发生了什么"读成"出事了"。
+
+              而且**它去掉也不丢信息**：横幅本身的发丝线边框已经在说"这里有一条备注"；
+              这条备注的性质与 `order.status` 高度相关，而**卡片顶部的状态环已经在显示 status 了**。
+            -->
             <div v-if="order.dispatchReason" class="card-reason-banner">
-              <StatusRing variant="dot" />
               <span>{{ order.dispatchReason }}</span>
             </div>
 
@@ -1031,8 +1040,11 @@ function getProgressBarStatus(worker: WorkerBoardVO): string {
   color: var(--muted);
 }
 
-/* G4 口径（§4.6）：提示条**不用彩底彩边**——实心点 + 中性字 + 发丝线边框。
-   与师傅工作台的挂起原因条、进销存的低库存横幅是同一个形状（跨页一致）。 */
+/* G4 口径（§4.6）：提示条**不用彩底彩边**——发丝线边框 + 中性字。
+   ⚠️ 2026-10-13 起**不再带实心点**：这条横幅读的是 `dispatchReason`（= 最近一条流转备注），
+   实测取值里正向/中性（5 星通过、智能匹配成功、系统自动核销）占绝大多数，
+   只有"师生评价 1 星"是真警戒 —— 给一个 11/12 不紧急的字段配红点等于把"发生了什么"读成"出事了"。
+   与师傅工作台的挂起原因条形状一致（跨页一致）。 */
 .card-reason-banner {
   display: flex;
   align-items: center;

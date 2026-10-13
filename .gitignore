@@ -51,6 +51,7 @@ docs/
 .scratch/v7-shots/
 .scratch/v3-shots/
 .scratch/v8-shots/
+.scratch/v9-shots/
 .scratch/probe-out*.txt
 
 # Maven 测试/运行的临时目录（沙箱下 java.io.tmpdir 必须落在工作区内，

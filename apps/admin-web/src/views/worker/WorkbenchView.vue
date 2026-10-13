@@ -91,10 +91,15 @@
         <template #col-description="{ row }">
           <div class="fault-desc" :title="row.description">{{ row.description }}</div>
           <div v-if="row.status === 'SUSPENDED' && row.dispatchReason" class="suspend-banner">
-            <!-- 警戒走**填充**而不是颜色面积（§3.3 / §4.6 G4 口径）：
-                 9px 实心点 + 中性字 + 发丝线边框。原先这里是 `WarningFilled` 图标
-                 + 琥珀底 + 琥珀边 + 琥珀字——四个颜色维度在说同一件事，而事情只有一件。 -->
-            <StatusRing variant="dot" />
+            <!--
+              ⚠️ 2026-10-13（三档）：**点去掉了**，只留横幅。
+              这条横幅原先带 9px 实心点（当年是拿掉 `WarningFilled` 图标 + 琥珀底/边/字的替代品）。
+              现在去掉的两个理由，叠起来是决定性的：
+               ① 它**只在这一行的 status 是 SUSPENDED 时**才渲染 —— 也就是「有挂起原因」这件事
+                  与 status 100% 同源，而**状态列已经有 `--h4 已挂起` 的圆环**了（判据「同义去重」）；
+               ② 横幅自己的发丝线边框已经在说「这里有一条备注」。
+              点在这里的信息增益 ≈ 0，剩下的只是"又一处红色"。
+            -->
             <span>{{ row.dispatchReason }}</span>
           </div>
         </template>
@@ -717,8 +722,10 @@ async function submitTransfer() {
   overflow: hidden;
 }
 
-/* G4 口径（§4.6）：提示条**不用图像、不用彩底彩边**——
-   实心点 + 中性字 + 发丝线边框。与进销存的低库存横幅是同一个形状（跨页一致）。 */
+/* G4 口径（§4.6）：提示条**不用图像、不用彩底彩边**——发丝线边框 + 中性字。
+   ⚠️ 2026-10-13 起**不再带实心点**：这条横幅只在 `status === 'SUSPENDED'` 时渲染，
+   「有挂起原因」这件事与状态列 100% 同源（状态列已经有 `--h4 已挂起` 的圆环），
+   符合判据「同义去重」——点在这里信息增益 ≈ 0。边框仍在说「这里有一条备注」。 */
 .suspend-banner {
   display: flex;
   align-items: center;

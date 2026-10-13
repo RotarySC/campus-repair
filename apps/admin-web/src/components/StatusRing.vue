@@ -1,11 +1,11 @@
 <template>
-  <!-- 状态圆环（视觉语言方向 D §3.2/§3.3）：色相只活在 2px 描边上，文字一律中性色 --ink。
-       实测口径来自腾讯云控制台的后端状态标记：`10×10`、`border:2px solid`、`border-radius:100%`。 -->
+  <!-- 状态圆环（视觉语言方向 D §3.2/§3.3）：色相只活在描边/填充上，文字一律中性色 --ink。
+       空心环的实测口径来自腾讯云控制台的后端状态标记：`10×10`、`border:2px solid`、`border-radius:100%`。 -->
   <span
     v-if="visible"
     class="status-ring"
-    :class="`status-ring--${variant}`"
-    :style="{ '--ring-size': `${size}px`, color: `var(${hueToken})` }"
+    :class="[`status-ring--${variant}`, { 'is-breathing': breathing }]"
+    :style="{ '--ring-size': `${px}px`, color: `var(${hueToken})` }"
   >
     <i class="status-ring__mark" aria-hidden="true" />
     <!--
@@ -31,24 +31,63 @@ const props = withDefaults(
      * 给 `ResponsiveTable` 的卡片形态用——那里文案已经由调用方的 `cardTag()` 算好了。
      */
     label?: string;
-    /** 圆环外径（px）。默认 9 —— §3.3：实心圆与空心圆环**同为 9px 外径**，只差「填充与否」。 */
+    /**
+     * 圆环外径（px）。**省略时按 `variant` 取默认**（环 9 / 点 6，见 `VARIANT_SIZE`）。
+     */
     size?: number;
     /**
-     * 标记语义（§3.3）：
-     * - `'ring'` 空心圆环 = **分类**（这条工单属于哪一类）。色相由 `status` 推导。
-     * - `'dot'`  实心圆   = **警戒**（异常 / 需要注意）。色相恒为 `--alert`，
-     *   **与 `status` 无关**——§3.3 给它的语义只有一个「注意」，不是第 9 种类别。
+     * 标记语义（§3.3，2026-10-13 修订）：
+     * - `'ring'` 空心圆环 = **状态 / 分类**（这条工单处在生命周期哪一格）。色相由 `status` 推导。
+     * - `'dot'`  实心圆   = **标记**（不是状态）。它不借用任何工单状态色相。
      */
     variant?: 'ring' | 'dot';
+    /**
+     * `variant="dot"` 的两档（§3.3 修订）。**只对 `dot` 有意义**，环会忽略它。
+     *
+     * - `'alert'`（默认）＝ **警戒：现在就得动手**。色相 `--alert`，**并且会呼吸**。
+     * - `'muted'`         ＝ **提示：知道就行**。色相走中性阶梯 `--faint`，静止不呼吸。
+     *
+     * ⚠️ `'muted'` **不是第 9 个色相**：它用的是同一个黑的第五档透明度，与 `--h1`~`--h8` 无关，
+     * 所以既不需要重推那 28 对 ΔE，也不会与任何工单状态「一个色相两个意思」。
+     */
+    tone?: 'alert' | 'muted';
   }>(),
-  { size: 9, variant: 'ring' }
+  { size: undefined, variant: 'ring', tone: 'alert' }
 );
 
 /**
- * 色相令牌名（`'--h3'` 这种）。取不到时是中性回落值——不占用 8 个语义色相中的任何一个。
- * 实心（警戒）不走这张表：它的语义是「注意」而不是「属于哪类」。
+ * **两档标记的默认外径**。
+ *
+ * ⚠️ 这条**推翻了 §3.3 原先的「实心圆与空心圆环同为 9px 外径，只差填充这一个变量」**。
+ * 改的理由是实测出来的：`加急`（实心）与 `返工待派`（空心环）**色相相同**
+ * （都落在 `#F5222D`，因为 `--alert` 就定义为 `var(--h6)`），两者在调度卡片上**紧挨着**，
+ * 于是「填充与否」这一个 9px 上的变量要独自承担区分「紧急度」与「生命周期」两个轴 —— 太弱。
+ * 现在把点缩小到 6px，**尺寸也参与区分**；环保持 9px（不动它，全部状态显示零影响）。
  */
-const hueToken = computed(() => (props.variant === 'dot' ? '--alert' : orderStatusHueToken(props.status)));
+const VARIANT_SIZE = { ring: 9, dot: 6 } as const;
+
+const px = computed(() => props.size ?? VARIANT_SIZE[props.variant]);
+
+/**
+ * 色相令牌名（`'--h3'` 这种）。
+ *
+ * 实心标记（`variant="dot"`）**不查工单状态色相表**：
+ * - 警戒档取 `--alert`；
+ * - 提示档取 `--faint`（中性，不是色相）。
+ */
+const hueToken = computed(() => {
+  if (props.variant !== 'dot') return orderStatusHueToken(props.status);
+  return props.tone === 'muted' ? '--faint' : '--alert';
+});
+
+/**
+ * **只有警戒档呼吸**（2026-10-13）。
+ *
+ * 为什么给「注意」加动效：这一轮同时做了「甲 + 容器规则 + 三档」，红点从一屏 3 枚降到 1 枚
+ * ——**先把它变稀缺，再给稀缺的东西加权**，两者是一对；只做前者会显得红点"没存在感"。
+ * 提示档（中性）**不呼吸**：它没有要求读者做任何事。
+ */
+const breathing = computed(() => props.variant === 'dot' && props.tone === 'alert');
 
 const text = computed(() => {
   if (props.label !== undefined) return props.label;
@@ -80,7 +119,7 @@ const visible = computed(() => !!text.value || !!props.status || props.variant =
 .status-ring {
   display: inline-flex;
   align-items: center;
-  /* 色相**不写在这里**：由组件按 status 内联绑定 `color: var(--hN)`，
+  /* 色相**不写在这里**：由组件按 status/tone 内联绑定 `color: var(--hN)`，
      再让 .status-ring__mark 用 currentColor 继承（§4.3）。
      下面这行只是令牌缺失时的兜底，正常路径永远被内联 style 覆盖。 */
   color: var(--h8);
@@ -88,13 +127,15 @@ const visible = computed(() => !!text.value || !!props.status || props.variant =
   --ring-size: 9px;
   /* §3.2 实测的描边宽度；与外径解耦——改 size 不该悄悄改描边粗细 */
   --ring-stroke: 2px;
+  /* 呼吸一个来回的时长。定在 1.8s：比这快就读成「闪烁」，比这慢就没人注意到 */
+  --breathe-period: 1.8s;
 }
 
 .status-ring__mark {
   flex: none;
   width: var(--ring-size);
   height: var(--ring-size);
-  /* border-box（全仓由 responsive.css 统一），故 9px 是**外径**，与规范 §3.3 的「同为 9px 外径」对齐 */
+  /* border-box（全仓由 responsive.css 统一），故 6/9px 都是**外径** */
   box-sizing: border-box;
   border-radius: 100%;
   border: var(--ring-stroke) solid currentColor;
@@ -106,9 +147,40 @@ const visible = computed(() => !!text.value || !!props.status || props.variant =
   background: transparent;
 }
 
-/* 实心（警戒）：与空心**只差填充与否这一个变量**，几何完全一致（§3.3） */
+/* 实心（标记）：与空心环**只差填充与否**这一条在 2026-10-13 被尺寸一并发散开来，见 VARIANT_SIZE */
 .status-ring--dot .status-ring__mark {
   background: currentColor;
+}
+
+/* ==================== 呼吸（只有警戒档） ====================
+   只动 `opacity`，不动 `transform`/`box-shadow`：
+   · `opacity` 是可合成的（compositor 友好），一屏几十个也不掉帧；
+   · 6px 的点上做 `scale` 只变化 0.9px，肉眼看不出来，白付一次合成；
+   · 光晕要用 `box-shadow`，而 V15 明令「无自造阴影」。
+
+   谷值取 0.35 而不是 0：**它必须一直"在"，只是时轻时重**——
+   淡到看不见就等于一个会消失的警告，那是比不动更差的效果。 */
+@keyframes status-ring-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.status-ring--dot.is-breathing .status-ring__mark {
+  animation: status-ring-breathe var(--breathe-period) ease-in-out infinite;
+}
+
+/* ⚠️ 前庭失调 / 晕动症用户会被无限动效伤到，且这与「安静」的总体方向相抵。
+   声明了 reduced-motion 就退回**静止的满不透明红点** —— 信息一点不少，只是不动。 */
+@media (prefers-reduced-motion: reduce) {
+  .status-ring--dot.is-breathing .status-ring__mark {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .status-ring__label {

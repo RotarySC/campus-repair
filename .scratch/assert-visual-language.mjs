@@ -7,7 +7,12 @@
  *     的可执行形式（用棘轮而不是「全仓为 0」，因为第二期还有 9 页没铺开）。
  *     ⚠️ 注释里的色值是**文档**（本仓习惯写「原来是 #1890FF」），扫描前先剥注释。
  *  ② **§3.1/§3.2 令牌**：7 个中性/结构令牌 + 8 个色相在 `:root` 上解析得出来，且 8 个色相互不相同。
- *  ③ **§3.3 标记语义**：圆环 9px / 2px 描边 / 圆角 100% / 不填充；实心圆**只差填充这一个变量**。
+ *  ③ **§3.3 标记语义（2026-10-13 修订）**：圆环 9px / 2px 描边 / 圆角 100% / 不填充；
+ *     实心标记 6px / 填充 / **警戒档还会呼吸**（`prefers-reduced-motion` 下退回静止）。
+ *     ⚠️ 修订前这条写的是「实心圆与空心圆环同为 9px，**只差填充这一个变量**」，
+ *     2026-10-13 让**尺寸也参与区分**：`加急`（实心）与 `返工待派`（空心环）**色相相同**
+ *     （都落在 `#F5222D`，因为 `--alert` 就定义为 `var(--h6)`），两者在调度卡片上紧挨着，
+ *     「填充与否」一个变量在 9px 上承担不动两个轴。理由详见 `StatusRing.vue` 的 `VARIANT_SIZE`。
  *  ④ **§3.4 表格**：表头白底、0.667px 发丝线、行 `border-bottom: 0`、`13px 10px` / `14px 10px`、
  *     内层 `.cell` 水平内边距已归零（否则与外层叠加成 22px）、无竖线、无斑马纹。
  *  ⑤ **§3.5 形状与排版**：卡片圆角 0、无自造阴影、字重上限 600、KPI 大数字为 400、基准字号 12px。
@@ -271,7 +276,21 @@ const SNAPSHOT = `(() => {
       fill: cs(firstMark, 'background-color'),
       labelColor: cs(firstLabel, 'color'), labelWeight: cs(firstLabel, 'font-weight'), labelSize: cs(firstLabel, 'font-size')
     } : null,
-    dot: dotMark ? { w: cs(dotMark, 'width'), border: cs(dotMark, 'border-top-width'), fill: cs(dotMark, 'background-color'), color: cs(dots[0], 'color') } : null,
+    /*
+     * §3.3 修订（2026-10-13）：实心标记现在是 6px、并带呼吸动画。
+     * ⚠️ 注意 opacity 这一项在**后台标签**里会停在动画的起始值（主线程不推进过渡，
+     * 与本仓踩过多次的 el-drawer enter 态同源），所以**不要拿 opacity 当断言**——
+     * 断言一律落在「声明了什么」（animation-name / duration / iteration / timing）上。
+     */
+    dot: dotMark ? {
+      w: cs(dotMark, 'width'), h: cs(dotMark, 'height'),
+      border: cs(dotMark, 'border-top-width'),
+      fill: cs(dotMark, 'background-color'), color: cs(dots[0], 'color'),
+      radius: cs(dotMark, 'border-radius'), opacity: cs(dotMark, 'opacity'),
+      animName: cs(dotMark, 'animation-name'), animDur: cs(dotMark, 'animation-duration'),
+      animIter: cs(dotMark, 'animation-iteration-count'), animTiming: cs(dotMark, 'animation-timing-function'),
+      hasBreatheClass: dots[0].classList.contains('is-breathing')
+    } : null,
     hueByLabel: (() => { const o = {}; for (const r of rings) { const l = r.querySelector('.status-ring__label'); if (l) o[l.textContent.trim()] = cs(r, 'color'); } return o; })(),
     /*
      * V7（第二期）：表格单元格 / 卡片**内部**的 el-tag 文案。
@@ -460,9 +479,39 @@ if (report.ring) {
 }
 check('工单报表渲染出了实心警戒点（加急）', !!report.dot);
 if (report.dot && report.ring) {
-  check('实心圆外径与空心圆环相同（只差填充这一个变量）', report.dot.w === report.ring.w && report.dot.border === '2px', `${report.dot.w} vs ${report.ring.w}`);
-  check('实心 = 填充 currentColor', report.dot.fill === report.dot.color, `${report.dot.fill} vs ${report.dot.color}`);
+  // ⚠️ 这一条**刻意推翻**了旧规则（旧：`dot.w === ring.w`，即「只差填充这一个变量」）。
+  //    看到这处 diff 请对照 `StatusRing.vue` 的 `VARIANT_SIZE` 与规范 §3.3 的修订说明 —— **不是回归**。
+  check(
+    '实心标记比空心环小：点 6px / 环 9px（尺寸参与区分，不再只靠填充）',
+    report.dot.w === '6px' && report.dot.h === '6px' && report.ring.w === '9px',
+    `点 ${report.dot.w}×${report.dot.h} vs 环 ${report.ring.w}`
+  );
+  check('实心标记仍是圆、仍是填充 currentColor', report.dot.radius === '100%' && report.dot.fill === report.dot.color, `${report.dot.radius} / ${report.dot.fill}`);
+  check('警戒档带呼吸类（is-breathing）', report.dot.hasBreatheClass === true, String(report.dot.hasBreatheClass));
+  check('呼吸是**无限循环**动画（不是一次性过渡）', report.dot.animName !== 'none' && report.dot.animIter === 'infinite', `${report.dot.animName} / ${report.dot.animIter}`);
+  check('呼吸走 ease-in-out（线性会读成「闪烁」而不是「呼吸」）', report.dot.animTiming === 'ease-in-out', report.dot.animTiming);
+  check('呼吸周期落在 1.2~2.4s（比这快像闪烁、比这慢没人注意）', parseFloat(report.dot.animDur) >= 1.2 && parseFloat(report.dot.animDur) <= 2.4, report.dot.animDur);
 }
+
+/* ---- §3.3 修订（2026-10-13）：动效只许动 opacity，且必须给 reduced-motion 退路 ----
+   这两条**只能静态读 SFC**：`prefers-reduced-motion` 在探针里没法模拟（代理不暴露
+   `Emulation.setEmulatedMedia`），而「关键帧里有什么」本来也是**声明**层面的事实。 */
+const ringSfc = readFileSync(join(SRC, 'components', 'StatusRing.vue'), 'utf8');
+const kfBody = (ringSfc.match(/@keyframes\s+status-ring-breathe\s*\{([\s\S]*?)\n\}/) || [])[1] || '';
+const hasRm = /@media\s*\(prefers-reduced-motion:\s*reduce\)/.test(ringSfc) && /animation:\s*none/.test(ringSfc);
+check(
+  '呼吸关键帧存在，且**只动 opacity**（动 transform/box-shadow 会掉帧或违反 V15）',
+  kfBody.length > 0 && /opacity/.test(kfBody) && !/transform|box-shadow|filter/.test(kfBody),
+  kfBody.replace(/\s+/g, ' ').trim().slice(0, 90) || '未找到关键帧'
+);
+check(
+  '声明了 prefers-reduced-motion 退路（无限动效必须能退回静止）',
+  hasRm,
+  // ⚠️ 这条 detail 必须**跟着实际结果走**。第一版把它写成了恒定字符串
+  //    （无论真假都打印「未找到 reduced-motion 兜底」），于是出现「PASS + 一句否认它自己的话」——
+  //    那种日志比 FAIL 还坏：读者会开始不看 detail。
+  hasRm ? '找到 @media (prefers-reduced-motion: reduce) + animation: none' : '未找到 reduced-motion 兜底'
+);
 const EXPECTED_HUE = {
   待派单: '#fa8c16', 待人工调度: '#fa8c16', 待承接: '#13c2c2', 维修中: '#1677ff',
   已挂起: '#6b7c93', 待验收: '#722ed1', 返工待派: '#f5222d', 已结单: '#52c41a', 已作废: '#b3b3b3'
@@ -627,8 +676,11 @@ console.log('\n===== ⑨ 实心圆＝警戒（§3.3 ＋ §4.6 G4） =====');
     check(`${name}：有且只有一个实心圆点`, a.dotCount === 1, `${a.dotCount} 个`);
     check(`${name}：圆点色相 = --alert (#F5222D)`, a.dotColor === 'rgb(245, 34, 45)', a.dotColor);
     check(`${name}：圆点是**实心**（填充 === 描边色）`, a.dotFill === a.dotColor, `${a.dotFill} vs ${a.dotColor}`);
-    check(`${name}：圆点外径 9px`, a.dotSize === '9px', a.dotSize);
+    // ⚠️ 这一条**刻意推翻**了旧值（旧：`a.dotSize === '9px'`）。理由与 §3.3 的修订同源：
+    //    实心点缩到 6px，**尺寸也参与区分** —— 旧的「只差填充这一个变量」已作废。**不是回归。**
+    check(`${name}：圆点外径 6px（2026-10-13 起；旧值是 9px）`, a.dotSize === '6px', a.dotSize);
     check(`${name}：圆点用的是 dot 变体（不是 ring）`, (a.dotVariantClass || '').includes('status-ring--dot'), a.dotVariantClass);
+    check(`${name}：G4 横幅的警戒点**同样会呼吸**（警戒档共用同一条规则，不是只有表格里那几枚）`, (a.dotVariantClass || '').includes('is-breathing'), a.dotVariantClass);
     check(`${name}：圆点文字与强调数字都是中性色`, a.dotLabelColor === 'rgba(0, 0, 0, 0.9)' && a.strongColor === 'rgba(0, 0, 0, 0.9)', `${a.dotLabelColor} / ${a.strongColor}`);
   }
 }
