@@ -19,7 +19,8 @@
           :show-file-list="false"
           accept=".xlsx,.xls"
         >
-          <el-button type="success" icon="Upload" :loading="importing">批量导入用户(Excel)</el-button>
+          <!-- 中性化（§24 执行顺序 1）：导入不是状态，原 `success` 绿与「成功」无关。 -->
+          <el-button icon="Upload" :loading="importing">批量导入用户(Excel)</el-button>
         </el-upload>
       </div>
     </div>

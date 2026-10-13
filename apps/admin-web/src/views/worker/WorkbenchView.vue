@@ -108,14 +108,22 @@
               </el-button>
             </template>
 
+            <!--
+              本块的非主色按钮（§24 执行顺序 1）：
+              · 「挂起」原 `warning` 琥珀、「解除挂起」原 `success` 绿 —— 两者**都不是状态**。
+                「要小心」已由 `openSuspendModal` 弹窗里那条 `AlertBanner` 承担
+                （「挂起后 SLA 倒计时冻结…」），不该再由一个色相说第二遍。
+              · 「转派」**保留 `danger`** —— 登记在案的例外而非漏改（B1：不可逆 + 跨行业约定）。
+                判据见 `color-controls.spec.ts` 的 `isDestructive`：只豁免 `el-button` 的字面 `danger`。
+            -->
             <template v-if="row.status === 'IN_PROGRESS'">
               <el-button type="primary" size="small" @click="goToFinish(row)">完工填报</el-button>
-              <el-button type="warning" link size="small" @click="openSuspendModal(row)">挂起</el-button>
+              <el-button link size="small" @click="openSuspendModal(row)">挂起</el-button>
               <el-button type="danger" link size="small" @click="openTransferModal(row)">转派</el-button>
             </template>
 
             <template v-if="row.status === 'SUSPENDED'">
-              <el-button type="success" size="small" :loading="operatingId === row.id" @click="handleResume(row)">
+              <el-button size="small" :loading="operatingId === row.id" @click="handleResume(row)">
                 解除挂起
               </el-button>
               <el-button type="danger" link size="small" @click="openTransferModal(row)">转派</el-button>
@@ -168,7 +176,7 @@
       </el-form>
       <template #footer>
         <el-button @click="suspendDialogVisible = false">取消</el-button>
-        <el-button type="warning" :loading="operatingId !== null" @click="submitSuspend">确认挂起</el-button>
+        <el-button :loading="operatingId !== null" @click="submitSuspend">确认挂起</el-button>
       </template>
     </el-dialog>
 

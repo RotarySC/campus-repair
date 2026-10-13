@@ -144,22 +144,25 @@
                 原指派: <strong>{{ order.workerName }}</strong>
               </span>
               <div class="action-btn-group">
+                <!--
+                  §24 执行顺序 1（中性化）：返工仲裁原 `warning`、时间轴原 `info`，两者**都不是状态**。
+                  「要小心」由 `openArbitrateModal` 的仲裁弹窗承担；时间轴是纯只读跳转，染色没有语义。
+                -->
                 <el-button
                   v-if="order.status === 'REWORK_PENDING'"
-                  type="warning"
                   size="small"
                   @click.stop="openArbitrateModal(order)"
                 >
                   返工仲裁
                 </el-button>
                 <el-button
-                  type="info"
                   link
                   size="small"
                   @click.stop="openTimelineModal(order)"
                 >
                   时间轴
                 </el-button>
+                <!-- 「作废工单」**保留 `danger`**：登记在案的例外（B1），判据见 color-controls.spec.ts 的 isDestructive。 -->
                 <el-button
                   type="danger"
                   link

@@ -182,8 +182,16 @@
           <div class="picker-item-info">
             <div class="picker-part-name">
               {{ part.partName }}
-              <el-tag v-if="part.stockQuantity <= 0" type="danger" size="small">缺货</el-tag>
-              <el-tag v-else-if="part.isLowStock" type="warning" size="small">紧缺</el-tag>
+              <!--
+                缺货 / 紧缺＝**§4.6 的 G4 警戒口径**（实心圆点 + 中性字），不是第 9、10 种状态色。
+                原先是 `danger` 红胶囊 + `warning` 琥珀胶囊，属于「**用色相面积表达紧急度**」；
+                D 把紧急度挪到了**填充**维度（§3.3）：警戒 = 实心圆点、分类 = 空心圆环。
+                两者现在**只差文字** —— 但这不丢信息：缺货那行整行带 `.disabled-part`
+                （压暗 + `cursor:not-allowed`，见样式区），「能不能选」这一步不靠颜色也分得开。
+                同页第 106 行「已超出库存上限」用的就是同一个标记，此处是它与相邻两处的口径对齐。
+              -->
+              <StatusRing v-if="part.stockQuantity <= 0" variant="dot" label="缺货" />
+              <StatusRing v-else-if="part.isLowStock" variant="dot" label="紧缺" />
             </div>
             <div class="picker-part-sub">
               编号: {{ part.partCode }} | 规格: {{ part.specification || '通用' }}

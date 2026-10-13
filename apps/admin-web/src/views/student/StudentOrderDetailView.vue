@@ -27,7 +27,13 @@
             {{ order.workerName ? `${order.workerName}（${order.workerPhone || '暂无电话'}）` : '待派单' }}
           </el-descriptions-item>
           <el-descriptions-item label="紧急度">
-            <el-tag v-if="order.urgencyLevel === 2" type="danger" effect="plain">加急</el-tag>
+            <!--
+              加急＝警戒：§3.3 的**实心圆**（不是又一个彩色胶囊）。
+              原先这里是全仓**唯一一处**仍用 `danger` 胶囊表达加急的地方 ——
+              工单报表 / 调度中心 / 我的工单 / 师傅工作台四处早已是实心圆点，
+              同一条信息在第五个页面换了长相，正是「跨页一致」要消灭的那类漂移。
+            -->
+            <StatusRing v-if="order.urgencyLevel === 2" variant="dot" label="加急" />
             <span v-else>普通</span>
           </el-descriptions-item>
         </el-descriptions>

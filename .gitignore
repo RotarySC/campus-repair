@@ -50,5 +50,10 @@ docs/
 # 但它们吐出来的图与日志是**一次性的观测**，入库只会让 git status 长满噪声。
 .scratch/v7-shots/
 .scratch/v3-shots/
+.scratch/v8-shots/
 .scratch/probe-out*.txt
+
+# Maven 测试/运行的临时目录（沙箱下 java.io.tmpdir 必须落在工作区内，
+# 见 AGENTS.md §2.1：不设它会报 Unable to create tempDir / AccessDeniedException）
+.tmp-java/
 

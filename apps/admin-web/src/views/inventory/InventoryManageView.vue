@@ -103,7 +103,8 @@
             <el-button type="primary" size="small" :icon="Plus" @click="openCreateDialog">
               新增物料档案
             </el-button>
-            <el-button type="success" plain size="small" :icon="Download" :loading="exporting" @click="handleExportAdvice">
+            <!-- 中性化（§24 执行顺序 1）：导出不是状态，原 `success` 绿与「成功」无关。 -->
+            <el-button size="small" :icon="Download" :loading="exporting" @click="handleExportAdvice">
               导出采购建议
             </el-button>
           </div>
@@ -154,7 +155,6 @@
 
           <template #col-actions="{ row }">
             <el-button
-              type="success"
               link
               size="small"
               @click="openInboundDialog(row)"
@@ -169,14 +169,20 @@
             >
               编辑
             </el-button>
+            <!-- 中性化（§24 执行顺序 1）：只读跳转，原 `info` 染色没有语义。 -->
             <el-button
-              type="info"
               link
               size="small"
               @click="openHistoryDialog(row)"
             >
               流水
             </el-button>
+            <!--
+              ⚠️ **这一处刻意保留 `danger`**，它是登记在案的例外而非漏改（§24 决策摘要 B1）：
+              「这个操作会毁东西」是跨行业通行约定，且本页删除不可逆（`ElMessageBox.confirm` 在 576 行）。
+              判据见 `color-controls.spec.ts` 的 `isDestructive`：**只有 `el-button` + 字面 `danger`** 豁免，
+              `tag`/`alert` 的 danger、以及绑定式 `:type=` 一律照旧计入。
+            -->
             <el-button
               type="danger"
               link
@@ -331,7 +337,8 @@
 
       <template #footer>
         <el-button @click="inboundDialogVisible = false">取消</el-button>
-        <el-button type="success" :loading="inbounding" @click="submitInboundForm">确认入库并累加库存</el-button>
+        <!-- 中性化（§24 执行顺序 1）：入库是否成功由提交结果与提示告知，不在提交前用绿色预告。 -->
+        <el-button :loading="inbounding" @click="submitInboundForm">确认入库并累加库存</el-button>
       </template>
     </el-dialog>
 

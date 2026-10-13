@@ -74,7 +74,15 @@ function scanText(text) {
     const snippet = `${attrs.replace(/\s+/g, ' ').slice(0, 104)}`;
 
     if (comp === 'el-button') {
-      out.push({ comp, group: !dynamic && staticType === 'primary' ? 'A' : 'B', snippet });
+      /*
+       * ⚠️ 判据与 `packages/shared/test/color-controls.spec.ts` 的 `isDestructive` **同源**：
+       * `danger` 是「破坏性操作」的登记例外（§24 决策摘要 B1），**只对 `el-button` 的字面量开口**。
+       * 本脚本必须跟着豁免 —— 否则它生成的 `ALLOWANCE` 会比 spec 多 11 项，
+       * 照着抄进去就会被 spec 的「已修干净必须销账」抓住（**两处数不一致本身就是信号**）。
+       */
+      const isPrimary = !dynamic && staticType === 'primary';
+      const destructive = !dynamic && staticType === 'danger';
+      out.push({ comp, group: isPrimary ? 'A' : destructive ? 'E' : 'B', snippet });
     } else if (comp === 'el-tag' || comp === 'el-alert') {
       if (!dynamic && !(staticType && VALUES.includes(staticType))) continue;
       out.push({ comp, group: comp === 'el-tag' ? 'C' : 'D', snippet });
@@ -92,8 +100,8 @@ function walk(dir, out = []) {
   return out;
 }
 
-const before = { A: 0, B: 0, C: 0, D: 0 };
-const after = { A: 0, B: 0, C: 0, D: 0 };
+const before = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+const after = { A: 0, B: 0, C: 0, D: 0, E: 0 };
 const afterByFile = {};
 
 for (const file of walk(SRC)) {
@@ -108,24 +116,28 @@ for (const file of walk(SRC)) {
 
   const now = scanText(readFileSync(file, 'utf8'));
   for (const r of now) after[r.group]++;
-  const bad = now.filter((r) => r.group !== 'A').length;
+  const bad = now.filter((r) => r.group !== 'A' && r.group !== 'E').length;
   if (bad) afterByFile[relative(SRC, file).split('\\').join('/')] = bad;
 }
 
 const NAMES = {
   A: 'el-button primary（§3.6 主操作色 · 合规）',
-  B: 'el-button 染色（success/warning/danger/info）',
+  B: 'el-button 染色（success/warning/info）',
   C: 'el-tag 语义色',
-  D: 'el-alert 语义色'
+  D: 'el-alert 语义色',
+  E: 'el-button danger（破坏性操作 · 登记例外 §24 B1）'
 };
 const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
 
 console.log('组   改前  改后   差   说明');
-for (const k of ['A', 'B', 'C', 'D']) {
+for (const k of ['A', 'B', 'C', 'D', 'E']) {
   console.log(`${k}   ${String(before[k]).padStart(3)}   ${String(after[k]).padStart(3)}   ${String(after[k] - before[k]).padStart(4)}   ${NAMES[k]}`);
 }
 console.log(`合计 ${sum(before)} → ${sum(after)}（本批处置 ${sum(before) - sum(after)} 处）`);
-console.log(`\n不合规存量：改前 ${sum(before) - before.A} → 改后 ${sum(after) - after.A} 处`);
+console.log(
+  `\n不合规存量（B+C+D，不含 A 主操作色与 E 登记例外）：改前 ${sum(before) - before.A - before.E}` +
+    ` → 改后 ${sum(after) - after.A - after.E} 处`
+);
 
 console.log('\n=== 改后逐文件（= 棘轮 spec 里的 ALLOWANCE） ===');
 console.log('const ALLOWANCE: Record<string, number> = {');
@@ -136,7 +148,7 @@ if (process.argv.includes('--list')) {
   console.log('\n=== 改后逐条（供登记表用） ===');
   for (const file of walk(SRC)) {
     const rel = relative(SRC, file).split('\\').join('/');
-    const items = scanText(readFileSync(file, 'utf8')).filter((r) => r.group !== 'A');
+    const items = scanText(readFileSync(file, 'utf8')).filter((r) => r.group !== 'A' && r.group !== 'E');
     if (!items.length) continue;
     console.log(`\n--- ${rel} (${items.length}) ---`);
     for (const it of items) console.log(`  [${it.group}] ${it.snippet}`);

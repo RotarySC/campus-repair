@@ -7,7 +7,12 @@
         <el-radio-button :label="1">已读</el-radio-button>
       </el-radio-group>
       <div class="toolbar-actions">
-        <el-button type="warning" link size="small" @click="openBroadcastDialog">发布全校广播</el-button>
+        <!--
+          中性化（§24 执行顺序 1）：原 `warning` 琥珀在说「**这个操作要小心**」，而它不是状态。
+          广播确实会打断全校，但那件事由 `openBroadcastDialog` 的弹窗承担
+          （标题/正文必填、提交前可放弃），不该再由一个色相说第二遍。
+        -->
+        <el-button link size="small" @click="openBroadcastDialog">发布全校广播</el-button>
         <el-button type="primary" link size="small" @click="handleMarkAllRead">一键全部已读</el-button>
       </div>
     </div>

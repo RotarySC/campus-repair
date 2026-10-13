@@ -137,9 +137,13 @@
           </div>
 
           <div class="actions-right">
+            <!--
+              中性化（§24 执行顺序 1）：**导出既不成功也不失败**，它只是一个动作 —— 原 `success` 绿
+              与「成功」没有任何关系，属纯装饰。
+              顺带去掉 `plain`：它只是语义色的「洗淡」修饰，**没有 `type` 时完全惰性**，
+              留着会让下一个人以为这里有什么讲究。
+            -->
             <el-button
-              type="success"
-              plain
               size="small"
               :icon="Download"
               :loading="exporting"
@@ -148,10 +152,13 @@
               流式导出 Excel 报表
             </el-button>
 
+            <!--
+              中性化（§24 执行顺序 1）：原 `warning` 琥珀在说「**这个操作要小心**」，
+              而它不是状态。「要小心」这件事已由 `handleArchiveClick` 里的
+              `ElMessageBox.confirm` 承担（实测在 441~443 行）——不该再由一个色相说第二遍。
+            -->
             <el-button
               v-if="queryForm.isArchived === 0"
-              type="warning"
-              plain
               size="small"
               :icon="FolderChecked"
               @click="handleArchiveClick"
