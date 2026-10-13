@@ -72,25 +72,43 @@ const inv = await visit('admin', '/inventory', `(()=>{
   const strip=document.querySelector('.low-stock-alert-banner');
   const inView=(el)=>{const r=el.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0;};
   const dots=[...document.querySelectorAll('.status-ring--dot')];
+  const isBreathing=(d)=>d.classList.contains('is-breathing');
+  const rowDots=[...document.querySelectorAll('.el-table__body .status-ring--dot')];
   return JSON.stringify({
     kpiCardCount: cards.length,
     kpiCardMarks: cards.reduce((n,c)=>n+c.querySelectorAll('.status-ring').length,0),
     stripMarkCount: strip ? strip.querySelectorAll('.status-ring--dot').length : -1,
+    stripBreathing: strip ? strip.querySelectorAll('.status-ring.is-breathing').length : -1,
     redInView: dots.filter(d=>getComputedStyle(d).color==='${RED}'&&inView(d)).length,
-    dotTotal: dots.length
+    dotTotal: dots.length,
+    rowDotCount: rowDots.length,
+    rowBreathing: rowDots.filter(isBreathing).length,
+    breathingInView: dots.filter(d=>isBreathing(d)&&inView(d)).length,
+    breathingTotal: dots.filter(isBreathing).length,
+    breathingLabels: [...new Set(dots.filter(isBreathing).map(d=>d.textContent.trim()))]
   });
 })()`);
 check('反向自证：KPI 排确实渲染出了 4 张卡（否则下面的「0 枚」在空集上恒真）', inv.kpiCardCount === 4, `${inv.kpiCardCount} 张`);
 check('甲 + 容器规则：KPI 排 4 张卡上**一枚标记都没有**（全有或全无 → 取"全无"）', inv.kpiCardMarks === 0, `${inv.kpiCardMarks} 枚`);
 check('判据① 同义去重：警戒条上**恰好 1 枚**红点（同一个 lowStockCount 只有一处带标记）', inv.stripMarkCount === 1, `${inv.stripMarkCount} 枚`);
 console.log(`INFO  首屏红点 ${inv.redInView} 枚；整页 ${inv.dotTotal} 枚。`);
-console.log('INFO  ⚠️ **首屏没有减少**（改前 3、改后仍是 3）—— 我原先预判会降到 1~2，实测不成立，记在这里：');
+console.log('INFO  ⚠️ **首屏红点没有减少**（改前 3、改后仍是 3）—— 我原先预判会降到 1~2，实测不成立：');
 console.log('      这 3 枚现在是「1 条汇总横幅 + 2 枚逐行低库存」。去掉 KPI 卡那枚之后');
 console.log('      表格多露出一行，正好把名额补了回去。');
 console.log('      ⇒ **判据① 治的是「同一个事实两枚标记」，不是「红点总数」**；');
 console.log('        逐行点是逐项谓词，屏幕里行多它就多 —— 这是设计如此，不是没治干净。');
-console.log('      ⚠️ 由此暴露下一个待观察项：**呼吸的密度**。一屏 3 枚同时呼吸，');
-console.log('        「看这里」就不再是稀缺信号。若要收紧，旋钮是「只给汇总条呼吸、逐行点静止」。');
+
+/* ---- 判据④「呼吸的密度」：从"待观察项"升级成断言（2026-10-13，规范 §30） ---- */
+check('反向自证：表格里确实有**逐行**的「低库存」点（否则下面"逐行静止"在空集上恒真）',
+  inv.rowDotCount > 0, `${inv.rowDotCount} 枚`);
+check('**逐行的「低库存」点全部静止**（呼吸 0 枚）', inv.rowBreathing === 0,
+  `逐行 ${inv.rowDotCount} 枚，其中在呼吸 ${inv.rowBreathing} 枚`);
+check('汇总横幅那一枚**确实还在呼吸**（收紧不等于把动效关掉）',
+  inv.stripBreathing === 1, `横幅上呼吸 ${inv.stripBreathing} 枚`);
+check('判据④ 呼吸密度：**首屏同时在呼吸的 ≤ 1 枚**', inv.breathingInView <= 1,
+  `首屏 ${inv.breathingInView} 枚 / 整页 ${inv.breathingTotal} 枚，标签 ${JSON.stringify(inv.breathingLabels)}`);
+console.log('INFO  §26.6 那条「一屏 3 枚同时呼吸」到此收口：动效只留给**页面级汇总**那一枚，'
+  + '逐项的点保持静止。红点总数不变（那是逐项谓词，设计如此），被收紧的只有**动效**这一个通道。');
 
 /* ==================== ② 三档 · strip 无点 ==================== */
 console.log('\n===== ② 三档：流转备注横幅（strip）不再带标记 =====');
@@ -127,11 +145,20 @@ check('三档·提示档：未读点渲染色是中性 --faint（不再是警戒
 check('提示档不是全仓唯一的色（反向确认它确实不是红）', !drawer.colors.includes(RED), drawer.colors.join(' , '));
 check('三档共用同一几何：点一律 6px', drawer.sizes.length === 1 && drawer.sizes[0] === '6px', drawer.sizes.join(' , '));
 
-/* ==================== ⑤ 呼吸实测（相位采样，采样对象是**光晕**） ==================== */
+/* ==================== ⑤ 呼吸实测（相位采样，采样对象是**光晕**） ====================
+   ⚠️ 采样对象在 §30 之后**必须改**：改前随手取页面上的「加急」点就行，
+   而 §30 把动效收给了**页面级汇总**那一枚 —— 「加急」现在**正确地静止**，
+   于是这段一度量到"光晕没有动画时长"。**量到一个静止的点不是缺陷，是判据过期了。**
+   现在改成显式取汇总条那一枚，顺带把"呼吸属于谁"也变成断言。 */
 console.log('\n===== ⑤ 呼吸：手动推进动画相位，看它是不是真的在动 =====');
-const breathe = await visit('admin', '/reports/orders', `(()=>{
-  const d=[...document.querySelectorAll('.status-ring--dot')].find(x=>x.textContent.includes('加急'));
-  if(!d) return JSON.stringify({error:'报表页找不到「加急」点'});
+const breathe = await visit('admin', '/inventory', `(()=>{
+  const strip=document.querySelector('.low-stock-alert-banner');
+  const d=strip ? strip.querySelector('.status-ring--dot.is-breathing') : null;
+  if(!d){
+    const any=[...document.querySelectorAll('.status-ring--dot')].map(x=>x.textContent.trim());
+    return JSON.stringify({error:'汇总条上找不到正在呼吸的标记', stripFound:!!strip, dots:any});
+  }
+  const host=d.closest('.low-stock-alert-banner') ? 'low-stock-alert-banner' : (d.closest('.alert-strip')?'alert-strip':(d.closest('.alert-banner')?'alert-banner':'其他'));
   const m=d.querySelector('.status-ring__mark');
   const after=()=>getComputedStyle(m,'::after');
   const dur=Number(after().animationDuration.replace('s',''))*1000;
@@ -148,7 +175,7 @@ const breathe = await visit('admin', '/reports/orders', `(()=>{
   const p=[0,0.25,0.5,0.75,1].map(at);
   st.remove();
   return JSON.stringify({
-    dur,
+    dur, host, label:d.textContent.trim(),
     markAnim:getComputedStyle(m).animationName,          // 点自己**不该**有动画
     markOpacity:Number(getComputedStyle(m).opacity).toFixed(2),
     haloW:after().width, dotW:getComputedStyle(m).width,
@@ -157,10 +184,13 @@ const breathe = await visit('admin', '/reports/orders', `(()=>{
   });
 })()`);
 if (breathe.error) {
-  check('呼吸实测：拿到相位数据', false, breathe.error);
+  check('呼吸实测：拿到相位数据', false, breathe.error + '  ' + JSON.stringify(breathe.dots ?? ''));
 } else {
   const o = [breathe.p0, breathe.p25, breathe.p50, breathe.p75, breathe.p100].map((x) => Number(x.o));
   const tf = [breathe.p0.tf, breathe.p25.tf, breathe.p50.tf, breathe.p75.tf];
+  check('呼吸实测的采样对象**就是页面级汇总那一枚**（§30：动效只配给汇总）',
+    breathe.host === 'low-stock-alert-banner' || breathe.host === 'alert-strip' || breathe.host === 'alert-banner',
+    `宿主 .${breathe.host} · 标签「${breathe.label}」`);
   check('呼吸实测：光晕有动画且周期落在 1.2~2.4s', breathe.dur >= 1200 && breathe.dur <= 2400, `${breathe.dur}ms`);
   // 本轮最要紧的一条：光晕在变，**点不动**
   check('**点本身不动**（animation-name: none，且 opacity 恒为 1）', breathe.markAnim === 'none' && breathe.markOpacity === '1.00', `${breathe.markAnim} / opacity=${breathe.markOpacity}`);
@@ -260,6 +290,46 @@ check('**B5 本体**：打 1 星后按钮**仍是主操作色**（不再随评�
 check('按钮文案仍然说清了后果（"红色"去掉后信息不丢）', (b5after.btnText || '').includes('差评'), b5after.btnText);
 check('警告改由 G4 警示条承担（实心点 + 中性字 + 发丝线）', b5after.bannerCount === 1, `「${b5after.bannerText}…」`);
 check('全页**不再有 `el-alert--error`**（口径补上后一并改掉了）', b5after.errorAlerts === 0, `${b5after.errorAlerts} 个`);
+
+/* ==================== ⑧ 全仓扫一遍：**每页同时在呼吸的 ≤ 1 枚** ==================== */
+console.log('\n===== ⑧ 判据④ 呼吸密度：逐页扫一遍（规范 §30） =====');
+const DENSITY = `(()=>{
+  const dots=[...document.querySelectorAll('.status-ring--dot')];
+  const br=dots.filter(d=>d.classList.contains('is-breathing'));
+  return JSON.stringify({
+    dotTotal: dots.length,
+    breathing: br.length,
+    labels: [...new Set(br.map(d=>d.textContent.trim()))],
+    // 逐项点（表格行 / 卡片内）—— 它们全部应当是静止的
+    perItem: dots.filter(d=>d.closest('.el-table__body')||d.closest('.order-card')||d.closest('.picker-part-name')).length,
+    perItemBreathing: dots.filter(d=>(d.closest('.el-table__body')||d.closest('.order-card')||d.closest('.picker-part-name'))&&d.classList.contains('is-breathing')).length
+  });
+})()`;
+const DENSITY_PAGES = [
+  ['控制台概览', 'admin', '/'],
+  ['进销存台账', 'admin', '/inventory'],
+  ['调度中心', 'admin', '/dispatch'],
+  ['工单检索报表', 'admin', '/reports/orders'],
+  ['空间与分类字典', 'admin', '/spatial'],
+  ['用户台账', 'admin', '/system/users'],
+  ['师傅工作台', 'worker01', '/worker/workbench'],
+  ['我的工单', 'student02', '/student/orders'],
+  ['个人中心', 'worker01', '/profile']
+];
+let sawBreathe = 0, sawPerItem = 0;
+for (const [label, user, path] of DENSITY_PAGES) {
+  const d = await visit(user, path, DENSITY);
+  sawBreathe += d.breathing;
+  sawPerItem += d.perItem;
+  check(`「${label}」：同时在呼吸的标记 ≤ 1 枚`, d.breathing <= 1,
+    `呼吸 ${d.breathing} 枚${d.labels.length ? `（${d.labels.join('/')}）` : ''} / 实心点共 ${d.dotTotal} 枚`);
+  check(`「${label}」：逐项的点**全部静止**`, d.perItemBreathing === 0,
+    `逐项 ${d.perItem} 枚，其中在呼吸 ${d.perItemBreathing} 枚`);
+}
+/* ⚠️ 这两条反向自证是必需的：上面 18 条在全仓都没有呼吸/都没有逐项点时**全部恒真**。
+   实测应当「有页在呼吸」（三个汇总条）且「有页有逐项点」（进销存/报表/调度）。 */
+check('反向自证：确实**有页面在呼吸**（否则上面 18 条是"全关掉了"的假绿）', sawBreathe > 0, `共 ${sawBreathe} 枚`);
+check('反向自证：确实**有页面存在逐项的点**（否则"逐项静止"在空集上恒真）', sawPerItem > 0, `共 ${sawPerItem} 枚`);
 
 console.log(`\n===== 汇总：${pass} PASS / ${fail} FAIL =====`);
 process.exit(fail ? 1 : 0);

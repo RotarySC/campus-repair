@@ -33,7 +33,8 @@
          这也让「本页唯一允许出现的色相是那 9px 圆点」这件事可以被断言（断言在探针里）。
     -->
     <div v-if="lowStockCount > 0" class="alert-strip">
-      <StatusRing variant="dot" label="缺料警戒" />
+      <!-- 页面级汇总 → 有资格呼吸（规范 §30：只有汇总那一枚动，逐项的点静止） -->
+      <StatusRing variant="dot" label="缺料警戒" breathing />
       <span class="alert-strip__text">
         有 <strong>{{ lowStockCount }}</strong> 项物料已低于安全警戒线，
         <router-link to="/inventory">前往耗材进销存台账处理</router-link>

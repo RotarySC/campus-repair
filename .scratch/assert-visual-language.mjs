@@ -307,6 +307,10 @@ const SNAPSHOT = `(() => {
       haloShadow: cs(dotMark, 'box-shadow', '::after') + ' | ' + cs(dotMark, 'box-shadow'),
       hasBreatheClass: dots[0].classList.contains('is-breathing')
     } : null,
+    /* §30（2026-10-13）：本页**有几枚**实心点在呼吸。工单报表的「加急」是逐行的点，
+       它必须为 0 —— 动效只给页面级汇总。这条让"逐行静止"成为正面断言，不是省略。 */
+    dotBreathingCount: dots.filter(r => r.classList.contains('is-breathing')).length,
+    dotBreathingLabels: [...new Set(dots.filter(r => r.classList.contains('is-breathing')).map(r => r.textContent.trim()))],
     hueByLabel: (() => { const o = {}; for (const r of rings) { const l = r.querySelector('.status-ring__label'); if (l) o[l.textContent.trim()] = cs(r, 'color'); } return o; })(),
     /*
      * V7（第二期）：表格单元格 / 卡片**内部**的 el-tag 文案。
@@ -503,20 +507,41 @@ if (report.dot && report.ring) {
     `点 ${report.dot.w}×${report.dot.h} vs 环 ${report.ring.w}`
   );
   check('实心标记仍是圆、仍是填充 currentColor', report.dot.radius === '100%' && report.dot.fill === report.dot.color, `${report.dot.radius} / ${report.dot.fill}`);
-  check('警戒档带呼吸类（is-breathing）', report.dot.hasBreatheClass === true, String(report.dot.hasBreatheClass));
   /*
-   * ⚠️ **这一条是本轮的枢纽**：呼吸的载体是**光晕**，不是点。
-   * 第一版让点自己的 opacity 在 1↔0.35 之间来回，于是"警告会消失"、且点的可读性也在变。
-   * 现在钉死：**点自己的 animation-name 必须是 none**。
+   * ⚠️ **这一条 2026-10-13 从"必须呼吸"翻成了"必须不呼吸"**（规范 §30，不是回归）。
+   * 工单报表里的「加急」是**逐行**的点；§30 把动效收给了页面级汇总那一枚。
+   * 改前这里是「警戒档带呼吸类 → true」，现在它**正确地**是 false。
    */
+  check('§30：工单报表的**逐行**警戒点不呼吸（动效只给页面级汇总那一枚）',
+    report.dot.hasBreatheClass === false && report.dotBreathingCount === 0,
+    `is-breathing=${report.dot.hasBreatheClass} · 本页呼吸 ${report.dotBreathingCount} 枚`);
   check('**点本身不动**（animation-name: none）—— 它必须一直满不透明"在"着', report.dot.markAnim === 'none', String(report.dot.markAnim));
-  check('动的是外圈光晕：有无限循环动画', report.dot.haloAnim !== 'none' && report.dot.haloIter === 'infinite', `${report.dot.haloAnim} / ${report.dot.haloIter}`);
-  check('光晕走 ease-in-out（线性会读成「闪烁」而不是「呼吸」）', report.dot.haloTiming === 'ease-in-out', report.dot.haloTiming);
-  check('光晕周期落在 1.2~2.4s（比这快像闪烁、比这慢没人注意）', parseFloat(report.dot.haloDur) >= 1.2 && parseFloat(report.dot.haloDur) <= 2.4, report.dot.haloDur);
-  check('光晕**比点大一圈**（外扩出来才看得见，否则光晕被点盖住）', parseFloat(report.dot.haloW) > parseFloat(report.dot.w), `光晕 ${report.dot.haloW} vs 点 ${report.dot.w}`);
-  check('光晕与点同色（`currentColor`，不引入第二个色相）', report.dot.haloBg === report.dot.color, `${report.dot.haloBg} vs ${report.dot.color}`);
-  check('光晕是**半透明**的（谷值 0.28 起，不是一块实色饼）', parseFloat(report.dot.haloOpacity) > 0 && parseFloat(report.dot.haloOpacity) < 0.5, report.dot.haloOpacity);
-  check('**没有 box-shadow**（光晕是伪元素画的一个圆，V15 无自造阴影）', report.dot.haloShadow === 'none | none', report.dot.haloShadow);
+}
+/*
+ * 呼吸的**形态与动效**改到「进销存」页量 —— 那里有页面级汇总那一枚。
+ * 这一段与上面那段的分工：上面管**几何**（点 6px / 环 9px / 填充），这里管**动效**。
+ * 拆开的理由：§30 之后这两件事落在**不同的元素**上了（逐行的点静止、汇总的点在动），
+ * 继续在同一个元素上断言两者，就会得到一个恒真的假绿或一个恒假的假红。
+ */
+console.log('\n===== ③b 呼吸的形态与动效（采样对象＝页面级汇总那一枚） =====');
+await navigate(ORIGIN + '/inventory');
+for (let i = 0; i < 25; i++) { await sleep(500); if (await evalJs(READY)) break; }
+await sleep(1200);
+const breathSnap = JSON.parse(await evalJs(SNAPSHOT));
+const bd = breathSnap.dot;
+check('反向自证：进销存页面级汇总那一枚**确实在呼吸**（否则下面的动效断言在空集上恒真）',
+  breathSnap.dotBreathingCount >= 1, `呼吸 ${breathSnap.dotBreathingCount} 枚 ${JSON.stringify(breathSnap.dotBreathingLabels)}`);
+if (breathSnap.dotBreathingCount >= 1 && bd) {
+  check('采样对象就是那一枚（进销存里 dots[0] ＝ 页顶汇总横幅，不是表格行）',
+    bd.hasBreatheClass === true, `is-breathing=${bd.hasBreatheClass}`);
+  check('**点本身不动**（animation-name: none，动的是光晕）', bd.markAnim === 'none', String(bd.markAnim));
+  check('动的是外圈光晕：有无限循环动画', bd.haloAnim !== 'none' && bd.haloIter === 'infinite', `${bd.haloAnim} / ${bd.haloIter}`);
+  check('光晕走 ease-in-out（线性会读成「闪烁」而不是「呼吸」）', bd.haloTiming === 'ease-in-out', bd.haloTiming);
+  check('光晕周期落在 1.2~2.4s（比这快像闪烁、比这慢没人注意）', parseFloat(bd.haloDur) >= 1.2 && parseFloat(bd.haloDur) <= 2.4, bd.haloDur);
+  check('光晕**比点大一圈**（外扩出来才看得见，否则光晕被点盖住）', parseFloat(bd.haloW) > parseFloat(bd.w), `光晕 ${bd.haloW} vs 点 ${bd.w}`);
+  check('光晕与点同色（`currentColor`，不引入第二个色相）', bd.haloBg === bd.color, `${bd.haloBg} vs ${bd.color}`);
+  check('光晕是**半透明**的（谷值 0.28 起，不是一块实色饼）', parseFloat(bd.haloOpacity) > 0 && parseFloat(bd.haloOpacity) < 0.5, bd.haloOpacity);
+  check('**没有 box-shadow**（光晕是伪元素画的一个圆，V15 无自造阴影）', bd.haloShadow === 'none | none', bd.haloShadow);
 }
 
 /* ---- §3.3 修订（2026-10-13）：动效只许动 opacity，且必须给 reduced-motion 退路 ----

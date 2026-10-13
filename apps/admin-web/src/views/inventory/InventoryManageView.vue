@@ -7,7 +7,11 @@
            `WarningFilled` 红图标——那是「用颜色表达紧急度」，而 D 把紧急度挪到了**填充**维度（§3.3）。 -->
       <div v-if="summary.lowStockCount > 0" class="low-stock-alert-banner">
         <div class="alert-left">
-          <StatusRing variant="dot" label="缺料警戒" class="low-stock-ring" />
+          <!--
+            页面级汇总 → **只有这一枚呼吸**（规范 §30）。下面表格里逐行的「低库存」是
+            同一件事的逐项实例，它们保持静止 —— 改前一屏 3 枚一起动，动效就不稀缺了。
+          -->
+          <StatusRing variant="dot" label="缺料警戒" class="low-stock-ring" breathing />
           <span class="alert-text">
             系统当前共有
             <strong class="highlight-count">{{ summary.lowStockCount }}</strong>
