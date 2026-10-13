@@ -34,7 +34,11 @@
 
             <div class="account-meta">
               <div class="account-name">{{ userInfo?.realName || '—' }}</div>
-              <el-tag class="account-role" size="small" effect="light">{{ identityText }}</el-tag>
+              <!-- ⚠️ 2026-10-13（盲区 #3）：裸 `<el-tag>`（缺省即 `primary` 浅蓝）→ `MetaChip`。
+                   「身份」是**条线的派生视图**（见 `CONTEXT.md`），不是状态，不借色相。
+                   §23.2 已经删掉过 `getUserTypeTag()`（行政=红/后勤=橙/教学=蓝/学生=灰）——
+                   这里那个浅蓝是同一件事的**最后一处残留**，只是它一直不在棘轮的口径里。 -->
+              <MetaChip class="account-role">{{ identityText }}</MetaChip>
               <div class="account-line">账号：{{ userInfo?.username || '—' }}</div>
               <div class="account-line">单位：{{ userInfo?.department || '—' }}</div>
               <div class="account-line">注册时间：{{ formatDateTime(userInfo?.createdAt) }}</div>
@@ -223,13 +227,23 @@
                 </el-descriptions-item>
                 <el-descriptions-item label="当前负荷" :span="isNarrowPhone ? 1 : 2">
                   <div class="load-cell">
+                    <!--
+                      ⚠️ 2026-10-13：`el-progress` 的 `:status`（`>=100%` 时 `exception`）**拿掉**。
+                      理由与调度中心的负荷条同源：**条的长度已经在表达"量"，颜色是多余的第二信号**，
+                      而 `exception` 是 EP 的语义红 —— 属「用颜色表达紧急度」，§3.3 把这件事交给了**填充**。
+                      严重度改由下面那枚 §3.3 的**警戒档实心点**承担（只给真正超载的那一档）。
+                    -->
                     <el-progress
                       :percentage="workerProfile.loadRate"
-                      :status="workerProfile.loadRate >= 100 ? 'exception' : undefined"
                       :stroke-width="12"
                       style="flex: 1; min-width: 120px;"
                     />
                     <span class="load-text">
+                      <StatusRing
+                        v-if="workerProfile.loadRate >= 100"
+                        variant="dot"
+                        label="负荷已满"
+                      />
                       {{ workerProfile.currentLoad }} / {{ workerProfile.maxLoad }} 单
                     </span>
                   </div>

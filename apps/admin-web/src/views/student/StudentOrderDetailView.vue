@@ -101,8 +101,13 @@
             {{ evaluation.isAutoConfirmed === 1 ? '72h 超时自动闭环结单' : '师生主动验收评价' }}
           </el-descriptions-item>
           <el-descriptions-item label="满意标签">
+            <!--
+              ⚠️ 2026-10-13（盲区 #3）：裸 `<el-tag>` → `MetaChip`。
+              **EP 的 `el-tag` 缺省 `type` 就是 `primary`（浅蓝底）** —— 不传 ≠ 中性，
+              而这几个"满意标签"是**分类**（态度好/速度快…），不是状态、更不是主色。
+            -->
             <template v-if="evaluation.ratingTags && evaluation.ratingTags.length">
-              <el-tag v-for="tag in evaluation.ratingTags" :key="tag" class="tag-gap">{{ tag }}</el-tag>
+              <MetaChip v-for="tag in evaluation.ratingTags" :key="tag" class="tag-gap">{{ tag }}</MetaChip>
             </template>
             <span v-else class="muted">—</span>
           </el-descriptions-item>

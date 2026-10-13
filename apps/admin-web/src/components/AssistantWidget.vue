@@ -100,15 +100,17 @@
           <div v-else-if="suggestion && suggestion.noMatch" class="no-match">
             <p class="block-hint">没听明白是什么故障。可以直接从大类里挑一个，或者补充一点现象（哪里、什么声音、什么时候开始的）。</p>
             <div class="fallback-tags">
-              <el-tag
+              <!-- ⚠️ 2026-10-13（盲区 #3）：裸 `<el-tag>`（缺省即 `primary` 浅蓝）→ `MetaChip`。
+                   「没听明白时给的大类候选」是**分类**，而且它是一个**可点选项** ——
+                   中性反而更对：它不是状态，也不该用主色去暗示"这是推荐"。 -->
+              <MetaChip
                 v-for="item in suggestion.fallbackCategories"
                 :key="item.id"
                 class="fallback-tag"
-                effect="plain"
                 @click="goSubmit()"
               >
                 {{ item.name }}
-              </el-tag>
+              </MetaChip>
             </div>
           </div>
 
@@ -127,7 +129,15 @@
           <div v-if="progress" class="progress-card">
             <p class="progress-line">
               <span class="progress-no">{{ progress.orderNo }}</span>
-              <el-tag size="small" effect="light">{{ progress.statusLabel }}</el-tag>
+              <!--
+                ⚠️ 2026-10-13（盲区 #3 + V7）：裸 `<el-tag>` 渲染的**工单状态** → `StatusRing`。
+                这一处是 V7（「状态一律走 9px 圆环，`el-tag` 仅保留给非状态类标签」）的**漏网者**：
+                `status-ring-v7.spec.ts` 的判据是「`orderStatusTagType(` 调用点为 0」，
+                而这里**根本没调用那个函数**，所以它一直是隐形的。
+                后端 `AssistantOrderProgressVO` 本来就同时带 `status` 与 `statusLabel`，
+                所以改用 `:status` 之后文案仍是同一份中文（圆环自己从 `OrderStatusLabels` 取）。
+              -->
+              <StatusRing :status="progress.status" />
             </p>
             <p class="progress-next">{{ progress.nextStep }}</p>
             <p class="progress-meta">{{ progress.categoryName }} · {{ progress.spaceFullPath }}</p>
@@ -202,6 +212,8 @@ import { useIdentity } from '../composables/useIdentity';
 import { useViewport } from '../composables/useViewport';
 import { visibleNavItems } from '../constants/navItems';
 import SuggestionCardList from './assistant/SuggestionCardList.vue';
+import MetaChip from './MetaChip.vue';
+import StatusRing from './StatusRing.vue';
 
 /**
  * 智能助手：右下悬浮气泡 + 抽屉。

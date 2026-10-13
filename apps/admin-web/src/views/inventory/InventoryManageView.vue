@@ -138,7 +138,15 @@
           </template>
 
           <template #col-categoryType="{ row }">
-            <el-tag size="small" effect="plain">{{ row.categoryType }}</el-tag>
+            <!--
+              ⚠️ 2026-10-13（盲区 #3）：裸 `<el-tag>` → `MetaChip`。
+              **EP 的 `el-tag` 缺省 `type` 就是 `primary`**（浅蓝底）——`effect="plain"` 只是
+              把它变成"白底 + 蓝字蓝边"，仍然是**一个色相**，而且**不是**任何状态语义。
+              「耗材类别」是**分类**，走 `MetaChip`（全仓「分类的中性表达」只有一种长相）。
+              这一处是排查时被**新加的第三处棘轮当场抓回来**的：我在同一张表里改了「状态」列，
+              却漏了紧挨着它的「耗材类别」—— **"同一张表两种长相"就是这么来的**。
+            -->
+            <MetaChip>{{ row.categoryType }}</MetaChip>
           </template>
 
           <template #col-guidePrice="{ row }">
@@ -362,13 +370,12 @@
     >
       <div v-loading="loadingHistory">
         <EmptyState v-if="inboundHistory.length === 0" description="暂无采购入库记录" />
-        <el-timeline v-else style="padding-left: 10px;">
+        <el-timeline v-else class="inbound-timeline" style="padding-left: 10px;">
           <el-timeline-item
             v-for="item in inboundHistory"
             :key="item.id"
             :timestamp="item.createdAt"
             placement="top"
-            type="success"
           >
             <div class="inbound-record">
               <div class="inbound-record__head">
@@ -904,5 +911,17 @@ async function handleExportAdvice() {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+/* 入库流水时间轴的节点圆点：**EP 缺省取 `--el-color-primary`（蓝）**，
+   而原先这里显式写着 `type="success"`（绿）——
+   两种都违反「色相只服务状态语义」：这个节点是**每一步的占位符**，不承载状态。
+   ⚠️ 所以「把 `type` 删掉」只是把绿换成蓝，**必须同时中性化**；
+   做法与 `components/WorkOrderTimeline.vue` 的 `.timeline-flow` 逐字一致（跨组件同源）。 */
+.inbound-timeline :deep(.el-timeline-item__node) {
+  background-color: var(--faint);
+}
+.inbound-timeline :deep(.el-timeline-item__tail) {
+  border-left-color: var(--line);
 }
 </style>

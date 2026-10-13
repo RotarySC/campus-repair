@@ -33,10 +33,12 @@
                 <!-- 🐞 原先直接渲染 `data.buildingNature`，于是同一页里
                      「建筑性质」下拉框是中文（学生宿舍/教学科研/…），树节点上却是
                      **`DORMITORY` / `TEACHING` / `OFFICE`** —— 与工种那两个裸码同一族。
-                     现在两处共用 `BuildingNatureLabels` 这一处声明。 -->
-                <el-tag v-if="data.buildingNature" size="small" effect="plain" style="margin-inline-start: 8px;">
+                     现在两处共用 `BuildingNatureLabels` 这一处声明。
+                     ⚠️ 2026-10-13（盲区 #3）：`el-tag`（缺省即 `primary` 浅蓝）→ `MetaChip`。
+                     「建筑性质」是**属性**，不借色相。 -->
+                <MetaChip v-if="data.buildingNature" class="nature-chip">
                   {{ buildingNatureLabelOf(data.buildingNature) }}
-                </el-tag>
+                </MetaChip>
               </span>
 
               <span class="node-actions">
@@ -601,6 +603,11 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+/* 「建筑性质」中性 chip 的左边距（原先写在 `el-tag` 的**内联 style** 上；
+   内地 style 特异性高于类，换成组件后必须把它挪到类里） */
+.nature-chip {
+  margin-inline-start: 8px;
 }
 .node-actions {
   display: flex;

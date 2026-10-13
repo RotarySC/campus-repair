@@ -245,5 +245,94 @@ const narrowInv = await visit('admin', '/inventory', NARROW('/inventory', `({
 check('窄档反向自证：进销存卡片形态渲染出来了', narrowInv.cardTagCount > 0, `${narrowInv.cardTagCount} 个`);
 check('窄档·进销存：**没有**彩色胶囊（`停用下架/正常在架` 已中性）', narrowInv.coloured.length === 0, narrowInv.coloured.join(' , '));
 
+/* ==================== ⑤ 盲区清扫（2026-10-13 第二批） ====================
+ * 静态那一半在 `packages/shared/test/color-controls.spec.ts` 的「盲区扫描」用例（扫全仓源码）；
+ * 这里量的是另一半：**它们渲染出来的确实是中性**（源码写对 ≠ 渲染出来对）。
+ */
+console.log('\n===== ⑤ 盲区清扫：渲染结果确实中性 =====');
+const SEMANTIC_RGB = ['rgb(64, 158, 255)', 'rgb(103, 194, 58)', 'rgb(230, 162, 60)', 'rgb(245, 108, 108)'];
+/*
+ * ⚠️ `--muted` 是 `rgba(0,0,0,.7)` —— **alpha < 1 时浏览器返回 `rgba(...)` 而不是 `rgb(...)`**。
+ * 我第一版把它写成 `rgb(0, 0, 0, 0.7)`，于是两条断言 FAIL ——
+ * 而它们打印出来的实测值 `rgba(0, 0, 0, 0.7)` 恰好证明**代码是对的、断言是错的**。
+ * （同一文件里 `FAINT` 写的就是 `rgba`，只有这一处手滑。）
+ */
+const MUTED = 'rgba(0, 0, 0, 0.7)';
+
+const inv2 = await visit('admin', '/inventory', `(()=>{
+  const chips=[...document.querySelectorAll('#app td .meta-chip, .el-table__cell .meta-chip, .el-table__cell .cell .meta-chip')];
+  const cellTexts=[...document.querySelectorAll('.el-table__cell')].map(c=>c.textContent.trim());
+  // 找「耗材类别」那一列的值（其他综合 等）在哪一格
+  const tags=[...document.querySelectorAll('.el-table__cell .el-tag')];
+  return JSON.stringify({
+    chipCount: chips.length,
+    chipTexts: chips.map(c=>c.textContent.trim()).slice(0,6),
+    chipColors: [...new Set(chips.map(c=>getComputedStyle(c).color))],
+    tableTagCount: tags.length,
+    tableTagColors: [...new Set(tags.map(t=>getComputedStyle(t).backgroundColor))]
+  });
+})()`);
+check('反向自证：进销存表格里渲染出了 `MetaChip`', inv2.chipCount > 0, `${inv2.chipCount} 个`);
+check('进销存：表格里的 chip 全是中性（`--faint` 字）', inv2.chipColors.length === 1 && inv2.chipColors[0] === FAINT, inv2.chipColors.join(' , '));
+check('进销存：表格单元格里**不再有 `el-tag`**（耗材类别/状态都中性了）', inv2.tableTagCount === 0, `${inv2.tableTagCount} 个，底色 ${inv2.tableTagColors.join(' , ') || '(无)'}`);
+
+const disp2 = await visit('admin', '/dispatch', `(()=>{
+  const bars=[...document.querySelectorAll('.el-progress-bar__inner')];
+  const cards=[...document.querySelectorAll('.worker-card')];
+  const overloaded=cards.filter(c=>c.classList.contains('overloaded'));
+  return JSON.stringify({
+    barCount: bars.length,
+    barColors: [...new Set(bars.map(b=>getComputedStyle(b).backgroundColor))],
+    cardCount: cards.length,
+    overloadedCount: overloaded.length,
+    overloadedDots: overloaded.reduce((n,c)=>n+c.querySelectorAll('.status-ring--dot').length,0),
+    allDots: document.querySelectorAll('.worker-card .status-ring--dot').length,
+    loadRates: cards.map(c=>(c.querySelector('.load-text-bar strong')||{}).textContent||'').map(t=>t.trim())
+  });
+})()`);
+check('反向自证：调度中心渲染出了师傅负荷条', disp2.barCount > 0, `${disp2.barCount} 条`);
+check('调度中心：负荷条填充是**中性**（`--muted`），不是 EP 的语义蓝/绿/红',
+  disp2.barColors.length === 1 && disp2.barColors[0] === MUTED && !disp2.barColors.some((c) => SEMANTIC_RGB.includes(c)),
+  disp2.barColors.join(' , '));
+check('调度中心：**只给真正超载的师傅**画警戒点（`loadRate>=70` 但未超载的不画）',
+  disp2.overloadedDots === disp2.overloadedCount && disp2.allDots === disp2.overloadedCount,
+  `超载 ${disp2.overloadedCount} 人 / 点 ${disp2.allDots} 枚`);
+console.log(`INFO  当前各师傅负荷：${JSON.stringify(disp2.loadRates)}`);
+if (disp2.overloadedCount === 0) {
+  console.log('INFO  ⚠️ 演示数据当前**没有**超载师傅 ⇒ 上面那条的"只给超载画点"是 0===0 的**弱检查**；');
+  console.log('        它的反向对照靠的是"若按 loadRate>=70 画则会多出点"——本轮数据里 70% 档也正好为空，');
+  console.log('        所以这条只能证明"**没有多画**"，不能证明"该画时画了"。要看后者得让某位师傅超载。');
+}
+
+const prof3 = await visit('worker01', '/profile', `(()=>{
+  const bars=[...document.querySelectorAll('.el-progress-bar__inner')];
+  return JSON.stringify({
+    barCount: bars.length,
+    barColors: [...new Set(bars.map(b=>getComputedStyle(b).backgroundColor))],
+    dots: document.querySelectorAll('.load-text .status-ring--dot').length
+  });
+})()`);
+if (prof3.barCount > 0) {
+  check('个人中心：负荷条填充也是中性', prof3.barColors.length === 1 && prof3.barColors[0] === MUTED, prof3.barColors.join(' , '));
+} else {
+  check('个人中心：负荷条渲染出来了（反向自证）', false, '没渲染出负荷条 —— 该账号可能不是师傅');
+}
+
+const spa = await visit('admin', '/spatial', `(()=>{
+  const chips=[...document.querySelectorAll('.nature-chip')];
+  return JSON.stringify({
+    chipCount: chips.length,
+    chipColors: [...new Set(chips.map(c=>getComputedStyle(c).color))],
+    chipTexts: chips.map(c=>c.textContent.trim()).slice(0,4),
+    elTagsInTree: document.querySelectorAll('.el-tree .el-tag').length
+  });
+})()`);
+if (spa.chipCount > 0) {
+  check('空间字典：「建筑性质」是 `MetaChip` 且中性', spa.chipColors.length === 1 && spa.chipColors[0] === FAINT, `${spa.chipTexts.join(' / ')}`);
+} else {
+  console.log('INFO  空间字典当前没有带「建筑性质」的节点可见（演示数据可能都在折叠的分支里）');
+}
+check('空间字典：树里**不再有 `el-tag`**', spa.elTagsInTree === 0, `${spa.elTagsInTree} 个`);
+
 console.log(`\n===== 汇总：${pass} PASS / ${fail} FAIL =====`);
 process.exit(fail ? 1 : 0);

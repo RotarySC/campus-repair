@@ -109,3 +109,22 @@
 .el-table .el-button + .el-button {
   margin-left: 0;
 }
+
+/* ==================== §3.3：进度条**中性** ====================
+   进度条的**长度**已经表达了"量"；颜色是多余的第二信号。
+   而 EP 缺省取 `--el-color-primary`（蓝），`:status="exception"` 取语义红 ——
+   两者都属「用颜色表达紧急度」，而 §3.3 把紧急度交给了**填充**（实心圆点）。
+
+   所以填充统一成中性色，**严重度由旁边的 `StatusRing` 实心点承担**
+   （调度中心与个人中心各一处，见那两处的注释）。
+
+   ⚠️ 写在覆盖层而不是逐处覆盖，是为了让**默认就是中性**：
+   新加一个进度条不会顺手带进一个色相 —— 这与「棘轮」是同一个思路，
+   但落在样式层（`el-progress` 的 `:status` 另外由 `color-controls.spec.ts` 的
+   扩展口径盯着，两条一起才拦得住）。 */
+.el-progress-bar__inner {
+  background-color: var(--muted);
+}
+.el-progress-bar__outer {
+  background-color: var(--canvas);
+}

@@ -246,8 +246,62 @@ function hitsIn(text: string): Hit[] {
   return out;
 }
 
-/** 走一遍 `apps/admin-web/src`，回**仓库相对路径**。三个判据共用，免得各走一遍走岔。 */
-function walkVue(): string[] {
+/**
+ * **第三处棘轮：会吃 EP 语义色、却不在上面那张名单里的组件**（2026-10-13 补）。
+ *
+ * 起因是三处**实测出来的盲区**（总账见设计文档 §27.5），共同形状是
+ * **判据只覆盖了自己脑子里那一种写法**：
+ *
+ *  ① **裸 `<el-tag>`** —— EP 的 `type` 缺省值就是 `primary`，**不传不等于中性**（浅蓝底）。
+ *     上面那个扫描器要求出现 `type=` 或 `:type=` 才计入，于是**裸标签整个隐形**
+ *     （实测 8 处：耗材类别 / 身份 / 建筑性质 / 满意标签 ×2 / 助手候选大类 / 工单状态 ×2）。
+ *  ② **`el-progress` 的 `status`** —— EP 进度条的语义档（`exception`/`warning`/`success`），
+ *     而 `el-progress` 根本不在 `TAG` 正则里（实测 2 处）。
+ *  ③ **`el-timeline-item` 的 `type`** —— EP 的节点色（实测 1 处 `type="success"`）。
+ *     ⚠️ 而且**把 `type` 删掉只是把绿换成蓝**：它的缺省值同样是彩的，必须同时中性化。
+ *
+ * 判据写成「这几类**一律**算违规」而不是再开一张 `ALLOWANCE` 名单 ——
+ * 因为它们的**每一种渲染都是彩色的**，没有"合规写法"可以放行。
+ * 修法只有三条：分类/属性 → `MetaChip`；工单状态 → `StatusRing`；进度条/时间轴 → 中性化。
+ */
+const SEMANTIC_EXTRA: Array<{ tag: string; attr: string }> = [
+  { tag: 'el-progress', attr: 'status' },
+  { tag: 'el-timeline-item', attr: 'type' }
+];
+const SEMANTIC_ATTR = ['success', 'warning', 'danger', 'error', 'info', 'primary'];
+
+interface ExtraHit {
+  tag: string;
+  why: string;
+}
+
+function extraHitsIn(text: string): ExtraHit[] {
+  const code = stripComments(text);
+  const out: ExtraHit[] = [];
+
+  // ① 裸 el-tag：既没有 `type=` 也没有 `:type=`（有 type 的归上面那个扫描器管）
+  for (const m of code.matchAll(/<el-tag\b(?:"[^"]*"|[^>"])*>/g)) {
+    if (/(?:^|[\s:])type=/.test(m[0])) continue;
+    out.push({ tag: 'el-tag', why: '裸 el-tag（EP 缺省 type=primary ⇒ 浅蓝底）' });
+  }
+
+  // ②③ 绑定式**与**字面量都算（绑定式无法静态判定取值，保守计入 —— 与上面同一原则）
+  for (const { tag, attr } of SEMANTIC_EXTRA) {
+    const re = new RegExp(`<${tag}\\b(?:"[^"]*"|[^>"])*>`, 'g');
+    for (const m of code.matchAll(re)) {
+      const attrs = m[0];
+      if (new RegExp(`:${attr}=`).test(attrs)) {
+        out.push({ tag, why: `${tag} 的绑定式 :${attr}=（可能取到语义档）` });
+        continue;
+      }
+      const literal = attrs.match(new RegExp(`(?:^|[\\s:])${attr}="([^"]*)"`))?.[1];
+      if (literal && SEMANTIC_ATTR.includes(literal)) out.push({ tag, why: `${tag} ${attr}="${literal}"` });
+    }
+  }
+  return out;
+}
+
+/** 走一遍 `apps/admin-web/src`，回**仓库相对路径**。三个判据共用，免得各走一遍走岔。 */function walkVue(): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
     for (const name of readdirSync(dir)) {
@@ -376,6 +430,36 @@ describe('非状态类彩色控件棘轮（§12.5 / §23）', () => {
 
     // ⑤ 例外在仓库里**确实在用**（否则 ① 可能落在一条永不命中的规则上）
     expect(destructiveCount, '一处破坏性按钮都没豁免到——规则没生效，或那 11 处被误改了').toBeGreaterThan(0);
+  });
+
+  it('盲区扫描：裸 el-tag / el-progress:status / el-timeline-item:type 一律算违规', () => {
+    const offenders: string[] = [];
+    for (const p of walkVue()) {
+      const bad = extraHitsIn(readFileSync(p, 'utf8'));
+      if (bad.length) offenders.push(`${relative(SRC, p).split('\\').join('/')} → ${bad.map((h) => h.why).join('; ')}`);
+    }
+    expect(
+      offenders,
+      '这些文件里出现了**会渲染成 EP 语义色、但不在上面名单里**的写法：\n' +
+        '  · 裸 `<el-tag>` → 用 `MetaChip`（分类/属性）或 `StatusRing`（工单状态），别靠"不传 type 就是中性"；\n' +
+        '  · `el-progress` 的 `status` → 拿掉，严重度改用 `StatusRing` 实心点；\n' +
+        '  · `el-timeline-item` 的 `type` → 拿掉**并**中性化节点色（缺省同样有色）：\n' +
+        offenders.map((f) => `  ${f}`).join('\n')
+    ).toEqual([]);
+
+    // 反向自证：抓得到；且"有 type 的 el-tag"归上面那个扫描器管，这里不重复计
+    expect(extraHitsIn('<el-tag size="small">x</el-tag>')).toHaveLength(1);
+    expect(extraHitsIn('<el-tag effect="plain">x</el-tag>')).toHaveLength(1);
+    expect(extraHitsIn('<el-tag type="info">x</el-tag>')).toHaveLength(0);
+    expect(extraHitsIn('<el-tag :type="a ? \'success\' : \'info\'">x</el-tag>')).toHaveLength(0);
+    // 绑定式与字面量都算
+    expect(extraHitsIn('<el-progress :percentage="p" :status="tone" />')).toHaveLength(1);
+    expect(extraHitsIn('<el-progress :percentage="p" />')).toHaveLength(0);
+    expect(extraHitsIn('<el-timeline-item type="success" />')).toHaveLength(1);
+    expect(extraHitsIn('<el-timeline-item placement="top" />')).toHaveLength(0);
+    // 注释里的不算 —— 与另外两个扫描器同一条规矩（本仓的注释习惯就是"写一段改前的代码"）
+    expect(extraHitsIn("/* 改前是 <el-tag size=\"small\">缺货</el-tag> */")).toHaveLength(0);
+    expect(extraHitsIn('<!-- <el-progress :status="exception" /> -->')).toHaveLength(0);
   });
 
   it('窄档卡片的 `cardTag` 不许返回语义 type（标签式扫描器看不见它）', () => {

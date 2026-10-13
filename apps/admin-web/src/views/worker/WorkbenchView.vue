@@ -261,7 +261,9 @@
           </el-descriptions-item>
           <el-descriptions-item label="满意标签">
             <template v-if="evaluation?.ratingTags && evaluation.ratingTags.length">
-              <el-tag v-for="tag in evaluation.ratingTags" :key="tag" class="tag-gap">{{ tag }}</el-tag>
+              <!-- ⚠️ 2026-10-13（盲区 #3）：裸 `<el-tag>`（缺省即 `primary` 浅蓝）→ `MetaChip`。
+                   「满意标签」是**分类**，不是状态。 -->
+              <MetaChip v-for="tag in evaluation.ratingTags" :key="tag" class="tag-gap">{{ tag }}</MetaChip>
             </template>
             <span v-else class="muted">—</span>
           </el-descriptions-item>
@@ -304,6 +306,7 @@ import {
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import StatusRing from '../../components/StatusRing.vue';
+import MetaChip from '../../components/MetaChip.vue';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 
 const router = useRouter();

@@ -277,11 +277,21 @@
               <div class="load-section">
                 <div class="load-text-bar">
                   <span>实时在修负荷</span>
+                  <!--
+                    ⚠️ 2026-10-13：**超载的"要动手"改由 §3.3 的警戒档实心点承担**。
+                    这正是本文件早就写下过的结论（见 `getLoadToneClass` 的注释：
+                    「需要更醒目的「哪几个师傅超载」时，正解是 §3.3 的**实心圆点**，不是把整张卡染红」）——
+                    当时把它挂起了，因为严重度还压在 `el-progress` 的 `:status` 上。那条现已拿掉。
+
+                    只给 `isOverloaded` 画点：`loadRate >= 70` 是"接近满"（留意一下），
+                    `isOverloaded` 是"不能再派单"（要动手）—— 两者不是一回事，
+                    前者由下面那个中性字重档承担，后者才配警戒档。
+                  -->
+                  <StatusRing v-if="worker.isOverloaded" variant="dot" label="已超载" />
                   <strong :class="getLoadToneClass(worker)">{{ worker.currentLoad }} / {{ worker.maxLoad }}</strong>
                 </div>
                 <el-progress
                   :percentage="worker.loadRate"
-                  :status="getProgressBarStatus(worker)"
                   :stroke-width="10"
                   :striped="worker.isOverloaded"
                   :striped-flow="worker.isOverloaded"
@@ -437,7 +447,13 @@
           <el-descriptions-item label="报修空间">{{ timelineOrder.spaceFullPath }}</el-descriptions-item>
           <el-descriptions-item label="故障类型">{{ timelineOrder.categoryFullName }}</el-descriptions-item>
           <el-descriptions-item label="当前状态">
-            <el-tag size="small">{{ OrderStatusLabels[timelineOrder.status] || timelineOrder.status }}</el-tag>
+            <!--
+              ⚠️ 2026-10-13（盲区 #3 + V7）：裸 `<el-tag>` 渲染的**工单状态** → `StatusRing`。
+              V7 的判据是「`orderStatusTagType(` 调用点为 0」，而这里**根本没调用那个函数** ——
+              所以它一直是隐形的：一个**工单状态**渲染成了 EP 缺省的**浅蓝胶囊**，
+              而同一抽屉下方 `WorkOrderTimeline` 里的同一个状态是**9px 圆环**（同一抽屉两种长相）。
+            -->
+            <StatusRing :status="timelineOrder.status" />
           </el-descriptions-item>
         </el-descriptions>
       </div>
@@ -466,7 +482,6 @@ import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
 import StatusRing from '../../components/StatusRing.vue';
 import {
   OrderStatusEnum,
-  OrderStatusLabels,
   WorkerSkillLabels,
   DispatchOrderItemVO,
   DispatchPoolCategoryCountVO,
@@ -770,18 +785,19 @@ async function submitCancelOrder() {
 /**
  * 负荷率的**中性档位**（原先返回 `color-red` / `color-orange` / `color-green` 三个颜色类名）。
  *
- * 严重度已经由旁边 `el-progress` 的 `:status`（`exception` / `warning` / `success`）表达，
- * 那是 EP 组件自身的语义色，属规范 §12.5 登记的「非状态类彩色控件」策略，本批不动。
- * 同一件事**不该有两处颜色**，所以这里只保留中性层级，把三个档位收成两档。
+ * 这本文件里的严重度**只走中性层级**：三档收成两档（`--muted` / `--ink` + 字重）。
+ *
+ * ⚠️ 2026-10-13 二改：剩下那个"另一处颜色"（`el-progress` 的 `:status`，
+ * `exception` / `warning` / `success`）**也拿掉了** —— 原来这里的注释写的是
+ * 「那是 EP 组件自身的语义色，属 §12.5 登记的策略，本批不动」，但同一条注释的后半句
+ * 已经把正解写着：「**需要更醒目的「哪几个师傅超载」时，正解是 §3.3 的实心圆点，
+ * 不是把整张卡染红**」。本轮照那句话落地：条**中性**、超载**给点**。
+ *
+ * `getProgressBarStatus()` 随之删除 —— 留着一个"把负荷投影成语义色"的函数，
+ * 下一个人会以为那是一种被承认的用法。
  */
 function getLoadToneClass(worker: WorkerBoardVO): string {
   return worker.isOverloaded || worker.loadRate >= 70 ? 'load-tone-alert' : 'load-tone-normal';
-}
-
-function getProgressBarStatus(worker: WorkerBoardVO): string {
-  if (worker.isOverloaded) return 'exception';
-  if (worker.loadRate >= 70) return 'warning';
-  return 'success';
 }
 </script>
 
