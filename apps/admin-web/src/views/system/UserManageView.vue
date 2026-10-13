@@ -46,9 +46,18 @@
       </template>
 
       <template #col-isFirstLogin="{ row }">
-        <el-tag :type="row.isFirstLogin === 1 ? 'warning' : 'info'" size="small">
-          {{ row.isFirstLogin === 1 ? '需改密' : '正常' }}
-        </el-tag>
+        <!--
+          ⚠️ 2026-10-13（C 组 #4）：`el-tag`（warning/info）→ §3.3 的**提示档**（6px 中性点，静止）。
+          这是 C 组 6 处里**唯一保留标记**的一处，理由：多数账号是「已改密」，而「需改密」是**少数派**，
+          管理员会去催 —— 逐行容器里给少数派画标记，正是把注意力引过去的手段（与「加急」同一类）。
+          但它**不是警戒**：改密由系统在首次登录时强制（`is_first_login=1`），不构成风险，
+          所以走中性档而不是红色、也不呼吸。
+          「已改密」是正常态 ⇒ 纯文字，不画标记（一侧标记；容器规则管的是固定同级集合，逐行容器允许）。
+          ⚠️ **必须与 `columns` 里那条 `cardTag` 同时改**，否则同一条信息两种长相。
+          顺带统一了文案：宽档原写「正常」、窄档原写「已改密」—— 现在两档都是「已改密」。
+        -->
+        <StatusRing v-if="row.isFirstLogin === 1" variant="dot" tone="muted" label="需改密" />
+        <span v-else>已改密</span>
       </template>
 
       <template #col-actions="{ row }">
@@ -93,6 +102,7 @@
 
 <script setup lang="ts">
 import MetaChip from '../../components/MetaChip.vue';
+import StatusRing from '../../components/StatusRing.vue';
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { branchLabel } from '@campus/shared';
@@ -125,8 +135,13 @@ const columns: TableColumn<any>[] = [
     width: 110,
     align: 'center',
     card: 'tag',
+    // ⚠️ 2026-10-13（C 组 #4）：带语义 `type`（warning）的胶囊 → §3.3 的**提示档**中性点
+    //    （`type:'ring'` + `variant:'dot'` + `tone:'muted'`）。与宽档 `#col-isFirstLogin` 同一个长相。
+    //    「已改密」是正常态 ⇒ 不带 `type` ⇒ `is-info`（已与 `MetaChip` 统一的中性胶囊）。
     cardTag: (row) =>
-      row.isFirstLogin === 1 ? { text: '需改密', type: 'warning' } : { text: '已改密', type: 'info' }
+      row.isFirstLogin === 1
+        ? { text: '需改密', type: 'ring', variant: 'dot', tone: 'muted' }
+        : { text: '已改密' }
   },
   { key: 'status', label: '账号状态', width: 100, align: 'center' },
   { key: 'actions', label: '操作', width: 140, align: 'center', card: 'action' }

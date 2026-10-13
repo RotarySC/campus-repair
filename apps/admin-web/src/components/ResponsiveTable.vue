@@ -73,6 +73,7 @@
                 :status="tag.status"
                 :label="tag.text"
                 :variant="tag.variant"
+                :tone="tag.tone"
               />
               <span v-else class="rl-card__tag" :class="`is-${tag.type || 'info'}`">{{ tag.text }}</span>
             </template>
@@ -125,10 +126,19 @@ export interface CardTag {
   /** `type: 'ring'` 时为必填：工单状态码，圆环色相由它推导（§4.3）。其他档位忽略。 */
   status?: string;
   /**
-   * §3.3 的标记语义，**只对 `type: 'ring'` 有效**：`'dot'` 实心＝警戒，缺省 `'ring'` 空心＝分类。
-   * 给「加急」这类**不是工单状态、但需要注意**的标记用——它没有状态码，色相恒为 `--alert`。
+   * §3.3 的标记语义，**只对 `type: 'ring'` 有效**：`'dot'` 实心＝标记，缺省 `'ring'` 空心＝状态。
+   * 给「加急」这类**不是工单状态、但需要注意**的标记用 —— 它没有状态码。
    */
   variant?: 'ring' | 'dot';
+  /**
+   * §3.3 的**两档**，同样**只对 `type: 'ring'` 且 `variant: 'dot'` 有效**：
+   * `'alert'`（缺省）＝警戒·红·呼吸；`'muted'` ＝提示·中性·静止。
+   *
+   * ⚠️ 加这一项的原因：C 组落地时「需改密」的**卡片形态**需要与**表格形态**用同一个提示点。
+   * 没有它的话，窄档就只能退回 `is-warning` 那种彩色胶囊 —— 于是同一个值在两种形态下两种长相，
+   * 那正是这批要消灭的东西。
+   */
+  tone?: 'alert' | 'muted';
 }
 
 /** 正文字段在卡片上的呈现方式；自定义渲染请改用同名具名插槽 `col-<key>` */
@@ -391,8 +401,13 @@ function onRowClick(row: T) {
 }
 
 /*
-  非状态类标签（条线、库存等）仍是语义小胶囊；配色改为**引用 EP 自己的语义色变量**，
+  非状态类标签（条线、库存等）仍是小胶囊；配色改为**引用 EP 自己的语义色变量**，
   不再抄一份近似 hex——这样它们会跟着 EP 主题一起变，且本文件不出现任何色值字面量。
+
+  ⚠️ **`is-info` 的口径是「中性」**，2026-10-13 起它被要求与 `MetaChip` **逐值一致**
+  （透明底 + 发丝线 + `--faint` 字）。改之前它是 `--muted` 字 + `--canvas` 底 + `1px` 边 ——
+  于是「同一个中性」在窄档卡片和宽档表格（用 `MetaChip`）是**两种长相**，
+  而这正是这批在消灭的那类漂移。C 组落地后它是**卡片形态唯一的中性档**，所以必须与 MetaChip 同源。
 */
 .rl-card__tag {
   flex-shrink: 0;
@@ -424,9 +439,11 @@ function onRowClick(row: T) {
   border-color: var(--el-color-danger-light-8);
 }
 .rl-card__tag.is-info {
-  color: var(--muted);
-  background: var(--canvas);
+  /* 与 `components/MetaChip.vue` 逐值一致 —— 全仓「分类/属性的中性表达」只有一种长相 */
+  color: var(--faint);
+  background: transparent;
   border-color: var(--line);
+  border-width: var(--hairline);
 }
 
 .rl-card__arrow {

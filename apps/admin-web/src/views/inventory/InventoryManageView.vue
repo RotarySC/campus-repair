@@ -155,9 +155,13 @@
           </template>
 
           <template #col-status="{ row }">
-            <el-tag size="small" :type="row.status === 1 ? 'success' : 'info'">
-              {{ row.status === 1 ? '正常在架' : '停用下架' }}
-            </el-tag>
+            <!--
+              ⚠️ 2026-10-13（C 组 #3）：`el-tag`（success/info）→ `MetaChip`。
+              「正常在架 / 停用下架」是**物料档案的属性**，不是任何生命周期状态 —— 不借色相。
+              ⚠️ **必须与 `columns` 里那条 `cardTag` 同时改**：窄档卡片的同一个值
+              走的是 `ResponsiveTable` 的 `is-*` 胶囊，只改宽档会让同一条信息两种长相。
+            -->
+            <MetaChip>{{ row.status === 1 ? '正常在架' : '停用下架' }}</MetaChip>
           </template>
 
           <template #col-actions="{ row }">
@@ -397,6 +401,7 @@ import {
 import { httpClient } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import StatusRing from '../../components/StatusRing.vue';
+import MetaChip from '../../components/MetaChip.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import {
   SparePartVO,
@@ -419,10 +424,10 @@ const columns: TableColumn<SparePartVO>[] = [
     width: 90,
     align: 'center',
     card: 'tag',
-    cardTag: (row) => ({
-      text: row.status === 1 ? '正常在架' : '停用下架',
-      type: row.status === 1 ? 'success' : 'info'
-    })
+    // ⚠️ 2026-10-13（C 组 #3）：**不再带语义 `type`**。省略 type ⇒ `is-info` ⇒ 中性胶囊，
+    //    而 `is-info` 的样式已与 `MetaChip` 统一（见 ResponsiveTable 的样式区注释），
+    //    于是窄档与宽档（`#col-status` 里那个 `MetaChip`）是**同一个长相**。
+    cardTag: (row) => ({ text: row.status === 1 ? '正常在架' : '停用下架' })
   },
   { key: 'specification', label: '规格型号', minWidth: 140, showOverflowTooltip: true },
   { key: 'unit', label: '单位', width: 70, align: 'center' },

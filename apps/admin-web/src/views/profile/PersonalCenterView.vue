@@ -203,9 +203,11 @@
                   {{ workerProfile.campusName || '—' }}
                 </el-descriptions-item>
                 <el-descriptions-item label="考勤状态">
-                  <el-tag :type="workerProfile.onDutyStatus === 1 ? 'success' : 'info'" size="small">
-                    {{ workerProfile.onDutyStatus === 1 ? '在岗' : '休息' }}
-                  </el-tag>
+                  <!--
+                    ⚠️ 2026-10-13（C 组 #2，与调度中心 #1 跨页一致）：`el-tag` → `MetaChip`。
+                    「在岗 / 休息」是**属性**不是状态，不借色相。
+                  -->
+                  <MetaChip>{{ workerProfile.onDutyStatus === 1 ? '在岗' : '休息' }}</MetaChip>
                 </el-descriptions-item>
                 <el-descriptions-item label="综合评分">
                   <template v-if="workerProfile.totalCompletedCount > 0">
@@ -275,6 +277,7 @@ import { useViewport } from '../../composables/useViewport';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import StatusRing from '../../components/StatusRing.vue';
+import MetaChip from '../../components/MetaChip.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 
 const { isNarrowPhone } = useViewport();

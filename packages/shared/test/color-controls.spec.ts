@@ -73,25 +73,32 @@ function isDestructive(comp: string, dynamic: boolean, staticType: string | unde
  * **这份名单只允许变短。** 每一项都对应规范 §24「待裁决登记表」里的某一组。
  * 修干净一个文件就把它从这里删掉——不删就会被「已迁干净必须销账」那条抓住。
  *
- * 2026-10-13（§24 执行顺序 1 + 2 + 5）：43 → **16**。
+ * 2026-10-13 第一批（§24 执行顺序 1 + 2 + 5）：43 → **16**。
  *   · 执行顺序 1：B2/B3/B4 中性化 13 处（3 个文件修到 0，条目已删）；
  *   · 执行顺序 2：C 组的加急 / 缺货 / 紧缺 3 处落地为实心圆点；
  *   · 执行顺序 5：B1 的 11 处破坏性按钮**从本表移出**，改由上面的 `isDestructive` 规则放行。
- * 剩下的 16 = B5(1) + C组 6(6) + D组 9(9)，其中 C 组 6 处**仍待拍板**。
+ *
+ * 2026-10-13 第二批（C 组落地）：16 → **11**。
+ *   · C 组 6 处里 **5 处处置**（`DispatchCenterView` / `InventoryManageView` / `UserManageView`
+ *     / `SuggestionCardList` 四个文件修到 0，条目已删；`PersonalCenterView` 由 2 降到 1）；
+ *   · C 组 #6「助手置信度三档」与 #1/#2/#3 一起走 `MetaChip`。
+ *
+ * ⚠️ **`views/dashboard/DashboardView.vue` 那 1 处是「有意识冻结」，不是欠账** ——
+ * 用户 2026-10-13 裁定：`<el-tag type="success">系统运行正常</el-tag>` **保留绿 tag**。
+ * 它与 D 组那 9 处同类（见独立文档 §4）：**棘轮对它的语义是冻结（数量不许涨），不是催办**。
+ * 所以它**不会**被「已修干净必须销账」抓走，也**不该**被人顺手"修掉"。
+ *
+ * 剩下的 11 = B5(1) + 冻结的 1 + D组(9)。
  */
 const ALLOWANCE: Record<string, number> = {
   'App.vue': 1,
   'components/AssistantWidget.vue': 2,
-  'components/assistant/SuggestionCardList.vue': 1,
   'views/auth/RegisterView.vue': 1,
   'views/dashboard/DashboardView.vue': 1,
-  'views/dispatch/DispatchCenterView.vue': 1,
   'views/error/ForbiddenView.vue': 1,
-  'views/inventory/InventoryManageView.vue': 1,
-  'views/profile/PersonalCenterView.vue': 2,
+  'views/profile/PersonalCenterView.vue': 1,
   'views/student/StudentOrderDetailView.vue': 1,
   'views/student/StudentSubmitRepairView.vue': 1,
-  'views/system/UserManageView.vue': 1,
   'views/worker/WorkbenchView.vue': 1,
   'views/worker/WorkerFinishView.vue': 1
 };
@@ -220,6 +227,20 @@ function hitsIn(text: string): Hit[] {
   return out;
 }
 
+/** 走一遍 `apps/admin-web/src`，回**仓库相对路径**。三个判据共用，免得各走一遍走岔。 */
+function walkVue(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (name.endsWith('.vue')) out.push(p);
+    }
+  };
+  walk(SRC);
+  return out;
+}
+
 /**
  * 逐文件收集**全部**命中（含合规的）。
  *
@@ -228,18 +249,48 @@ function hitsIn(text: string): Hit[] {
  */
 function scanAll(): Map<string, Hit[]> {
   const out = new Map<string, Hit[]>();
-  const walk = (dir: string): void => {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) {
-        walk(p);
-      } else if (name.endsWith('.vue')) {
-        const hits = hitsIn(readFileSync(p, 'utf8'));
-        if (hits.length > 0) out.set(relative(SRC, p).split('\\').join('/'), hits);
-      }
-    }
-  };
-  walk(SRC);
+  for (const p of walkVue()) {
+    const hits = hitsIn(readFileSync(p, 'utf8'));
+    if (hits.length > 0) out.set(relative(SRC, p).split('\\').join('/'), hits);
+  }
+  return out;
+}
+
+/**
+ * **`cardTag` 的语义 `type` —— 第二处棘轮**（2026-10-13 补，起因见下面的用例）。
+ *
+ * `ResponsiveTable` 的**窄档卡片不渲染 `el-tag`**：它把 `cardTag(row)` 返回的对象
+ * 渲染成 `<span class="rl-card__tag is-<type>">`，而 `.is-success` / `.is-warning` / …… 是
+ * **彩底 + 彩字**的胶囊（与 `el-tag` 的语义档同一套观感）。
+ * 于是 `type: 'warning'` 这种写法**整个绕过了上面那个标签式扫描器** ——
+ * 它只匹配 `<el-tag|el-alert|el-button>` 这几个**标签**，看不见对象字面量。
+ *
+ * ⚠️ **匹配式必须容得下三元表达式**：`type: row.a ? 'success' : 'info'` 是**真实写法**
+ * （本仓改之前就是这么写的），而第一版写成 `type:\s*'(…)'` 只认字面量、**漏掉了三元** ——
+ * 是下面那条反向自证用例当场抓住的。这与 `hitsIn` 里踩过的
+ * 「`\btype="…"` 也会匹配 `:type="…"`」是**同一种错**：判据只覆盖了自己脑子里那一种写法。
+ *
+ * `[^,}]*` 的作用是「只在本属性内往后看」：它不含 `,` 与 `}`，
+ * 所以不会越界到下一个属性、或下一个 `cardTag` 上去（不越界 ⇒ 不产生假阳性）。
+ */
+const SEMANTIC_CARD_TAG = /type:\s*[^,}]*'(primary|success|warning|danger)'/;
+
+/**
+ * ⚠️ 取值窗口还必须**在下一个 `cardTag` 处截断**：`columns` 数组里各处 `cardTag` 挨着写，
+ * 不截断就会把下一列的 `type` 算到上一列头上（**假阳性**，而假阳性会让人开始无视这条断言）。
+ */
+function cardTagOffendersIn(text: string): string[] {
+  const code = stripComments(text);
+  const out: string[] = [];
+  const re = /cardTag/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    const rest = code.slice(m.index, m.index + 400);
+    const next = rest.indexOf('cardTag', m[0].length);
+    const win = next === -1 ? rest : rest.slice(0, next);
+    const hit = win.match(SEMANTIC_CARD_TAG);
+    if (hit) out.push(hit[1]);
+  }
   return out;
 }
 
@@ -296,6 +347,46 @@ describe('非状态类彩色控件棘轮（§12.5 / §23）', () => {
 
     // ⑤ 例外在仓库里**确实在用**（否则 ① 可能落在一条永不命中的规则上）
     expect(destructiveCount, '一处破坏性按钮都没豁免到——规则没生效，或那 11 处被误改了').toBeGreaterThan(0);
+  });
+
+  it('窄档卡片的 `cardTag` 不许返回语义 type（标签式扫描器看不见它）', () => {
+    /*
+     * 这一条是**补一个已经付过代价的洞**，不是假想：
+     * C 组落地时才发现「需改密」（`UserManageView`）与「正常在架」（`InventoryManageView`）
+     * 各自有**两份**表达 —— 宽档 `el-tag` + 窄档 `cardTag`。
+     * 而原先的棘轮**从来只数到一份**：它扫的是标签，而
+     * `cardTag: () => ({ type: 'warning' })` 是个**对象字面量**，扫不到。
+     * 于是「43 处」这个数从一开始就少算了窄档那一半；修的时候只改宽档，
+     * 就会让同一条信息在两种形态下两种长相 —— 正是这批要消灭的东西。
+     */
+    const offenders: string[] = [];
+    for (const p of walkVue()) {
+      const bad = cardTagOffendersIn(readFileSync(p, 'utf8'));
+      if (bad.length) offenders.push(`${relative(SRC, p).split('\\').join('/')} → ${bad.join(', ')}`);
+    }
+    expect(
+      offenders,
+      '这些文件的 `cardTag` 返回了语义色档（窄档卡片会把它渲染成彩底彩字胶囊，且扫描器看不见）。\n' +
+        "请改用 §3.3 的标记：状态用 `{ type: 'ring', status }`，中性则省略 type 或 `{ type: 'info' }`：\n" +
+        offenders.map((f) => `  ${f}`).join('\n')
+    ).toEqual([]);
+
+    // 反向自证：抓得到，且**三种合规写法都不误报**
+    expect(cardTagOffendersIn("cardTag: (row) => ({ text: 'x', type: 'warning' })")).toEqual(['warning']);
+    expect(cardTagOffendersIn("cardTag: (row) => ({ text: 'x', type: row.a ? 'success' : 'info' })")).toEqual(['success']);
+    expect(cardTagOffendersIn("cardTag: (row) => ({ text: 'x', type: 'ring', status: row.status })")).toEqual([]);
+    expect(cardTagOffendersIn("cardTag: (row) => ({ text: 'x' })")).toEqual([]);
+    expect(cardTagOffendersIn("cardTag: (row) => ({ text: 'x', type: 'info' })")).toEqual([]);
+    /*
+     * 相邻两列**不许串味** —— 取值窗口在下一个 `cardTag` 处截断就是为了这一条。
+     * 不截断的话，下面这段里第一个（合规的）`cardTag` 会把第二个的 `danger` 算到自己头上，
+     * 得到**假阳性**；而假阳性比漏报更坏，它会让人开始无视这条断言。
+     */
+    expect(
+      cardTagOffendersIn(
+        "cardTag: (row) => ({ text: 'a' }),\n  { key: 'y', cardTag: (row) => ({ text: 'b', type: 'danger' }) }"
+      )
+    ).toEqual(['danger']);
   });
 
   it('存量只允许变短，且必须逐文件销账', () => {

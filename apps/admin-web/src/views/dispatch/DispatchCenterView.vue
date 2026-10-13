@@ -254,13 +254,14 @@
                   <div>
                     <div class="name-line">
                       <span class="real-name">{{ worker.realName }}</span>
-                      <el-tag
-                        size="small"
-                        :type="worker.onDutyStatus === 1 ? 'success' : 'info'"
-                        effect="light"
-                      >
-                        {{ worker.onDutyStatus === 1 ? '在岗' : '休息' }}
-                      </el-tag>
+                      <!--
+                        ⚠️ 2026-10-13（C 组 #1）：`el-tag`（success/info）→ `MetaChip`。
+                        「在岗 / 休息」**看起来像状态，其实是属性** —— 它的取值不随任何生命周期推进，
+                        只是这条师傅记录的一个字段。§3.3 的空心环是留给**工单生命周期**的，
+                        属性既不该借它，也不该借「警戒」那一档。
+                        （"这个人现在不可派"由 `.worker-card.offduty` 的压暗承担，不靠颜色。）
+                      -->
+                      <MetaChip>{{ worker.onDutyStatus === 1 ? '在岗' : '休息' }}</MetaChip>
                     </div>
                     <span class="worker-skill">{{ WorkerSkillLabels[worker.skillCode] || worker.skillCode }}</span>
                   </div>
