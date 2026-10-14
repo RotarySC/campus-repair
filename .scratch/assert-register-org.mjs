@@ -29,13 +29,15 @@
  * 修法：`PANEL_OPEN` 只在**可见**面板里读，且断言一律轮询到**预期内容**
  * （如 `v.includes(V_ROOT_STAFF)`），不再以"非空"当到达条件。
  *
- * 现跑记录（2026-10-14）：第一版在 Edge 调试端点**可用的那一次**跑出 32 PASS / 4 FAIL
- * （共 36 条 = 18 × 2 档），4 条 FAIL 即上述假红。修完（本版）**未能再跑**——
- * Edge 的 9222 在 TCP 层仍 LISTENING，但 DevTools WS 三种写法
- * （`localhost` / `127.0.0.1` / `[::1]`）一律 20s 无响应；且 9222 上 **0 条 ESTABLISHED**，
- * 所以**不是**"僵尸 node 占住唯一槽位"那条已知坑（见 AGENTS.md §2.1 ④，那条要 >1 条 ESTABLISHED）。
- * 修复路径：按 AGENTS.md §2.2 起 web-access 代理，或重启 Edge 时带 `--remote-allow-origins=*`。
- * **⚠️ 本版尚未有一次完整的绿色现跑记录——别把它当已有回归网。**
+ * 现跑记录（2026-10-14）：**34 PASS / 0 FAIL**（17 条 × 2 档；后端 8080 + 前端 3000 + Edge 9222）。
+ * 第一版曾跑出 32 PASS / 4 FAIL，那 4 条即上述假红；**只改探针、一行页面代码都没动，
+ * 4 条就转绿了**——这就是"假红"的实证，也反过来证实了上面那段源码推理。
+ *
+ * ⚠️ 环境坑（记一笔）：其间遇到过 9222 **TCP 层 LISTENING、但 DevTools WS 三种写法
+ * （`localhost` / `127.0.0.1` / `[::1]`）一律 20s 无响应**，且当时 9222 上 **0 条 ESTABLISHED**——
+ * 所以**不是**"僵尸 node 占住唯一槽位"那条已知坑（AGENTS.md §2.1 ④，那条的判据是 >1 条 ESTABLISHED）。
+ * 同一个 Edge PID 未重启、过一阵自行恢复。**判据：WS 静默挂住时，先用一个 10 行的 WS 握手小探针
+ * 判"是环境还是脚本"**，不要直接怀疑探针逻辑、更不要盲目改断言。
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
