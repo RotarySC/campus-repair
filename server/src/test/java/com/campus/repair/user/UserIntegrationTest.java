@@ -155,7 +155,8 @@ class UserIntegrationTest {
         row1.setRealName("导入学生A");
         row1.setPhone("13912340001");
         row1.setBranch("STUDENT");
-        row1.setDepartment("机械学院");
+        // 必须是单位字典里**逐字符一致**的 full_path_name（空格分隔），见 data-test.sql 的 org_node 1001
+        row1.setDepartment("2024级 计算机学院");
         row1.setPassword("InitPass@2026");
         rows.add(row1);
 
@@ -175,6 +176,17 @@ class UserIntegrationTest {
         row3.setBranch("STUDENT");
         rows.add(row3);
 
+        // 异常行 4: 所属单位不在单位字典中（P2，2026-10-14 起导入按字典校验）
+        // 注意它**排在最后**：合法性检查的顺序是 手机格式 → 批次内防重 → 库内防重 →
+        // 条线 → 单位字典，换位置会改变 failureDetails 的下标，进而改变下面的断言。
+        UserImportRow row4 = new UserImportRow();
+        row4.setUsername("2026888804");
+        row4.setRealName("导入学生D");
+        row4.setPhone("13912340004");
+        row4.setBranch("STUDENT");
+        row4.setDepartment("机械学院"); // 字典里没有这个串（本校口径是「2024级 计算机学院」）
+        rows.add(row4);
+
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         EasyExcel.write(out, UserImportRow.class).sheet("人员导入").doWrite(rows);
 
@@ -190,12 +202,14 @@ class UserIntegrationTest {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.totalCount").value(3))
+                .andExpect(jsonPath("$.data.totalCount").value(4))
                 .andExpect(jsonPath("$.data.successCount").value(1))
-                .andExpect(jsonPath("$.data.failureCount").value(2))
+                .andExpect(jsonPath("$.data.failureCount").value(3))
                 .andExpect(jsonPath("$.data.failureDetails[0].rowNumber").value(3)) // Excel row 3
                 .andExpect(jsonPath("$.data.failureDetails[0].reason").value(org.hamcrest.Matchers.containsString("手机号格式不合法")))
                 .andExpect(jsonPath("$.data.failureDetails[1].rowNumber").value(4)) // Excel row 4
-                .andExpect(jsonPath("$.data.failureDetails[1].reason").value(org.hamcrest.Matchers.containsString("系统内已存在相同学号/工号")));
+                .andExpect(jsonPath("$.data.failureDetails[1].reason").value(org.hamcrest.Matchers.containsString("系统内已存在相同学号/工号")))
+                .andExpect(jsonPath("$.data.failureDetails[2].rowNumber").value(5)) // Excel row 5
+                .andExpect(jsonPath("$.data.failureDetails[2].reason").value(org.hamcrest.Matchers.containsString("所属单位不在单位字典中")));
     }
 }

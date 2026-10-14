@@ -141,11 +141,23 @@ Double calculateAvgRatingByEvaluator(@Param("userId") Long userId);
 
 ## 7. 显式排除项（本轮不做）
 
+> **2026-10-14 进展**（分支 `feat/handoff-p2`，见 `HANDOFF.md` §3）：第 4 条**已办**；
+> 第 5 条**部分办**（`uk_role_code` 已加，另两条**刻意不加**并已就地写明原因）；
+> 第 1、2 条仍排除（1 的业务口径已由用户裁定，见 `HANDOFF.md` §3）；第 3、6 条未动。
+
 1. 师傅「在岗/休息」自助开关（会改变自动派单候选，属业务语义变更）。
 2. 管理员「我经手的调度统计」（需按 `repair_order_log.operator_id` 新增聚合口径）。
 3. 头像裁剪器（不引入依赖）与旧头像文件清理（不做破坏性删除）。
-4. 注册环节的密码强度策略（仅改密路径收紧）。
-5. `sys_user.phone/username` 唯一索引（DDL 变更，走独立安全专项）。
+4. ~~注册环节的密码强度策略（仅改密路径收紧）。~~ → **✅ 2026-10-14 已办**：
+   `RegisterRequest.password` 补 `@Size(8,32)` + `@Pattern`，与 `PasswordChangeRequest`、
+   `packages/shared/src/constants/policy.ts` 的 `PASSWORD_PATTERN` **三处同档**。
+   原措辞"仅改密路径收紧"其实是**把门槛开在了必经之路的下游**——注册能设弱口令、
+   只有想改密才被拦。**规则常量只在 shared 定义一次**，前后端都用它。
+5. `sys_user.phone/username` 唯一索引（DDL 变更，走独立安全专项）。→ **部分办**：
+   `uk_role_code` 已加进 H2 测试库；`uk_username`/`uk_phone` **刻意不加**——
+   实测加进去会让 24 个既有用例炸（夹具本就重复插入同一 username/phone，
+   因为共用一个 H2 库、方法间不清理）。**前提是先做测试库隔离**，
+   原因已就地写在 `schema-test.sql` 里，详见 `AGENTS.md` §2.1 与 `HANDOFF.md` §3。
 6. `LoginUserPrincipal` 瘦身与其他端点的鉴权口径调整。
 
 ## 8. 验收（实测结果）

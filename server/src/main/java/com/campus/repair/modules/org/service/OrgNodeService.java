@@ -67,6 +67,29 @@ public class OrgNodeService {
     }
 
     /**
+     * 自助注册可用的单位子树（**匿名端点** {@code GET /api/v1/auth/register-org-options} 的取数口）。
+     *
+     * <p>与 {@link #getOrgTree} 的区别只有一条，但这条是安全边界：**只接受可自助注册的三条条线**
+     * （{@link IdentityCodes#SELF_REGISTRABLE_BRANCHES}）。行政信息化（ADMIN）不在其列——
+     * 既然没人能自助注册到那条线，它的子树就没理由匿名可见。
+     *
+     * <p>也就是说公开端点拿到的东西**严格少于**登录后的 {@code /org/tree}，
+     * 而不是把后者整体开放出去。
+     */
+    public List<OrgNodeVO> getSelfRegistrableOrgTree(String branch) {
+        if (!StringUtils.hasText(branch)) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(),
+                    "注册口径必须指定所属条线");
+        }
+        String normalized = branch.trim().toUpperCase(Locale.ROOT);
+        if (!IdentityCodes.SELF_REGISTRABLE_BRANCHES.contains(normalized)) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(),
+                    "不支持自助注册的所属条线: " + branch);
+        }
+        return getOrgTree(true, normalized);
+    }
+
+    /**
      * 归一化并校验身份范围；空串按「不限制」处理，未知取值直接报参数错误
      * （静默忽略非法取值会让调用方以为过滤生效了，实际拿到全量树）。
      */

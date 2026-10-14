@@ -10,8 +10,13 @@ import lombok.Data;
  *
  * <p>新密码强度规则与前端 `packages/shared/src/constants/policy.ts` 的
  * `PASSWORD_PATTERN` / `PASSWORD_RULE_MESSAGE` **必须保持一致**（改一处必须同步另一处，
- * 同类约定参见 `JwtUtils.BUILTIN_DEFAULT_SECRET`）。注册环节沿用 {@code RegisterRequest}，
- * 本轮不收紧其口令策略。
+ * 同类约定参见 `JwtUtils.BUILTIN_DEFAULT_SECRET`）。
+ *
+ * <p>**2026-10-14 起注册环节也已同档**：{@code RegisterRequest.password} 补上了
+ * 这一组 {@code @Size} + {@code @Pattern}（此前只有 {@code @NotBlank}，
+ * 于是"注册设弱口令、之后改密才被拦"）。三处口径现在是同一档：
+ * 本类 / `RegisterRequest` / shared 的 `PASSWORD_PATTERN`——
+ * **改一处必须同步另外两处**。
  */
 @Data
 public class PasswordChangeRequest {

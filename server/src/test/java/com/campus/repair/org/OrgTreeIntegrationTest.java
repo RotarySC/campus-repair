@@ -243,4 +243,51 @@ class OrgTreeIntegrationTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.length()").value(2));
     }
+
+    @Test
+    @DisplayName("注册选项端点匿名可读，但暴露范围**严格小于** /org/tree（不含行政信息化）")
+    void testRegisterOrgOptionsIsAnonymousButNarrower() throws Exception {
+        // ① 匿名可读（注册页在登录前就要用它）——刻意**不带 Authorization 头**
+        mockMvc.perform(get("/api/v1/auth/register-org-options")
+                        .param("audience", "STUDENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].name").value("2024级"));
+
+        // ② 教工两条条线同样匿名可读
+        mockMvc.perform(get("/api/v1/auth/register-org-options")
+                        .param("audience", "FACULTY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$..fullPathName", hasItem("所属单位 计算机学院")));
+
+        mockMvc.perform(get("/api/v1/auth/register-org-options")
+                        .param("audience", "LOGISTICS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$..fullPathName", hasItem("所属单位 后勤维修中心")));
+
+        // ③ 关键安全断言：行政信息化**不在**公开端点里。
+        //    「没人能自助注册到 ADMIN 条线」⇒ 它的子树没理由匿名可见；
+        //    这是本端点相对 /org/tree 收窄的那一条，必须锁住，否则将来"统一一下"
+        //    改成直接转调 /org/tree 就悄悄扩大了公开面。
+        mockMvc.perform(get("/api/v1/auth/register-org-options")
+                        .param("audience", "ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        // ④ 缺参数 / 未知条线一律参数错误，不静默退化成"返回全量树"
+        mockMvc.perform(get("/api/v1/auth/register-org-options"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        mockMvc.perform(get("/api/v1/auth/register-org-options")
+                        .param("audience", "PARENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        // ⑤ 对照自证：放开的是**新端点**，不是 /org/tree——后者匿名仍然 401。
+        //    没有这一条，③④ 在"整个 /org/** 都被放开了"的世界里依然全绿。
+        mockMvc.perform(get("/api/v1/org/tree")
+                        .param("audience", "STUDENT"))
+                .andExpect(status().isUnauthorized());
+    }
 }

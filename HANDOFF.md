@@ -16,7 +16,7 @@
 4. **前端**：`PersonalCenterView.vue` 重构为「左栏 账户概览＋资料维护 / 右栏 安全改密＋角色化统计区」；顶栏用户菜单加「个人中心」；顶栏头像改 `:src`；进页面/外壳挂载用 `/users/me` 刷新登录快照；`ROLE_LABELS` 三处重复收敛到 shared。
 5. **验证（截至 2026-09-13 全部四轮的现行基线；1~4 条是一期目标，逐轮明细见 §2.1~§2.7）**：`mvn test -f server/pom.xml` → **`Tests run: 112, Failures: 0, Errors: 0` / BUILD SUCCESS**（一期 80 → 二期 85 → 身份批次 1/2 的 94 → 评审 95 → P1+批次 4 的 112）；`tsc`(shared) + `vue-tsc`(admin) exit 0；入库探针 **9 个文件**（7 个 `assert-*` + `cdp-raw.mjs` + `verify-p1-batch4.ps1`），计数见 §4（**均为 2026-09-13 记录值，2026-09-21 同步未复跑**）。
 6. **顺带修掉 3 个既有问题**（都不是本轮引入）：① `updateById` 跳 null 导致「清空字段」写不进库；② `AnalyticsAggregationEquivalenceTest#testLiteralAggregateValues` **在 00:00~03:00 跑必失败**（旧基线"绿"是假象，真实基线是 70 用例带 1 必失败）；③ `application-test.yml` 缺 `encoding: UTF-8` 导致测试库种子中文乱码。
-7. **提交与运行现状（2026-10-06 现测）**：`master` = `f7b1322`；当前分支 `refactor/shared-datetime-format` 领先 **4 个提交**、工作区干净（§1）；后端 8080（java PID 12852，`mvn spring-boot:run`，冷启动 10.9s，H2 `local` profile）、前端 3000（node PID 7096，Vite）、Edge 9222（msedge PID 12400）**均在跑**，`/student/submit` @2524 真机复测居中正常（卡片左边界 x=742、宽 1280、两栏）。**⚠️ 这次启动里有两个坑值得记**：判活用错了需要鉴权的端点（401 被 `Invoke-WebRequest` 抛成"服务没起"，见 `AGENTS.md` §2.1 新条）；以及 `job_kill` 不带走探针派生的 node 进程，僵尸占住 Edge 那个唯一的 CDP 客户端槽位、让下一次探针**静默挂死**——排查判据是数 9222 的 `ESTABLISHED` 条数。**后端测试基线 176**（智能助手 64 例），见 §4 与 `AGENTS.md` §2.1。
+7. **提交与运行现状**：`master` 已于 **2026-10-14** 由 `feat/visual-language-d` **fast-forward** 到 `e24eb19`（31 个提交；`refactor/shared-datetime-format` 本就是它的祖先，一并带上，见 §3 末条）；当前分支 **`feat/handoff-p2`**（同日开，处理本文件的 P2）。以下运行现状为 **2026-10-06 现测**，接手前请按 `AGENTS.md` §2.1「先探测再动手」复核：后端 8080（java PID 12852，`mvn spring-boot:run`，冷启动 10.9s，H2 `local` profile）、前端 3000（node PID 7096，Vite）、Edge 9222（msedge PID 12400）**均在跑**，`/student/submit` @2524 真机复测居中正常（卡片左边界 x=742、宽 1280、两栏）。**⚠️ 这里有两个坑值得记**：判活用错了需要鉴权的端点（401 被 `Invoke-WebRequest` 抛成"服务没起"，见 `AGENTS.md` §2.1 新条）；以及 `job_kill` 不带走探针派生的 node 进程，僵尸占住 Edge 那个唯一的 CDP 客户端槽位、让下一次探针**静默挂死**——排查判据是数 9222 的 `ESTABLISHED` 条数。**后端测试基线 178**（2026-10-14 现测；176 → 178 = 本轮新增 2 条用例），见 §4 与 `AGENTS.md` §2.1。
 
 ## 1. 仓库与分支状态
 
@@ -241,17 +241,19 @@
 | P1 | 评审时确认两个默认决策：① 管理员侧统计区**刻意留空**（用户未选）；② 头像文件名**不做旧文件清理**（`uploads/` 会累积） | 设计文档 §7 |
 | P2 | 师傅「在岗/休息」自助开关——`on_duty_status` 全仓**无人可改**（只有 `data-demo.sql` 种下），但它直接决定自动派单候选（`WorkerProfileMapper.selectEligibleCandidates` 过滤 `= 1`），是独立业务决策 | 设计文档 §7.1 |
 | P2 | 管理员「我经手的调度统计」（按 `repair_order_log.operator_id` 聚合） | 设计文档 §7.2 |
-| P2 | 注册环节的密码强度策略（本轮只收紧改密路径，`RegisterRequest` 仍是 `@NotBlank` 裸口令） | 设计文档 §7.4 |
+| ~~P2~~ | ~~注册环节的密码强度策略（本轮只收紧改密路径，`RegisterRequest` 仍是 `@NotBlank` 裸口令）~~ → **✅ 2026-10-14 已修**（分支 `feat/handoff-p2`）：`RegisterRequest.password` 补 `@Size(8,32)` + `@Pattern`，与 `PasswordChangeRequest`、shared 的 `PASSWORD_PATTERN` **三处同档**；注册页同步接 `PASSWORD_PATTERN`。回归 `RegisterWhitelistIntegrationTest#testWeakPasswordRejectedAtRegister`（4 种弱口令 + 反向自证 1 条合规口令）。**顺带记一条契约**：Bean Validation 失败是 **HTTP 400**，业务规则拒绝（白名单那种）才是 **HTTP 200 + body `code=400`** | 设计文档 §7.4 |
 | P3 | `sys_user.phone/username` 唯一索引缺失（唯一性仅 Service 层校验，存在竞态） | 设计文档 §7.5 |
 | P3 | `UserService` 与 `LoginResponseVO` 的资料装配虽已去重，但 `AuthService` 仍直接注入 `SysUserMapper`（历史遗留越界，见 §1 模块边界条） | `AGENTS.md` §1 |
 | 观察 | `WorkerService.getWorkerBoardList` 里 `avgHours ?? 1.5` 与 `rating_avg` 默认 5.00 属「看起来正常」的兜底值，与 §3「不虚增好评」精神相悖（本轮**未动**调度中心，只在个人中心按"零完工显示 `—`"处理） | `AGENTS.md` §4 仪表盘假值条 |
 | 已办（2026-10-06） | `.scratch/` 入库策略**已收敛**：原先 README/AGENTS/设计文档点名的 10 个探针全是**死引用**（文件不在库里，clone 出来照做找不到），本次把 3 个 `assert-*` + 7 个 CDP 工具带补入库，**已入库 22 个文件**。**刻意不补**的是 `diag-*`（一次性诊断，文件头自称「非 tracked」；文档里的提法是"本轮实测这样量出来的"叙事，不是"照这个复现"的契约）与截图 / `commit-msg-*.txt` 产物 | §1 |
-| P2 | **二期遗留**：注册页（`RegisterView.vue`）与 Excel 导入（`UserImportRow`）的「学院/部门」仍是自由文本 → 新用户的单位可能不在字典里，个人中心只能显示「不在字典中」提示（用户本轮明确只改个人中心） | 二期设计文档 §5 |
+| ~~P2~~ | ~~**二期遗留**：注册页（`RegisterView.vue`）与 Excel 导入（`UserImportRow`）的「学院/部门」仍是自由文本~~ → **✅ 2026-10-14 已修**（`feat/handoff-p2`）：注册页改 `DrilldownCascader`（`separator=" "`，audience 取表单里选的条线）；导入侧 `UserExcelImportListener` 按**该条线的字典子树**校验 `department`（**填了才校验**：不填仍合法）。**两条实现要点**：① 身份/条线单选钮**必须排在「学院/部门」之前**（选项集合依赖它，放下面会让选项在用户眼皮底下换掉）；② 换条线时 `orgPath`/`form.department`/选择器显示**三处一起清**，漏一处就会「表单看着是空的、提交上去却有值」 | 二期设计文档 §5 |
 | P2 | **二期遗留**：`org_node` 没有维护界面（「空间字典」页只覆盖空间树与故障分类），改字典目前只能改 SQL 种子 | 二期设计文档 §5 |
-| P3 | **二期遗留**：生产 `sql/schema.sql` 未同步 `org_node`（该文件本身只有 11 张表、连 `spatial_node` 都没有）——上线前应统一补齐生产 DDL | 二期设计文档 §5 |
+| P3 | **二期遗留**：生产 `sql/schema.sql` 未同步 `org_node`——**2026-10-14 实测该条严重低估**：文件共 12 张表，缺的是 `repair_order`（**核心表本身**）、`worker_profile`、`spatial_node`、`repair_category`、`sys_config` **五张**，不是"少一张 `org_node`"；同时**多出**两张代码零引用的死表 `sys_permission`/`sys_role_permission`（两个独立检查一致：`CREATE TABLE` 列表 + 全文 `repair_order` 命中，后者只出现在 `repair_order_evaluation`/`repair_order_log` 与一句注释里）。上线前应统一补齐生产 DDL | 二期设计文档 §5 |
 | 观察 | 二期把探针计数写进文档时又发现两处过期值：`assert-actions-align` 实为 **15 条**（文档原写 16/16）、`assert-drill` 改后为 **130 条**；计数请现跑现数，不要沿用文档 | `AGENTS.md` §2.2/§4 |
 | P3 | **本轮发现未修**：提单页 `.path-hint` 与 `DrilldownCascader` 触发器同串重复（`东校区 / 学生生活区 / 1号宿舍楼 / 302室` 出现两次），属 V12「同一件事只有一个投影」。它**不是纯冗余**——触发器有 `text-overflow: ellipsis`，提示是"路径被截断时的兜底"。正解＝把全路径放进触发器的 `title`、删掉提示（组件级改动） | `docs/20260906-1430-…-frontend-design.md` §3.3.4 末节 |
-| P2 | **待决策**：`refactor/shared-datetime-format`（`762cc5d` + `55eaede` + V13 二轮 + `docs(agents)` 一条，共 **4 个提交**）**尚未合并到 `master`**；仓库惯例是 fast-forward only | §1 |
+| ~~P2~~ | ~~**待决策**：`refactor/shared-datetime-format`（`762cc5d` + `55eaede` + V13 二轮 + `docs(agents)` 一条，共 **4 个提交**）**尚未合并到 `master`**~~ → **✅ 2026-10-14 随 `feat/visual-language-d` 一并解决**：该分支本就是 `feat/visual-language-d` 的**祖先**，`master` ff 到 `e24eb19` 时把它一起带上了（`git diff feat/visual-language-d refactor/shared-datetime-format` 现在只剩删除项）。**"待决策"其实早已不存在，只是没人回填** | §1 |
+| **P2（新，2026-10-14 发现）** | **测试库没有隔离，被缺失的 DDL 约束长期掩盖**。实测：把生产口径的 `uk_username`/`uk_phone` 加进 H2 测试 schema 后，`mvn test` 由 176/176 全绿变成 **24 Errors / BUILD FAILURE**，全是夹具 `setUp` 的 `DuplicateKey`（6 个类）。根因不是约束写错，而是夹具本来就重复插入同一 username/phone：这些类**共用一个 H2 库、方法间不清理**，`@BeforeEach` 每跑一次再插一遍。**决定性证据是一处不对称**：username 侧早年被人偶然补过（`"eqworker_" + System.nanoTime()`、`"student_cockpit_" + System.currentTimeMillis()`），而 **phone 侧一直写死字面量**（`13900000000`/`13966660001`…）——因为当年只想到 `uk_username`，没有约束的那一半，同一个 bug 就一直看不见。且失败面**随执行顺序变化**（surefire 默认 `runOrder=filesystem`），24 条只是当前顺序下的那一部分；另有「插入值 与 别处 update 到的值 相同」的跨类碰撞（`UserIntegrationTest` 把手机号 update 成 `13811112222`，而 `DispatchConsoleIntegrationTest` 插入同一个号）。**本轮刻意只加 `uk_role_code`（安全）并把原因就地写在 `schema-test.sql` 里**，另两条留待"测试库隔离"独立工作 | `AGENTS.md` §2.1「跨测试类污染」条 |
+| **已定（2026-10-14）** | **注册页取单位字典的口子怎么开**：注册页要在**登录前**拿到单位列表，而登录后的 `/org/tree` 刻意收在 `anyRequest().authenticated()` 之后（`OrgTreeIntegrationTest` 有一条「未登录一律 401」的断言锁着它）。**采纳方案甲**：不放开 `/org/tree`（那是推翻一个刻意写下的安全决定，且等于把整个字典永久公开），改在**已公开的** `/api/v1/auth/**` 前缀下新增 `GET /auth/register-org-options`，实现体直接转调 `OrgNodeService.getSelfRegistrableOrgTree`。该端点暴露范围**严格小于** `/org/tree`：只接受可自助注册的三条条线，**行政信息化（ADMIN）不在其列**。回归 `OrgTreeIntegrationTest#testRegisterOrgOptionsIsAnonymousButNarrower`（含"`/org/tree` 匿名仍 401"的对照自证） | 本轮决策 |
 
 ### 3.1 身份系统专项分析发现（2026-09-13，**均已实测、一律未修**）
 
@@ -265,13 +267,13 @@
 | ~~P1~~ | ~~`is_first_login` 只在前端拦，后端不校验~~ | **✅ 2026-09-13 P1 批次已修**（见 §2.6）：标记烙进 Access Token，过滤器放行名单外一律 `code=1009`；回归 `FirstLoginEnforcementIntegrationTest`（3 例） |
 | ~~P1~~ | ~~无登出/无令牌吊销~~ → 批次 1 已删掉"空角色回退 userType"的反向提权 | **✅ 2026-09-13 P1 批次已修**（见 §2.6）：`POST /auth/logout` + jti 黑名单（双令牌都吊销）；回归 `LogoutRevocationIntegrationTest`（4 例）。**残留**：未登出的已签发 Access Token（2h）仍可用——无状态 JWT 的固有窗口，与"老令牌自然过期"同一口径 |
 | ~~P2~~ | ~~「身份判定双轨」：路由守卫按 `roleCodes`、界面（导航/首页/个人中心/师傅落点）按 `userType`~~ → **✅ 批次 1 已修**：前端统一走 `composables/useIdentity.ts` 的 `has('职能')`，路由用 `meta.functions`，多职能取并集 | 报告 §3.6 + 批次 1 |
-| P2 | 测试/生产不一致：`data-test.sql` 缺 `USER_TEACHER`（测试 profile 下教工注册必失败）；H2 测试 DDL 缺生产库的 `uk_username/uk_phone/uk_role_code/uk_user_role`；`sys_permission`/`sys_role_permission` 是代码零引用的死表 | 报告 §3.7 |
+| P2 | 测试/生产不一致——**2026-10-14 逐条复核，四条里两条是过期的**（写于批次 1 改名之前，之后没人回填）：<br>① ~~`data-test.sql` 缺 `USER_TEACHER`（测试 profile 下教工注册必失败）~~ → **假**。批次 1 起注册不再查种子角色码：`UserService.register` 只按 `REPORTER` 查 `sys_role`（种子里 id=4 就有），条线白名单在 **Java 侧** `IdentityCodes.SELF_REGISTRABLE_BRANCHES`。而且 **`RegisterWhitelistIntegrationTest#testStaffBranchesGrantReporterOnly` 早就覆盖了 FACULTY/LOGISTICS 注册成功**（含落库 `userType` 与"只绑一个 REPORTER"），一直绿着——该结论是被一条**已存在的通过用例**否证的。<br>② ~~H2 测试 DDL 缺 `uk_user_role`~~ → **假**，早在 `schema-test.sql` 里（`UNIQUE (user_id, role_id)`，注释还写着与生产对齐）。<br>③ H2 缺 `uk_username`/`uk_phone`/`uk_role_code` → **真**。**本轮只补 `uk_role_code`**（已验证安全）；`uk_username`/`uk_phone` 加进去会让 24 个用例炸，见 §3 的新 P2「测试库隔离」条，**不要在没做隔离前加它们**。<br>④ `sys_permission`/`sys_role_permission` 是代码零引用死表 → **真**（全仓仅 `sql/schema.sql` 的 DDL 与 HANDOFF 提到过）。 | 报告 §3.7 |
 | P3 | `/inventory/parts`（含指导价）、`/inventory/consumptions/{orderId}` 对所有登录用户开放 | 报告 §3.8 |
 
 ## 4. 验证证据（可复现命令）
 
 ```powershell
-# 后端全量（**现行基线：Tests run: 176, Failures: 0, Errors: 0 / BUILD SUCCESS**——2026-09-27 现测。⚠️ 必须先 `$env:TEMP="$PWD\server\target\tmp"; $env:TMP=$env:TEMP`，否则 ImageIO 类用例全红，见 `AGENTS.md` §2.1。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 → 评审修复 95 → **P1 + 批次 4 的 112** → 147 → 149 → 160 → 169 → 174 → **176**（智能助手 64 例））
+# 后端全量（**现行基线：Tests run: 178, Failures: 0, Errors: 0 / BUILD SUCCESS**——2026-10-14 现测。⚠️ 必须先 `$env:TEMP="$PWD\server\target\tmp"; $env:TMP=$env:TEMP`，否则 ImageIO 类用例全红，见 `AGENTS.md` §2.1。演进：一期 80 → 二期主体 85 → 身份分支 88 → 身份模型批次 1 的 94 → 评审修复 95 → **P1 + 批次 4 的 112** → 147 → 149 → 160 → 169 → 174 → 176（智能助手 64 例）→ **178**（P2 批次：注册口令强度 + 注册选项端点匿名边界））
 $env:JAVA_HOME = "$PWD\.tools\jdk\jdk-17.0.2"
 $env:PATH = "$env:JAVA_HOME\bin;$PWD\.tools\maven\apache-maven-3.9.16\bin;$env:PATH"
 mvn test -f server/pom.xml

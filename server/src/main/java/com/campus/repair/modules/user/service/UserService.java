@@ -9,6 +9,7 @@ import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.modules.auth.dto.RegisterRequest;
+import com.campus.repair.modules.org.service.OrgNodeService;
 import com.campus.repair.modules.spatial.service.SpatialNodeService;
 import com.campus.repair.modules.user.dto.PasswordChangeRequest;
 import com.campus.repair.modules.user.dto.UserImportRow;
@@ -45,6 +46,8 @@ public class UserService {
     private final WorkerProfileMapper workerProfileMapper;
     private final PasswordEncoder passwordEncoder;
     private final SpatialNodeService spatialNodeService;
+    /** 单位字典（只读 Service，跨模块但**不穿透 Mapper**——与 SpatialNodeService 同一档） */
+    private final OrgNodeService orgNodeService;
 
     @Transactional(rollbackFor = Exception.class)
     public void register(RegisterRequest request) {
@@ -170,7 +173,7 @@ public class UserService {
     public UserImportResultVO importUsers(MultipartFile file) {
         try (InputStream inputStream = file.getInputStream()) {
             UserExcelImportListener listener = new UserExcelImportListener(
-                    userMapper, roleMapper, userRoleMapper, workerProfileMapper, passwordEncoder);
+                    userMapper, roleMapper, userRoleMapper, workerProfileMapper, passwordEncoder, orgNodeService);
             EasyExcel.read(inputStream, UserImportRow.class, listener).sheet().doRead();
             return listener.getResult();
         } catch (Exception e) {

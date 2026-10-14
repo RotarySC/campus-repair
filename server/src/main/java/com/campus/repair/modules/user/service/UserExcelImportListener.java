@@ -4,6 +4,8 @@ import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.event.AnalysisEventListener;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campus.repair.common.constant.IdentityCodes;
+import com.campus.repair.modules.org.service.OrgNodeService;
+import com.campus.repair.modules.org.vo.OrgNodeVO;
 import com.campus.repair.modules.user.dto.UserImportRow;
 import com.campus.repair.modules.user.entity.SysRole;
 import com.campus.repair.modules.user.entity.SysUser;
@@ -19,10 +21,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -33,6 +37,7 @@ public class UserExcelImportListener extends AnalysisEventListener<UserImportRow
     private final SysUserRoleMapper userRoleMapper;
     private final WorkerProfileMapper workerProfileMapper;
     private final PasswordEncoder passwordEncoder;
+    private final OrgNodeService orgNodeService;
 
     @Getter
     private final UserImportResultVO result = new UserImportResultVO();
@@ -41,16 +46,54 @@ public class UserExcelImportListener extends AnalysisEventListener<UserImportRow
     private final Set<String> processedPhones = new HashSet<>();
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
 
+    /**
+     * 条线 → 该条线字典子树里的全部 {@code full_path_name}。
+     *
+     * <p>按条线缓存：字典树在一次导入里不会变，而逐行重查会变成 N 次全表查询。
+     * 每次 {@code importUsers} 都会 new 一个 listener，所以缓存不会跨请求残留。
+     */
+    private final Map<String, Set<String>> departmentPoolByBranch = new HashMap<>();
+
     public UserExcelImportListener(SysUserMapper userMapper,
                                    SysRoleMapper roleMapper,
                                    SysUserRoleMapper userRoleMapper,
                                    WorkerProfileMapper workerProfileMapper,
-                                   PasswordEncoder passwordEncoder) {
+                                   PasswordEncoder passwordEncoder,
+                                   OrgNodeService orgNodeService) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.userRoleMapper = userRoleMapper;
         this.workerProfileMapper = workerProfileMapper;
         this.passwordEncoder = passwordEncoder;
+        this.orgNodeService = orgNodeService;
+    }
+
+    /** 该条线字典子树里的全部 {@code full_path_name}（首次访问时构建并缓存） */
+    private Set<String> departmentPool(String branch) {
+        return departmentPoolByBranch.computeIfAbsent(branch, b -> {
+            Set<String> paths = new HashSet<>();
+            collectFullPaths(orgNodeService.getOrgTree(true, b), paths);
+            return paths;
+        });
+    }
+
+    /**
+     * 递归收集 {@code full_path_name}。
+     *
+     * <p>**任意层级的节点都算合法值**（不只是叶子）：个人中心回显走的是
+     * 「整串精确匹配」，非叶节点（如「2024级」）同样能匹配上；而导入是管理员行为，
+     * 收紧到"只许叶子"会把「先记到学院、以后再细分到系」这种真实用法挡在门外。
+     */
+    private void collectFullPaths(List<OrgNodeVO> nodes, Set<String> out) {
+        for (OrgNodeVO node : nodes) {
+            if (StringUtils.hasText(node.getFullPathName())) {
+                out.add(node.getFullPathName());
+            }
+            List<OrgNodeVO> children = node.getChildren();
+            if (children != null && !children.isEmpty()) {
+                collectFullPaths(children, out);
+            }
+        }
     }
 
     @Override
@@ -104,6 +147,18 @@ public class UserExcelImportListener extends AnalysisEventListener<UserImportRow
                 : IdentityCodes.BRANCH_STUDENT;
         if (!IdentityCodes.ALL_BRANCHES.contains(branch)) {
             recordFailure(currentRow, username, "未知的所属条线: " + data.getBranch());
+            return;
+        }
+
+        // 5.5 单位必须落在**该条线**的字典子树里（P2，2026-10-14）
+        //     「填了才校验」：不填 = 没有单位（合法，sys_user.department 本就可空）；
+        //     填了却不在字典里 → 该行失败。此前这里把 department 原样写库，于是个人中心
+        //     回显只能显示「不在字典中」——而到那时已经无从判断这个人到底属于哪个单位，
+        //     脏数据只能靠人工比对。与注册页的字典下钻是**同一个约束、同一份字典**。
+        String department = StringUtils.hasText(data.getDepartment()) ? data.getDepartment().trim() : null;
+        if (department != null && !departmentPool(branch).contains(department)) {
+            recordFailure(currentRow, username,
+                    "所属单位不在单位字典中（条线 " + branch + "）: " + department);
             return;
         }
 

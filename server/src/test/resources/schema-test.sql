@@ -37,8 +37,37 @@ CREATE TABLE sys_role (
   role_name VARCHAR(32) NOT NULL,
   description VARCHAR(128),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  -- 与生产 sql/schema.sql 的 uk_role_code 对齐
+  UNIQUE (role_code)
 );
+
+-- ---------------------------------------------------------------------------
+-- ⚠️ 刻意**不**加生产的 uk_username / uk_phone（与 `sys_user` 的其余不一致已知留在案）
+--
+-- 2026-10-14 实测：把这两条约束按生产口径（`(col, deleted)` 复合键）加进来后，
+-- `mvn test` 由 176/176 全绿变为 **176 用例 / 24 Errors / BUILD FAILURE**，全部是
+-- 测试夹具 `setUp` 里的 `DuplicateKey`，涉及 6 个类：
+--   AnalyticsAggregationEquivalenceTest.insertWorker / AnalyticsCockpitIntegrationTest.setUp
+--   InventoryAndFinishIntegrationTest.createStudent / DispatchConsoleIntegrationTest.createTestWorker
+--   EvaluationAndReworkIntegrationTest.createTestUser / WorkerWorkbenchIntegrationTest.createWorker
+--
+-- 根因**不是**约束写错了，而是既有测试夹具本来就重复插入同一 username/phone：
+-- 这些类共用同一个 H2 库、方法间不做清理，`@BeforeEach` 每跑一次就再插一遍。
+-- 此前只有 username 侧被人偶然补过（`"eqworker_" + System.nanoTime()`、
+-- `"student_cockpit_" + System.currentTimeMillis()`），**phone 侧一直写死字面量**
+-- （`13900000000` / `13966660001` …）——因为当年只有 uk_username 被想到，
+-- 而没有约束的那一半，同一个 bug 就一直看不见。
+--
+-- 且失败面**随执行顺序变化**（surefire 默认 `runOrder=filesystem`，见 AGENTS.md §2.1）：
+-- 还有若干「插入值 与 别处 update 到的值 相同」的跨类碰撞（实测 `UserIntegrationTest`
+-- 把手机号 update 成 `13811112222`，而 `DispatchConsoleIntegrationTest` 插入同一个号），
+-- 本轮看到的 24 条只是当前顺序下的那一部分。
+--
+-- 结论：加这两条约束的前提是**先解决测试库隔离**（或在每个插入点收口成唯一值），
+-- 属独立工作，不该混在「补 DDL」里做。详见 HANDOFF §3.1 与该条的证据。
+-- ---------------------------------------------------------------------------
+
 
 CREATE TABLE sys_user_role (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,

@@ -40,6 +40,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>自助注册**只授 REPORTER 职能**，与请求体里任何字段无关；</li>
  *   <li>空 userType 默认学生。</li>
  * </ul>
+ *
+ * <p>**2026-10-14 追加**：本类同时守住注册入口的**口令强度**（P2）。此前
+ * `RegisterRequest.password` 只有 `@NotBlank`，而 `PasswordChangeRequest` 已有
+ * 8~32 位 + 字母数字双要求——门槛开在了必经之路的**下游**：注册时能设 `123`，
+ * 只有想改密才被拦。两条契约都属于"注册接口对外承诺什么"，故收在同一个类里。
+ *
+ * <p>刻意**不新开测试类**：surefire 默认 `runOrder=filesystem`，新增测试类会改变文件
+ * 枚举顺序，进而让既有的"跨测试类残留数据"问题换一副面孔出现（见 `AGENTS.md` §2.1）。
+ * 本类是 `@Transactional`，用例间无残留，是更稳的落脚点。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -151,5 +160,55 @@ class RegisterWhitelistIntegrationTest {
                 .eq(SysUserRole::getUserId, user.getId()));
         assertThat(bindings).hasSize(1);
         assertThat(bindings.get(0).getRoleId()).isEqualTo(reporter.getId());
+    }
+
+    @Test
+    @DisplayName("注册口令强度与改密同档：弱口令 400 且不落库，同档合规口令放行")
+    void testWeakPasswordRejectedAtRegister() throws Exception {
+        // 四种典型不合格：过短 / 纯数字 / 纯字母 / 超长（后两者长度合格但缺另一类字符）
+        List<String> weakPasswords = List.of(
+                "123",
+                "12345678",
+                "abcdefgh",
+                "a1".repeat(17));
+
+        for (String weak : weakPasswords) {
+            String username = "probe_pwd_" + Math.abs(weak.hashCode());
+            RegisterRequest req = request(username, IdentityCodes.BRANCH_STUDENT);
+            req.setPassword(weak);
+
+            mockMvc.perform(post("/api/v1/auth/register")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    // ⚠️ 两类拒绝的**传输层形状不同**，别混为一谈：
+                    //   · Bean Validation（`@Valid` 打在 DTO 注解上）→ **HTTP 400**
+                    //     （GlobalExceptionHandler.handleValidException 带 @ResponseStatus(BAD_REQUEST)）；
+                    //   · 业务规则拒绝（Service 抛 BusinessException）→ **HTTP 200 + body code=400**，
+                    //     即本类 expectRejected 用的那条路径（白名单是业务规则，不是注解约束）。
+                    // 口令强度属前者，故这里断言的是 isBadRequest 而不是 isOk。
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(400));
+
+            assertThat(userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                    .eq(SysUser::getUsername, username)))
+                    .as("弱口令注册不应落库: " + weak)
+                    .isZero();
+        }
+
+        // 反向自证：上面四条断言在"整个注册接口都坏了"的世界里**同样全绿**，
+        // 所以必须同时证明同档的合规口令能过。缺了这条，这个用例是恒真的假信号。
+        String okUser = "probe_pwd_ok";
+        RegisterRequest okReq = request(okUser, IdentityCodes.BRANCH_STUDENT);
+        okReq.setPassword("a1b2c3d4");
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(okReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        assertThat(userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, okUser)))
+                .as("同档合规口令应注册成功")
+                .isEqualTo(1);
     }
 }
