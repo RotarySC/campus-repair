@@ -149,17 +149,27 @@ mvn spring-boot:run
 ## 4. 自验
 
 ```powershell
-# 后端：单元 + 集成 + 并发（282 例，2026-10-24 实测 0 失败；含身份核验/内容审核/取消与脱敏/审计/库存预警/返工率）
+# 一键校验（四段：后端测试 → shared 类型+单测 → admin-web 类型+单测；任一失败非 0 退出）
+pwsh scripts/verify.ps1
+
+# 后端：单元 + 集成 + 并发（285 例，2026-10-24 实测 0 失败；含身份核验/内容审核/取消与脱敏/审计/
+# 库存预警/返工率/取消与复核并发。性能压测带 @Tag("perf")，默认被 surefire 排除，不进这条命令）
 mvn test -f server/pom.xml
 
 # 前端类型检查（两包；.vue 单文件组件必须用 vue-tsc）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json
 cd apps/admin-web; ./node_modules/.bin/vue-tsc.CMD --noEmit
 
-# 前端单测：12 个 spec / 100 例（format 14、http 3、watermark 3、status-hue 10、token-coverage 8、
-# category-palette 7、color-controls 6、brand-mark 5、probes-parse 3、status-ring-v7 2、
-# contact-mask 26、order-actions 13）
+# 前端单测：shared 12 spec / 100 例 + admin-web 3 spec / 16 例
+# shared：format 14、http 3、watermark 3、status-hue 10、token-coverage 8、category-palette 7、
+#         color-controls 6、brand-mark 5、probes-parse 3、status-ring-v7 2、contact-mask 26、order-actions 13
+# admin ：guard 7（路由守卫矩阵）、kpiCards 5（返工率「—」与否）、StudentOrderListView 4（挂载 + 取消请求断言）
 cd packages/shared; node node_modules/vitest/vitest.mjs run
+cd apps/admin-web; node node_modules/vitest/vitest.mjs run
+
+# 性能基线：5 万单 + 2 万评价，只跑 @Tag("perf") 的压测类，回显 p50/p95
+# （2026-10-24 本机实测：kpi p95≈1.0ms、深分页 p95≈12.6ms；阈值 400ms 是「明显劣化」护栏，不是 SLA）
+pwsh scripts/perf.ps1
 
 # 生产库（MySQL 8）：空库建表 + 灌种子 + 冒烟（2026-10-24 在 MySQL 8.4 实测：23 表；提单命中广告词
 # → 不进退派单池且人工指派 2004 → 复核通过自动派单 → 报修人取消且师傅负荷回落 → 公告「未通过发布
@@ -171,7 +181,15 @@ mysql --default-character-set=utf8mb4 -uroot -p campus_repair < sql/data.sql
 mysql --default-character-set=utf8mb4 -uroot -p campus_repair < sql/migration-20261024-baseline.sql
 ```
 
-覆盖重点：双令牌鉴权与首登拦截（`AuthIntegrationTest` / `FirstLoginEnforcementIntegrationTest` / `LogoutRevocationIntegrationTest`）、**校内身份核验与待核验闸门**（`IdentityVerificationIntegrationTest` / `IdentityMatchServiceTest` / `IdentityRosterImportTest`）、**内容初筛纯函数（归一化 / 本人手机号豁免 / 抽检确定性 / 停用词）**（`ContentScreeningTest`）、**内容审核闸门与重提**（`ContentReviewIntegrationTest`）、**公告先审后发**（`AnnouncementReviewIntegrationTest`）、**敏感词表维护**（`SensitiveWordApiTest`）、**报修人取消窗口与负荷回落**（`WorkOrderReporterCancelIntegrationTest`）、**按关系掩码**（`ContactVisibilityIntegrationTest`）、**台账不回密码**（`UserAdminPrivacyTest`）、工单读接口属主四方向（`WorkOrderReadOwnershipIntegrationTest`）、派单最小负荷与 10 线程防超派（`DispatchEngineIntegrationTest`）、库存 10 线程防超卖（`InventoryAndFinishIntegrationTest`）、72h 超时核销与差评返工仲裁（`EvaluationAndReworkIntegrationTest`）、**字典变更审计**（`OperationLogIntegrationTest`）、**库存预警冷却与双通道**（`StockWarningIntegrationTest`）、**返工率口径**（`ReworkRateKpiTest`）、**建表脚本一致性**（`SchemaParityTest`）、审计职能词表逐个动作核对（`AuditRoleVocabularyIntegrationTest`）、旧角色码反漏改扫描（`NoLegacyRoleCodeTest`）、分析聚合等价性（`AnalyticsAggregationEquivalenceTest`）、智能助手规则打分与真实 HTTP 信封/超时降级（`AssistantRuleEngineTest` / `RestClientLlmTransportTest` / `AssistantLlmEscalationTest`）。
+覆盖重点：双令牌鉴权与首登拦截（`AuthIntegrationTest` / `FirstLoginEnforcementIntegrationTest` / `LogoutRevocationIntegrationTest`）、**校内身份核验与待核验闸门**（`IdentityVerificationIntegrationTest` / `IdentityMatchServiceTest` / `IdentityRosterImportTest`）、**内容初筛纯函数（归一化 / 本人手机号豁免 / 抽检确定性 / 停用词）**（`ContentScreeningTest`）、**内容审核闸门与重提**（`ContentReviewIntegrationTest`）、**公告先审后发**（`AnnouncementReviewIntegrationTest`）、**敏感词表维护**（`SensitiveWordApiTest`）、**报修人取消窗口与负荷回落**（`WorkOrderReporterCancelIntegrationTest`）、**按关系掩码**（`ContactVisibilityIntegrationTest`）、**台账不回密码**（`UserAdminPrivacyTest`）、**取消三方并发（报修人取消 / 调度作废 / 师傅接单）恰好一个赢家**（`ReporterCancelConcurrencyTest`）、**复核 approve/reject 并发一次性决策**（`ContentReviewRaceTest`）、工单读接口属主四方向（`WorkOrderReadOwnershipIntegrationTest`）、派单最小负荷与 10 线程防超派（`DispatchEngineIntegrationTest`）、库存 10 线程防超卖（`InventoryAndFinishIntegrationTest`）、72h 超时核销与差评返工仲裁（`EvaluationAndReworkIntegrationTest`）、**字典变更审计**（`OperationLogIntegrationTest`）、**库存预警冷却与双通道**（`StockWarningIntegrationTest`）、**返工率口径**（`ReworkRateKpiTest`）、**建表脚本一致性**（`SchemaParityTest`）、审计职能词表逐个动作核对（`AuditRoleVocabularyIntegrationTest`）、旧角色码反漏改扫描（`NoLegacyRoleCodeTest`）、分析聚合等价性（`AnalyticsAggregationEquivalenceTest`）、智能助手规则打分与真实 HTTP 信封/超时降级（`AssistantRuleEngineTest` / `RestClientLlmTransportTest` / `AssistantLlmEscalationTest`）。
+
+### 性能基线（不进默认回归）
+
+`AnalyticsPerformanceTest` 带 `@Tag("perf")`，surefire 默认 `excludedGroups=perf`，所以日常 `mvn test` 仍是秒级、不造 5 万行数据。跑基线：`pwsh scripts/perf.ps1`（等价于 `mvn test -Dgroups=perf -DexcludedGroups= -Dtest=AnalyticsPerformanceTest`）。
+
+- 造数：50,000 工单 + 20,000 评价（10 分类 × 30 空间 × 12 个月、返工率约 8%），`batchUpdate` 约 3.8s；
+- 指标：控制台 KPI 聚合 p95 ≈ **1.0ms**、多维检索深分页（size=10 第 100 页）p95 ≈ **12.6ms**（H2 内存库，2026-10-24 本机）；
+- 口径：阈值 `-Dperf.p95.ms`（默认 400ms）只作为「明显劣化」护栏，论文引用请写**相对基线**而不是 SLA；`-NoAssert` 只取数不断言。
 
 ### 真机探针
 
@@ -194,6 +212,8 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
   New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
   ```
 - `vitest` 在 `workspace-write` 沙箱下会 `spawn EPERM`（Vite 探测网络驱动器），表现为 `no tests`；放宽到 `danger-full-access` 重跑即可，别去改 spec。
+- `mvn clean` 会连 `server/target/tmp` 一起删掉：要同时 clean 和跑测试时，把 `TEMP`/`TMP` 指到仓库内一个不被 clean 清掉的目录（如 `.scratch/tmp`），否则验证码/ImageIO 用例会因临时目录消失而红。
+- **改完源码先 `mvn clean test` 再下结论**：多进程/并发构建时，若 `.class` 的 mtime 比 `.java` 新，Maven 增量编译会判定「无需重编」并复用旧字节码——曾因此拿旧 class 当修复结论（`javap` 才看出来）。`scripts/verify.ps1` 走的是普通 `mvn test`，改完业务代码后建议至少 clean 跑一次。
 
 ## 5. 已知限制与未验证项
 
@@ -206,11 +226,13 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
 - **内容审核的多轮轨迹只在审核工作台可见**：学生详情页给「当前轮驳回理由 + 修改重提入口」，不做整条审核时间轴（否则等于给工单再开一条并行时间轴）；需要按轮追溯时走「内容审核 → 审核记录」。
 - **智能助手的大模型增强默认关闭**，默认只有本地规则；开启后单次请求受 `MAX_TOKENS` / `TIMEOUT_MS` 约束，思考模型容易把 `content` 挤空而降级为纯规则。
 - **窄档下管理端不推荐**：调度台、进销存、字典维护按 PC 设计，< 768 只有师生 / 师傅侧做过完整走查。
-- **前端没有页面级单测**：`apps/admin-web` 只有 `typecheck`，页面行为靠真机探针；探针依赖本机 Edge 9222 与两个服务，不能进 CI 无头跑。
+- **页面级单测只覆盖「逻辑 + 1 个列表视图」**：`apps/admin-web` 现有 3 个 spec（路由守卫矩阵、KPI 卡口径、学生工单列表挂载与取消请求），其余页面仍靠真机探针；探针依赖本机 Edge 9222 与两个服务，不能进 CI 无头跑——两者不互相替代，也别把 vitest 挂载测试写成「端到端」。
+- **性能基线是单机相对值**：5 万单数字来自 H2 内存库 + 本机 JVM，换机器/换库都会变；它的用途是「同一环境前后对比 + 阈值护栏」，不是线上容量承诺。MySQL 路径未做同等量级压测。
 
 ## 版本与变更
 
 - **v1.0.0**（2026-10）：12 个业务模块全部交付，后端 178 例测试全绿；统一响应式门户取代早期双端，`/cockpit` 大屏并入控制台概览。
+- 2026-10-24（第三批）：**测试与性能证据补齐**——`apps/admin-web` 接入 vitest（3 spec / 16 例：路由守卫矩阵、KPI 卡口径、学生工单列表挂载），把 `beforeEach` 的判定抽成纯函数 `resolveNavigation`；新增 `@Tag("perf")` 的 5 万单压测基线（KPI p95≈1.0ms、深分页 p95≈12.6ms）与 `scripts/verify.ps1` / `scripts/perf.ps1` 两条一键命令；新增取消三方并发与复核 approve/reject 并发用例，并据此修掉**取消/作废/接单未做条件更新导致并发双写**的缺陷。后端测试 282 → **285 例**。
 - 2026-10-24（第二批）：补齐开题缺口的第二批——**内容审核闸门与公告先审后发**（敏感词表 + 确定性初筛 + 图片抽检 + 复核队列 + append-only 轨迹 + 公告状态机）、**报修人接单前取消**（复用 `CANCELLED`、审计区分主体、释放负荷）、**字段级脱敏与用户台账隐私修复**（按关系掩码、台账不再回密码）；顺带修掉「自动派单事件在事务内发布导致偶发不派单」的时序缺陷。后端测试 225 → **282 例**，前端 shared 单测 61 → **100 例**。
 - 2026-10-24：补齐开题缺口的第一批——**校内身份核验与账号三态**（名册比对 / 待核验 1010 / 核验工作台 / 三态台账）、**字典变更审计**、**库存安全预警**、**返工率 KPI**；生产库脚本从 12 表补到 23 表（含 9 个核心外键）并新增迁移脚本；后端测试 178 → **225 例**。
 - 2026-09：身份模型重构为「组织条线 / 职能 / 工种」三层，新增 ADR 0001/0002；首登强制改密、登出双令牌吊销、工单读接口属主判定落地。
