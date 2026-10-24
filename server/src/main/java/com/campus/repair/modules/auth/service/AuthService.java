@@ -203,13 +203,17 @@ public class AuthService {
         }
 
         boolean mustChangePassword = user.getIsFirstLogin() != null && user.getIsFirstLogin() == 1;
+        // 存量账号 identity_verified 为 null 时视为已核验（与建表默认值 1 同口径）
+        boolean identityVerified = user.getIdentityVerified() == null || user.getIdentityVerified() == 1;
 
         return LoginResponseVO.builder()
                 .accessToken(jwtUtils.generateAccessToken(
-                        user.getId(), user.getUsername(), roleCodes, mustChangePassword))
+                        user.getId(), user.getUsername(), roleCodes, mustChangePassword, identityVerified))
                 .refreshToken(jwtUtils.generateRefreshToken(user.getId(), user.getUsername()))
                 .expiresIn(jwtUtils.getAccessTokenExpirationSeconds())
                 .userInfo(userService.buildProfile(user))
+                .identityVerified(identityVerified)
+                .accountStatus(user.getStatus())
                 .build();
     }
 

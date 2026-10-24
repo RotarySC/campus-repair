@@ -83,7 +83,12 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.userInfo.username").value("admin"))
-                .andExpect(jsonPath("$.data.userInfo.userType").value("ADMIN"));
+                .andExpect(jsonPath("$.data.userInfo.userType").value("ADMIN"))
+                // Phase 01：登录响应带上核验状态与三态账号状态（前端据此决定落地页）
+                .andExpect(jsonPath("$.data.identityVerified").value(true))
+                .andExpect(jsonPath("$.data.accountStatus").value(1))
+                .andExpect(jsonPath("$.data.userInfo.identityVerified").value(true))
+                .andExpect(jsonPath("$.data.userInfo.status").value(1));
     }
 
     @Test

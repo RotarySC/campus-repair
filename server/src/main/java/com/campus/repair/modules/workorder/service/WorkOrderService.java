@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
+import com.campus.repair.framework.security.LoginUserPrincipal;
+import com.campus.repair.modules.identity.constant.IdentityReviewCodes;
 import com.campus.repair.modules.spatial.entity.RepairCategory;
 import com.campus.repair.modules.spatial.entity.SpatialNode;
 import com.campus.repair.modules.spatial.service.RepairCategoryService;
@@ -56,6 +58,9 @@ public class WorkOrderService {
     );
 
     public DuplicateCheckResultVO checkDuplicate(DuplicateCheckRequest request) {
+        // 身份核验闸门（Phase 01）：令牌是 2 小时快照，这里再查一次库
+        assertCurrentUserIdentityEligible();
+
         List<RepairOrder> activeOrders = orderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
                 .eq(RepairOrder::getSpaceId, request.getSpaceId())
                 .eq(RepairOrder::getCategoryId, request.getCategoryId())
@@ -82,6 +87,11 @@ public class WorkOrderService {
 
     @Transactional(rollbackFor = Exception.class)
     public WorkOrderSubmitResultVO submitOrder(Long applicantUserId, WorkOrderSubmitRequest request) {
+        // 0. 身份核验闸门（Phase 01）：status=2 待审核 或 identity_verified=0 → 1010
+        //    令牌里的 verified 只是签发时刻的快照，服务层判据才是权威（见 Phase 01 D3）
+        SysUser applicant = userService.getUserById(applicantUserId);
+        assertIdentityEligible(applicant);
+
         // 1. 检查空间节点
         SpatialNode space = spatialNodeService.getNodeById(request.getSpaceId());
         if (space == null || space.getStatus() == 0) {
@@ -94,12 +104,7 @@ public class WorkOrderService {
             throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(), "所选故障分类不存在或已停用");
         }
 
-        // 3. 申请人信息
-        SysUser applicant = userService.getUserById(applicantUserId);
-        if (applicant == null) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
-
+        // 3. 申请人联系方式
         String phone = StringUtils.hasText(request.getApplicantPhone()) ?
                 request.getApplicantPhone().trim() : applicant.getPhone();
 
@@ -1106,6 +1111,40 @@ public class WorkOrderService {
         }
 
         return vo;
+    }
+
+    /**
+     * 提单前的身份核验闸门（Phase 01）。
+     *
+     * <p>判据用**库里的两列**，不看令牌：{@code status==2}（待审核，能登录不能提单）或
+     * {@code identity_verified==0}（未核验）一律 {@code 1010}。令牌是签发时刻的快照——
+     * 用户被驳回后旧令牌仍在有效期内的这段时间，正是服务层必须自己查库的理由。
+     *
+     * <p>停用账号（{@code status==0}）沿用既有 {@code 1001}：它连登录都进不来，属于「账号不可用」，
+     * 与「身份还没核验」是两件事。
+     */
+    private void assertIdentityEligible(SysUser applicant) {
+        if (applicant == null || (applicant.getStatus() != null && applicant.getStatus() == 0)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        boolean verified = applicant.getIdentityVerified() == null || applicant.getIdentityVerified() == 1;
+        if (Integer.valueOf(IdentityReviewCodes.STATUS_PENDING_REVIEW).equals(applicant.getStatus()) || !verified) {
+            throw new BusinessException(ErrorCode.ACCOUNT_PENDING_REVIEW);
+        }
+    }
+
+    /**
+     * {@link #checkDuplicate} 的闸门：该方法签名里没有调用者 id（控制器未改，避免越界改动），
+     * 故从安全上下文取当前主体再回库判定。取不到主体（内部/定时调用）时放行——
+     * 防重校验本身不落数据，真正的权威闸门在 {@link #submitOrder}。
+     */
+    private void assertCurrentUserIdentityEligible() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (authentication != null
+                && authentication.getPrincipal() instanceof LoginUserPrincipal principal) {
+            assertIdentityEligible(userService.getUserById(principal.getUserId()));
+        }
     }
 
     private RepairOrder loadOrder(Long orderId) {

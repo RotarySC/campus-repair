@@ -9,6 +9,11 @@ import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.modules.auth.dto.RegisterRequest;
+import com.campus.repair.modules.auth.vo.RegisterResultVO;
+import com.campus.repair.modules.identity.constant.IdentityReviewCodes;
+import com.campus.repair.modules.identity.entity.IdentityRoster;
+import com.campus.repair.modules.identity.service.IdentityMatchService;
+import com.campus.repair.modules.identity.service.IdentityRegistrationService;
 import com.campus.repair.modules.org.service.OrgNodeService;
 import com.campus.repair.modules.spatial.service.SpatialNodeService;
 import com.campus.repair.modules.user.dto.PasswordChangeRequest;
@@ -48,21 +53,18 @@ public class UserService {
     private final SpatialNodeService spatialNodeService;
     /** 单位字典（只读 Service，跨模块但**不穿透 Mapper**——与 SpatialNodeService 同一档） */
     private final OrgNodeService orgNodeService;
+    /** 身份核验：名单查询 + 审核轨迹写入（Phase 01；只碰 Mapper，不依赖 NotificationService，避免循环依赖） */
+    private final IdentityRegistrationService identityRegistrationService;
+    /** 名单比对的纯判定逻辑（无 DB） */
+    private final IdentityMatchService identityMatchService;
 
     @Transactional(rollbackFor = Exception.class)
-    public void register(RegisterRequest request) {
+    public RegisterResultVO register(RegisterRequest request) {
         String username = request.getUsername().trim();
         String phone = request.getPhone().trim();
+        String realName = request.getRealName().trim();
 
-        // 1. 唯一性校验
-        if (userMapper.selectCount(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)) > 0) {
-            throw new BusinessException(ErrorCode.USERNAME_EXISTS);
-        }
-        if (userMapper.selectCount(new LambdaQueryWrapper<SysUser>().eq(SysUser::getPhone, phone)) > 0) {
-            throw new BusinessException(ErrorCode.PHONE_EXISTS);
-        }
-
-        // 2. 校验组织条线：客户端只能说「我是谁」，**不能说「我能干什么」**
+        // 1. 校验组织条线：客户端只能说「我是谁」，**不能说「我能干什么」**
         //    （此前把 userType 当角色码直接查 sys_role，传 SUPER_ADMIN 即可自封超管）
         String branch = StringUtils.hasText(request.getUserType())
                 ? request.getUserType().trim().toUpperCase(Locale.ROOT)
@@ -72,7 +74,7 @@ public class UserService {
                     "不支持自助注册的所属条线: " + request.getUserType());
         }
 
-        // 3. 自助注册一律只授「报修人」职能，与客户端请求无关
+        // 2. 自助注册一律只授「报修人」职能，与客户端请求无关
         SysRole reporterRole = roleMapper.selectOne(
                 new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, IdentityCodes.FUNC_REPORTER));
         if (reporterRole == null) {
@@ -80,24 +82,96 @@ public class UserService {
                     "角色字典缺少 " + IdentityCodes.FUNC_REPORTER + "，请检查数据初始化");
         }
 
-        // 4. 实体保存
-        SysUser user = new SysUser();
-        user.setUsername(username);
-        user.setRealName(request.getRealName().trim());
+        // 3. 已存在的学号/工号：已核验 → 1006；未核验（待审核/被驳回）→ 走「重新提交」，复用同一账号
+        SysUser existing = firstBy(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+        if (existing != null && isIdentityVerified(existing)) {
+            throw new BusinessException(ErrorCode.USERNAME_EXISTS);
+        }
+
+        // 4. 手机号唯一性：重新提交时排除本人，否则「手机号没改」会被自己挡住
+        SysUser phoneOwner = firstBy(new LambdaQueryWrapper<SysUser>().eq(SysUser::getPhone, phone));
+        if (phoneOwner != null && (existing == null || !phoneOwner.getId().equals(existing.getId()))) {
+            throw new BusinessException(ErrorCode.PHONE_EXISTS);
+        }
+
+        // 5. 名单比对（Phase 01）：名单已失效 → 直接拒绝；其余按 D5 判定表出三态
+        IdentityRoster roster = identityRegistrationService.findByUsername(username);
+        if (roster != null && roster.getStatus() != null && roster.getStatus() == 0) {
+            throw new BusinessException(ErrorCode.IDENTITY_NOT_IN_ROSTER);
+        }
+        IdentityMatchService.Decision decision = identityMatchService.decide(roster, realName, branch);
+        // 条线以名单为准：名册在册时用名册条线落库（与名册不一致的已在 decision 里降级为待审核）
+        String resolvedBranch = decision.resolvedBranch() != null ? decision.resolvedBranch() : branch;
+
+        boolean reapply = existing != null;
+        SysUser user = existing != null ? existing : new SysUser();
+        if (!reapply) {
+            user.setUsername(username);
+            user.setIsFirstLogin(0); // 自助注册账号初始密码无需强制改密
+        }
+        user.setRealName(realName);
         user.setPhone(phone);
         user.setPassword(passwordEncoder.encode(request.getPassword().trim()));
-        user.setUserType(branch);
+        user.setUserType(resolvedBranch);
         user.setDepartment(request.getDepartment());
         user.setDefaultSpaceId(request.getDefaultSpaceId());
-        user.setStatus(1);
-        user.setIsFirstLogin(0); // 自助注册账号初始密码无需强制改密
-        userMapper.insert(user);
+        user.setStatus(decision.status());
+        user.setIdentityVerified(decision.identityVerified());
 
-        // 5. 职能绑定
-        SysUserRole userRole = new SysUserRole();
-        userRole.setUserId(user.getId());
-        userRole.setRoleId(reporterRole.getId());
-        userRoleMapper.insert(userRole);
+        if (reapply) {
+            // 不能用 updateById：MyBatis-Plus 默认 NOT_NULL 策略会跳过 null（清空单位/默认空间会失效）
+            userMapper.update(null, new LambdaUpdateWrapper<SysUser>()
+                    .eq(SysUser::getId, user.getId())
+                    .set(SysUser::getRealName, user.getRealName())
+                    .set(SysUser::getPhone, user.getPhone())
+                    .set(SysUser::getPassword, user.getPassword())
+                    .set(SysUser::getUserType, user.getUserType())
+                    .set(SysUser::getDepartment, user.getDepartment())
+                    .set(SysUser::getDefaultSpaceId, user.getDefaultSpaceId())
+                    .set(SysUser::getStatus, user.getStatus())
+                    .set(SysUser::getIdentityVerified, user.getIdentityVerified()));
+        } else {
+            userMapper.insert(user);
+        }
+
+        // 6. 职能绑定：自助注册只授 REPORTER；重新提交时幂等补齐（历史上可能存在空绑定的坏账号）
+        Long bindingCount = userRoleMapper.selectCount(new LambdaQueryWrapper<SysUserRole>()
+                .eq(SysUserRole::getUserId, user.getId())
+                .eq(SysUserRole::getRoleId, reporterRole.getId()));
+        if (bindingCount == null || bindingCount == 0) {
+            SysUserRole userRole = new SysUserRole();
+            userRole.setUserId(user.getId());
+            userRole.setRoleId(reporterRole.getId());
+            userRoleMapper.insert(userRole);
+        }
+
+        // 7. 审核轨迹：每次注册/重新提交一行；自动通过写一把 SYSTEM 行（可追溯）
+        identityRegistrationService.recordReview(
+                user.getId(),
+                username,
+                reapply ? IdentityReviewCodes.APPLY_REAPPLY : IdentityReviewCodes.APPLY_REGISTER,
+                decision.matchResult());
+
+        log.info("[UserService] 注册完成 username={} reapply={} matchResult={} status={}",
+                username, reapply, decision.matchResult(), decision.status());
+
+        return RegisterResultVO.builder()
+                .status(decision.status())
+                .identityVerified(decision.identityVerified() == IdentityReviewCodes.IDENTITY_VERIFIED)
+                .matchResult(decision.matchResult())
+                .pendingReason(decision.pendingReason())
+                .build();
+    }
+
+    /** 取第一条（含逻辑删除过滤由 MP 自动加）；避免 selectOne 在历史脏数据重复行上抛 TooManyResults。 */
+    private SysUser firstBy(LambdaQueryWrapper<SysUser> query) {
+        List<SysUser> users = userMapper.selectList(query.orderByAsc(SysUser::getId).last("LIMIT 1"));
+        return users.isEmpty() ? null : users.get(0);
+    }
+
+    /** 存量/新建账号的 identity_verified 为 null 时一律视为「已核验」（与建表默认值 1 同口径）。 */
+    private boolean isIdentityVerified(SysUser user) {
+        return user.getIdentityVerified() == null || user.getIdentityVerified() == 1;
     }
 
     public void changePassword(Long userId, PasswordChangeRequest request) {
@@ -260,6 +334,8 @@ public class UserService {
                 .defaultSpaceId(user.getDefaultSpaceId())
                 .avatarUrl(user.getAvatarUrl())
                 .createdAt(user.getCreatedAt())
+                .status(user.getStatus())
+                .identityVerified(isIdentityVerified(user))
                 .build();
     }
 

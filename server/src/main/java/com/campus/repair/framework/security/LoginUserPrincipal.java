@@ -22,6 +22,14 @@ public class LoginUserPrincipal implements Serializable {
      */
     private boolean passwordChangeRequired;
 
+    /**
+     * 该请求所持 Access Token 是否带「校内身份已核验」标记（Phase 01）。
+     * 为 false 时 {@link JwtAuthenticationFilter} 只放行本人资料 / 改密 / 通知 / 认证类端点，
+     * 业务端点一律拦成 {@code ACCOUNT_PENDING_REVIEW(1010)}。**服务层仍要再查一次库**——
+     * 令牌只是签发时刻的快照。
+     */
+    private boolean identityVerified;
+
     public boolean hasFunction(String functionCode) {
         return roles != null && roles.contains(functionCode);
     }

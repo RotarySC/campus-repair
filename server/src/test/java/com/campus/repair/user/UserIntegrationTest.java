@@ -45,6 +45,9 @@ class UserIntegrationTest {
     @Autowired
     private SpatialNodeMapper spatialNodeMapper;
 
+    @Autowired
+    private com.campus.repair.modules.identity.mapper.IdentityRosterMapper identityRosterMapper;
+
     @Test
     @DisplayName("师生自主注册成功并在再次注册相同学号或手机号时被阻断")
     void testRegisterAndDuplicatePrevention() throws Exception {
@@ -56,12 +59,26 @@ class UserIntegrationTest {
         req.setUserType("STUDENT");
         req.setDepartment("计算机学院");
 
-        // 首次注册应成功
+        // Phase 01 起：注册先做校内名单比对。名单命中才会自动通过（identity_verified=1），
+        // 而「1006 学号已存在」只对已核验账号生效（未核验是「重新提交」通道）。
+        // 因此这里把该学号放进名册，才能守住本用例原本的重复注册语义。
+        com.campus.repair.modules.identity.entity.IdentityRoster roster =
+                new com.campus.repair.modules.identity.entity.IdentityRoster();
+        roster.setUsername("2026999901");
+        roster.setRealName("新注册学生");
+        roster.setUserType("STUDENT");
+        roster.setStatus(1);
+        roster.setImportBatch("test");
+        identityRosterMapper.insert(roster);
+
+        // 首次注册应成功（名单命中 → 自动核验通过）
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value(1))
+                .andExpect(jsonPath("$.data.identityVerified").value(true));
 
         // 重复学号注册应被阻断并返回 1006
         mockMvc.perform(post("/api/v1/auth/register")

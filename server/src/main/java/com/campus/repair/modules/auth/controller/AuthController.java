@@ -8,6 +8,7 @@ import com.campus.repair.modules.auth.dto.RegisterRequest;
 import com.campus.repair.modules.auth.service.AuthService;
 import com.campus.repair.modules.auth.vo.CaptchaResponseVO;
 import com.campus.repair.modules.auth.vo.LoginResponseVO;
+import com.campus.repair.modules.auth.vo.RegisterResultVO;
 import com.campus.repair.modules.org.service.OrgNodeService;
 import com.campus.repair.modules.org.vo.OrgNodeVO;
 import com.campus.repair.modules.user.service.UserService;
@@ -56,9 +57,13 @@ public class AuthController {
 
     @Operation(summary = "师生自主激活注册")
     @PostMapping("/register")
-    public R<Void> register(@Valid @RequestBody RegisterRequest request) {
-        userService.register(request);
-        return R.success("注册成功", null);
+    public R<RegisterResultVO> register(@Valid @RequestBody RegisterRequest request) {
+        RegisterResultVO result = userService.register(request);
+        // 待审核不是错误：HTTP 200 + code=200，由 data.status/pendingReason 让前端渲染不同文案
+        String message = result.getStatus() != null && result.getStatus() == 2
+                ? "注册已提交，等待管理员核验"
+                : "注册成功";
+        return R.success(message, result);
     }
 
     /**

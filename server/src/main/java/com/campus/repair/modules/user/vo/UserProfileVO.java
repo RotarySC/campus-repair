@@ -29,4 +29,10 @@ public class UserProfileVO implements Serializable {
     private String avatarUrl;
     /** 注册时间（个人中心「账户概览」展示） */
     private LocalDateTime createdAt;
+
+    /** 账号状态：0-停用, 1-正常, 2-待审核（前端据此决定落地页，见 Phase 01）。 */
+    private Integer status;
+
+    /** 身份核验是否通过（令牌 {@code verified} 声明与登录响应 {@code identityVerified} 同源）。 */
+    private boolean identityVerified;
 }
