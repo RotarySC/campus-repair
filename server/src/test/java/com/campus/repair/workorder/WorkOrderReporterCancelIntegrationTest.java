@@ -339,7 +339,7 @@ class WorkOrderReporterCancelIntegrationTest {
     }
 
     @Test
-    @DisplayName("重复取消：第二次 2006")
+    @DisplayName("重复取消：第二次 2006，且审计只落一条（防双写回归）")
     void testCancelTwiceRejected() throws Exception {
         Long orderId = submitOrder();
         cancelViaApi(orderId, reporterToken, null);
@@ -350,6 +350,40 @@ class WorkOrderReporterCancelIntegrationTest {
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(ErrorCode.ORDER_CANCEL_NOT_ALLOWED.getCode()));
+
+        // 串行回归：状态变更必须靠条件更新只落一次；第二次若还能写成功，
+        // 说明取消又退回了「读快照 + 整行回写」，并发下就会变成多次成功。
+        long cancelLogs = orderLogService.getTimeline(orderId).stream()
+                .filter(log -> "CANCEL_BY_REPORTER".equals(log.getActionType()))
+                .count();
+        assertEquals(1, cancelLogs, "重复取消不得重复落审计，实际 CANCEL_BY_REPORTER 日志数=" + cancelLogs);
+    }
+
+    @Test
+    @DisplayName("串行回归：调度作废后师傅再接单必须失败，且不得改写状态/时间戳/审计")
+    void testAcceptAfterDispatcherCancelFails() {
+        Long orderId = submitOrder();
+        dispatchToWorker(orderId);
+        assertEquals(1, loadOf(worker.getId()), "指派后师傅负荷应为 1");
+
+        WorkOrderCancelRequest cancel = new WorkOrderCancelRequest();
+        cancel.setCancelReason("串行回归：调度核实作废");
+        workOrderService.cancelOrder(orderId, 1L, cancel);
+        assertEquals("CANCELLED", order(orderId).getStatus());
+        assertEquals(0, loadOf(worker.getId()), "作废必须回落负荷");
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> workOrderService.acceptOrder(orderId, worker.getId()));
+        assertEquals(ErrorCode.ORDER_STATE_TRANSITION_INVALID.getCode(), ex.getCode(),
+                "作废后接单必须被既有非法状态码拒绝（2002），否则说明接单又退回整行回写");
+
+        RepairOrder after = order(orderId);
+        assertEquals("CANCELLED", after.getStatus(), "失败的接单不得改写工单状态");
+        assertTrue(after.getAcceptedTime() == null, "失败的接单不得写 accepted_time");
+        long acceptLogs = orderLogService.getTimeline(orderId).stream()
+                .filter(log -> "ACCEPT".equals(log.getActionType()))
+                .count();
+        assertEquals(0, acceptLogs, "失败的接单不得落审计，实际 ACCEPT 日志数=" + acceptLogs);
     }
 
     @Test

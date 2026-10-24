@@ -1,6 +1,7 @@
 package com.campus.repair.modules.workorder.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.campus.repair.common.constant.IdentityCodes;
 import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
@@ -559,6 +560,27 @@ public class WorkOrderService {
         // 校验状态机允许跃迁至 CANCELLED (MANUAL_DISPATCH / REWORK_PENDING -> CANCELLED)
         stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED);
 
+        String reason = request.getCancelReason().trim();
+
+        // 条件更新：把「期望状态」写进 WHERE。本方法、报修人取消与师傅接单都会写同一行，
+        // 三个动作各自基于同一份快照做状态机校验后若再用 updateById 整行回写，
+        // 就会在并发下**各自成功一次**、互相覆盖（实测 10 线程全成功、落 10 条状态变更日志）。
+        // 只有真正把 status 从期望值改成 CANCELLED 的那一个线程算赢家。
+        int affected = orderMapper.update(null, new LambdaUpdateWrapper<RepairOrder>()
+                .eq(RepairOrder::getId, orderId)
+                .eq(RepairOrder::getStatus, currentStatus.name())
+                .set(RepairOrder::getStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED.name())
+                .set(RepairOrder::getCancelReason, reason)
+                .set(RepairOrder::getUpdatedAt, LocalDateTime.now()));
+        if (affected == 0) {
+            // 输家：工单已被别的动作改走。重读只为给出准确提示，绝不继续写负荷/日志/事件。
+            RepairOrder latest = orderMapper.selectById(orderId);
+            throw new BusinessException(ErrorCode.ORDER_STATE_TRANSITION_INVALID.getCode(),
+                    String.format("工单状态已被其他操作变更（当前 [%s]），本次作废未生效",
+                            latest != null ? latest.getStatus() : "已不存在"));
+        }
+
+        // 以下副作用只在赢家分支执行（影响行数 > 0 才代表这次状态跃迁真的发生）
         // 如果工单此前处于占用师傅负荷的状态（如 ASSIGNED / IN_PROGRESS / SUSPENDED），释放师傅负荷；
         // 若已经处于 MANUAL_DISPATCH 或 REWORK_PENDING，负荷在申请转派或差评时已移出师傅负荷，避免重复扣减
         if (order.getWorkerId() != null &&
@@ -567,10 +589,6 @@ public class WorkOrderService {
                 || currentStatus == com.campus.repair.modules.workorder.enums.OrderStatusEnum.SUSPENDED)) {
             workerService.decrementLoad(order.getWorkerId());
         }
-
-        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED.name());
-        order.setCancelReason(request.getCancelReason().trim());
-        orderMapper.updateById(order);
 
         SysUser operator = userService.getUserById(operatorUserId);
         String opName = operator != null ? operator.getRealName() : "调度主管";
@@ -584,16 +602,16 @@ public class WorkOrderService {
                 "CANCEL",
                 currentStatus.name(),
                 com.campus.repair.modules.workorder.enums.OrderStatusEnum.CANCELLED.name(),
-                "工单作废: " + request.getCancelReason().trim()
+                "工单作废: " + reason
         );
 
         // 发布领域事件，触发通知报修人「已作废」，并让被指派的师傅知道任务已移除（负荷已回落，别再上门）
         eventPublisher.publishEvent(new OrderCancelledEvent(
                 this, order.getId(), order.getOrderNo(), order.getStudentUserId(),
-                order.getWorkerId(), request.getCancelReason().trim(), false
+                order.getWorkerId(), reason, false
         ));
 
-        log.info("[WorkOrderService] 工单 {} 已核实作废: {}", order.getOrderNo(), request.getCancelReason());
+        log.info("[WorkOrderService] 工单 {} 已核实作废: {}", order.getOrderNo(), reason);
     }
 
     // ==================== 内容审核闸门（Phase 02） ====================
@@ -851,23 +869,40 @@ public class WorkOrderService {
         OrderStatusEnum currentStatus = OrderStatusEnum.valueOf(order.getStatus());
         stateMachine.verifyTransition(currentStatus, OrderStatusEnum.CANCELLED);
 
-        // 释放师傅负荷：本策略下实际只会命中 ASSIGNED（IN_PROGRESS/SUSPENDED 不允许报修人取消），
-        // 但判断条件与调度作废保持同一口径，避免以后放宽窗口时漏掉负荷回落
-        if (order.getWorkerId() != null
-                && (currentStatus == OrderStatusEnum.ASSIGNED
-                || currentStatus == OrderStatusEnum.IN_PROGRESS
-                || currentStatus == OrderStatusEnum.SUSPENDED)) {
-            workerService.decrementLoad(order.getWorkerId());
-        }
-
         String reason = request != null && StringUtils.hasText(request.getReason())
                 ? request.getReason().trim()
                 : "报修人自行取消";
         Long workerUserId = order.getWorkerId();
 
-        order.setStatus(OrderStatusEnum.CANCELLED.name());
-        order.setCancelReason(reason);
-        orderMapper.updateById(order);
+        // 条件更新：WHERE 里带上「读到的状态 + 尚未接单」两个期望值。
+        // 并发下同一张 ASSIGNED 单可能同时被报修人取消、调度作废、师傅接单，三者都基于同一份快照
+        // 通过前置校验；若用 updateById 整行回写，会各自成功一次、状态与负荷互相覆盖。
+        // 只有把 status 从期望值改成 CANCELLED 且 accepted_time 仍为空的那个线程算赢家。
+        int affected = orderMapper.update(null, new LambdaUpdateWrapper<RepairOrder>()
+                .eq(RepairOrder::getId, orderId)
+                .eq(RepairOrder::getStatus, currentStatus.name())
+                .isNull(RepairOrder::getAcceptedTime)
+                .set(RepairOrder::getStatus, OrderStatusEnum.CANCELLED.name())
+                .set(RepairOrder::getCancelReason, reason)
+                .set(RepairOrder::getUpdatedAt, LocalDateTime.now()));
+        if (affected == 0) {
+            // 输家：要么已被别的动作取消/作废，要么师傅刚接单（accepted_time 已写）。
+            // 重读只为确认工单是否还存在，结论一律按「当前状态不允许报修人取消」返回既有 2006。
+            if (orderMapper.selectById(orderId) == null) {
+                throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+            }
+            throw new BusinessException(ErrorCode.ORDER_CANCEL_NOT_ALLOWED);
+        }
+
+        // 以下副作用只在赢家分支执行（影响行数 > 0 才代表这次状态跃迁真的发生）
+        // 释放师傅负荷：本策略下实际只会命中 ASSIGNED（IN_PROGRESS/SUSPENDED 不允许报修人取消），
+        // 但判断条件与调度作废保持同一口径，避免以后放宽窗口时漏掉负荷回落
+        if (workerUserId != null
+                && (currentStatus == OrderStatusEnum.ASSIGNED
+                || currentStatus == OrderStatusEnum.IN_PROGRESS
+                || currentStatus == OrderStatusEnum.SUSPENDED)) {
+            workerService.decrementLoad(workerUserId);
+        }
 
         SysUser reporter = userService.getUserById(reporterUserId);
         String reporterName = reporter != null ? reporter.getRealName() : order.getApplicantName();
@@ -1005,10 +1040,27 @@ public class WorkOrderService {
         stateMachine.verifyTransition(currentStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS);
 
         LocalDateTime now = LocalDateTime.now();
-        order.setStatus(com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name());
-        order.setAcceptedTime(now);
-        orderMapper.updateById(order);
 
+        // 条件更新：WHERE 里带上「ASSIGNED 且尚未接单」两个期望值。
+        // 接单与报修人取消/调度作废竞争同一张 ASSIGNED 单时，三者都基于同一份快照通过前置校验；
+        // 若用 updateById 整行回写，接单会与取消各自成功一次（终态取决于谁最后写），
+        // 师傅可能对着已作废的单出发。只有真正把 ASSIGNED 改成 IN_PROGRESS 的线程算赢家。
+        int affected = orderMapper.update(null, new LambdaUpdateWrapper<RepairOrder>()
+                .eq(RepairOrder::getId, orderId)
+                .eq(RepairOrder::getStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.ASSIGNED.name())
+                .isNull(RepairOrder::getAcceptedTime)
+                .set(RepairOrder::getStatus, com.campus.repair.modules.workorder.enums.OrderStatusEnum.IN_PROGRESS.name())
+                .set(RepairOrder::getAcceptedTime, now)
+                .set(RepairOrder::getUpdatedAt, now));
+        if (affected == 0) {
+            // 输家：工单已被取消/作废或已被别的操作改走。重读只为给出准确提示，不再写审计与通知。
+            RepairOrder latest = orderMapper.selectById(orderId);
+            throw new BusinessException(ErrorCode.ORDER_STATE_TRANSITION_INVALID.getCode(),
+                    String.format("工单状态已被其他操作变更（当前 [%s]），本次接单未生效",
+                            latest != null ? latest.getStatus() : "已不存在"));
+        }
+
+        // 以下副作用只在赢家分支执行
         SysUser worker = userService.getUserById(workerUserId);
         String workerName = worker != null ? worker.getRealName() : order.getWorkerName();
 
