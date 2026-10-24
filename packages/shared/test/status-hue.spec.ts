@@ -78,7 +78,7 @@ function allPairs(palette: Record<string, string>): PairDiff[] {
 const MIN_DELTA_E = 25.0;
 
 describe('状态色相：28 对全复核', () => {
-  it('色相表恰好是 8 个（§3.2 锁定的就是 8 个，不是 9 个）', () => {
+ it('色相表恰好是 8 个（锁定的就是 8 个，不是 9 个）', () => {
     expect(ORDER_STATUS_HUE_KEYS).toHaveLength(8);
     expect(Object.keys(STATUS_HUE)).toHaveLength(8);
   });
@@ -132,7 +132,7 @@ describe('状态 → 色相 / 语义档的映射', () => {
   it('锁死 orderStatusTagType 的既有档位——它是「另一份投影」，不许顺手改', () => {
     // 这张表是**跨页一致**的契约（「orderStatusTagType() 是全仓唯一一份」）。
     // ⚠️ 2026-10-12 第二期起它**已经没有调用点**了（V7 让状态一律走 StatusRing，
-    //    见 `status-ring-v7.spec.ts`）。保留它是 §5 V9 的「两份投影、一处来源」：
+    //    见 `status-ring-v7.spec.ts`）。保留它是 V9 的「两份投影、一处来源」：
     //    `ORDER_STATUS_HUE` 是唯一色值来源，圆环与标签都从它派生。
     //    **不要因为「没人用」就删掉**——删了等于把这份契约一起删掉；
     //    也**不要**把它接回去渲染状态列，那是 V7 的倒退。

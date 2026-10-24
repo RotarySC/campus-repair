@@ -2,7 +2,7 @@
   <div class="forbidden-page">
     <el-card shadow="never" class="forbidden-card">
       <!--
-        §4.6 的 A7（旧编号 V7）：`el-result icon="warning"` 换成矢量线稿。
+ A7（旧编号 V7）：`el-result icon="warning"` 换成矢量线稿。
         el-result 的槽位（icon / title / sub-title / #extra）只用到前三档，
         而第一档要换成自己的图，留着它反而要和它的内部布局较劲 —— 直接铺开。
       -->
@@ -98,7 +98,7 @@ function handleLogout() {
 
 /*
  * 线稿取 --faint（.5）而不是 --ink：它是**装饰**，不该和标题抢视觉重心。
- * 全站唯一允许出现的「重颜色」仍然是 9px 状态圆环（§3.2）。
+ * 全站唯一允许出现的「重颜色」仍然是 9px 状态圆环。
  */
 .forbidden-art {
   color: var(--faint);

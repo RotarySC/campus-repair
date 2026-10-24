@@ -64,7 +64,7 @@ docker run -d --name campus-redis -p 6379:6379 redis:7
 docker exec campus-redis redis-cli ping   # 应输出 PONG
 ```
 
-未启动 Redis 也能跑通全流程：认证限流、图形验证码、令牌吊销黑名单由 `AuthStateStore` 降级为进程内存储，单号发号器与派单锁有本地兜底（单实例语义，见 §5）。
+未启动 Redis 也能跑通全流程：认证限流、图形验证码、令牌吊销黑名单由 `AuthStateStore` 降级为进程内存储，单号发号器与派单锁有本地兜底（单实例语义，见「已知限制」）。
 
 ## 3. 用法
 
@@ -180,7 +180,7 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
 - **本地库是内存 H2**：进程退出即丢数据；`data-demo.sql` 的时间戳用相对时间生成，长跑的 JVM 会被 15 分钟一次的 72h 超时核销任务改动 KPI，比对数值请用刚启动的实例。
 - **生产 MySQL 8 未在本仓库的测试链路内端到端验证**：测试库为 H2（`MODE=MySQL`），`DATE_FORMAT` 不可用、`LOCATE` 行为与 MySQL 不同，相关聚合已刻意下推到 Java 侧；`sql/migration-*.sql` 需自行在 MySQL 上执行。
 - **`/uploads` 与 `/api` 必须同源可达**：前端与图片 URL 都是相对路径，分域部署需各自补代理或改绝对地址。
-- **`sql/data.sql` 的密码哈希是占位值**，不能直接登录，见 §3。
+- **`sql/data.sql` 的密码哈希是占位值**，不能直接登录，见「用法」。
 - **智能助手的大模型增强默认关闭**，默认只有本地规则；开启后单次请求受 `MAX_TOKENS` / `TIMEOUT_MS` 约束，思考模型容易把 `content` 挤空而降级为纯规则。
 - **窄档下管理端不推荐**：调度台、进销存、字典维护按 PC 设计，< 768 只有师生 / 师傅侧做过完整走查。
 - **前端没有页面级单测**：`apps/admin-web` 只有 `typecheck`，页面行为靠真机探针；探针依赖本机 Edge 9222 与两个服务，不能进 CI 无头跑。

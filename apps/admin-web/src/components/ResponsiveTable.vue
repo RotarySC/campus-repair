@@ -3,7 +3,7 @@
     <!-- 宽档：保持既有 el-table 交互（固定列/行点击等全部不变） -->
     <div v-if="!isCardMode" class="rl-table-wrapper">
       <!--
-        无 `border`、无 `stripe`：§3.4 实测腾讯云的行是 `border-bottom: 0px`、表头白底无格线。
+        无 `border`、无 `stripe`：实测腾讯云的行是 `border-bottom: 0px`、表头白底无格线。
         竖线与斑马纹是「表格噪声」，D 把它们去掉，层级改用发丝线（见下方 .rl-table-wrapper 样式）。
       -->
       <el-table
@@ -64,7 +64,7 @@
               </template>
               <template v-else>{{ titleColumn ? display(item, titleColumn) : '—' }}</template>
             </span>
-            <!-- 卡片形态与表格形态**共用同一份状态色值**（§4.3 的契约变更），
+ <!-- 卡片形态与表格形态**共用同一份状态色值**（契约变更），
                  `type: 'ring'` 的标签渲染成 9px 圆环，其余仍是语义小胶囊（非状态类标签仍走 el-tag 风格） -->
             <template v-for="tag in cardTags(item)" :key="tag.key">
               <StatusRing
@@ -115,7 +115,7 @@ import StatusRing from './StatusRing.vue';
 
 /**
  * 卡片标题行里的小标签配色。
- * `'ring'` 是视觉语言方向 D 新增的一档（§4.3 契约变更）：渲染成 9px 状态圆环而不是彩色胶囊，
+ * `'ring'` 是视觉语言方向 D 新增的一档（契约变更）：渲染成 9px 状态圆环而不是彩色胶囊，
  * 色相由 `CardTag.status` 推导——**卡片形态与表格形态共用同一份色值**。
  */
 export type CardTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'ring';
@@ -123,15 +123,15 @@ export type CardTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info' 
 export interface CardTag {
   text: string;
   type?: CardTagType;
-  /** `type: 'ring'` 时为必填：工单状态码，圆环色相由它推导（§4.3）。其他档位忽略。 */
+ /** `type: 'ring'` 时为必填：工单状态码，圆环色相由它推导。其他档位忽略。 */
   status?: string;
   /**
-   * §3.3 的标记语义，**只对 `type: 'ring'` 有效**：`'dot'` 实心＝标记，缺省 `'ring'` 空心＝状态。
+ * 标记语义，**只对 `type: 'ring'` 有效**：`'dot'` 实心＝标记，缺省 `'ring'` 空心＝状态。
    * 给「加急」这类**不是工单状态、但需要注意**的标记用 —— 它没有状态码。
    */
   variant?: 'ring' | 'dot';
   /**
-   * §3.3 的**两档**，同样**只对 `type: 'ring'` 且 `variant: 'dot'` 有效**：
+ * **两档**，同样**只对 `type: 'ring'` 且 `variant: 'dot'` 有效**：
    * `'alert'`（缺省）＝警戒·红·呼吸；`'muted'` ＝提示·中性·静止。
    *
    * ⚠️ 加这一项的原因：C 组落地时「需改密」的**卡片形态**需要与**表格形态**用同一个提示点。
@@ -281,9 +281,9 @@ function onRowClick(row: T) {
 </script>
 
 <style scoped>
-/* ---------- 宽档：§3.4 实测口径 ----------
-   表头**白底**由 tokens.css 的 `--el-table-header-bg-color` 全局提供（§4.2 指定在 :root 覆盖）；
-   此处补的是「表头/行的内边距、发丝线、行不打分隔线」这三条**结构**口径（§4.4：落在本组件）。 */
+/* ---------- 宽档：实测口径 ----------
+ 表头**白底**由 tokens.css 的 `--el-table-header-bg-color` 全局提供（指定在 :root 覆盖）；
+ 此处补的是「表头/行的内边距、发丝线、行不打分隔线」这三条**结构**口径（落在本组件）。 */
 .rl-table-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -296,15 +296,15 @@ function onRowClick(row: T) {
 .rl-table-wrapper :deep(.el-table th.el-table__cell) {
   padding: 13px 10px;
   border-radius: 0;
-  /* 0.667px = 1.5× DPR 下的一个物理像素发丝线（§3.4 刻意值，不是笔误） */
+ /* 0.667px = 1.5× DPR 下的一个物理像素发丝线（刻意值，不是笔误） */
   border-bottom: var(--hairline) solid var(--line);
-  /* §3.5：层级靠字号 + 颜色，不靠加粗 */
+ /* 层级靠字号 + 颜色，不靠加粗 */
   font-weight: var(--fw-normal);
   color: var(--muted);
 }
 
 /*
-  §3.4 的 `13px 10px` / `14px 10px` 是**整个单元格**的度量。EP 把水平内边距放在内层
+ `13px 10px` / `14px 10px` 是**整个单元格**的度量。EP 把水平内边距放在内层
   `.cell` 上（默认 12px），若不归零就会与外层叠加成 22px——那既不是实测值，
   也会把「状态列只有 100px 宽」这种列挤到换行。归零后总水平内边距正好是 10px。
 */
@@ -373,7 +373,7 @@ function onRowClick(row: T) {
 
 /*
   序号徽标：原先第 1/2/3 名各配一种彩色（#F5222D / #FA8C16 / #FADB14）。
-  §5 的 V4 修订把口径收成「**彩色只服务状态语义**」，名次不是状态 ⇒ 退到中性阶梯。
+ V4 修订把口径收成「**彩色只服务状态语义**」，名次不是状态 ⇒ 退到中性阶梯。
   名次层级改用中性色的深浅（第 1 名 --ink，其余 --muted），不再新增色相。
 */
 .rl-card__rank {
@@ -384,7 +384,7 @@ function onRowClick(row: T) {
   background: var(--muted);
   color: var(--surface);
   font-size: var(--fs-base);
-  /* §3.5：600 是字重上限 */
+ /* 600 是字重上限 */
   font-weight: var(--fw-medium);
   line-height: 20px;
   text-align: center;

@@ -19,7 +19,7 @@ import java.util.List;
  * 它取代了此前 {@code AnalyticsServiceImpl} 直接注入 4 个异构模块 Mapper
  * （{@code RepairOrderMapper} / {@code RepairOrderEvaluationMapper} /
  * {@code WorkerProfileMapper} / {@code SysUserMapper}）的做法——那种写法违反了
- * 《实现计划》§3.2「各业务垂直模块严禁跨模块直接穿透持久层 Mapper」的约束。
+ * 「各业务垂直模块严禁跨模块直接穿透持久层 Mapper」的约束。
  *
  * <p>与之同时，原先在 JVM 内 `selectList` 全表 + `split("/")` + `HashMap` 计数的
  * 内存聚合，已全部下推为 SQL `GROUP BY` / 条件聚合（CASE WHEN），

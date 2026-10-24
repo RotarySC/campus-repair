@@ -127,7 +127,7 @@ async function open(user, path) {
   check('③ 12 个图形互不相同（防「复制粘贴漏改路径」）', res.distinct === res.rows && res.rows > 0,
     `distinct=${res.distinct} / rows=${res.rows}`);
   check('④ 图标可继承颜色（stroke=currentColor，不是写死的色值）', res.stroke === 'currentColor', String(res.stroke));
-  check('④ 图标尺寸落在 §4.6 V3 的 16–20px 阈值内', Number(res.size) >= 16 && Number(res.size) <= 20, `${res.size}px`);
+ check('④ 图标尺寸落在 V3 的 16–20px 阈值内', Number(res.size) >= 16 && Number(res.size) <= 20, `${res.size}px`);
   check('⑤ 旧的装饰色层级标签已撤（不再有「大类/二级细类」的 el-tag）', res.oldTags.length === 0, res.oldTags.join(', '));
 }
 

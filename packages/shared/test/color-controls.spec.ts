@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
  * 「彩色只服务状态语义」这条口径落到代码上就是：EP 组件的 `type=` 不许随便用。
  * 但全仓实测有 **40 处**不满足，而且**语法长得一样、语义完全不同**：
  *
- *   · `el-button type="primary"` —— §3.6 明确定义的**主操作色**，本来就对，**不是本批对象**；
+ * · `el-button type="primary"` —— 明确定义的**主操作色**，本来就对，**不是本批对象**；
  *   · `el-button type="success|warning|danger|info"` —— 按钮被染色，装饰性强调；
  *   · `el-tag` / `el-alert` 的语义色 —— 有的在表达工单状态（该走 `StatusRing`），
  *     有的在表达业务警戒（该走 G4 口径），有的是纯装饰。
@@ -42,7 +42,7 @@ const SRC = join(ROOT, 'apps', 'admin-web', 'src');
  *
  * ## ⚠️ 判据为什么不是文档原先写的「文案含删除/作废/移除/转派」
  *
- * 独立文档 §2.1 原本提的是「`el-button` + `danger` **且文案含**删除/作废/移除/转派」。
+ * 原先提的是「`el-button` + `danger` **且文案含**删除/作废/移除/转派」。
  * **实测这条漏掉它自己的 11 处中的 2 处**，而且漏的方式是结构性的：
  *
  *   · `WorkerFinishView.vue` 的「移除已领耗材」是**自闭合的纯图标按钮**
@@ -73,7 +73,7 @@ function isDestructive(comp: string, dynamic: boolean, staticType: string | unde
  * **这份名单只允许变短。** 每一项都对应「待裁决登记表」里的某一组。
  * 修干净一个文件就把它从这里删掉——不删就会被「已迁干净必须销账」那条抓住。
  *
- * 2026-10-13 第一批（§24 执行顺序 1 + 2 + 5）：43 → **16**。
+ * 2026-10-13 第一批（执行顺序 1 + 2 + 5）：43 → **16**。
  *   · 执行顺序 1：B2/B3/B4 中性化 13 处（3 个文件修到 0，条目已删）；
  *   · 执行顺序 2：C 组的加急 / 缺货 / 紧缺 3 处落地为实心圆点；
  *   · 执行顺序 5：B1 的 11 处破坏性按钮**从本表移出**，改由上面的 `isDestructive` 规则放行。
@@ -93,7 +93,7 @@ function isDestructive(comp: string, dynamic: boolean, staticType: string | unde
  *
  * ⚠️ **`views/dashboard/DashboardView.vue` 那 1 处是「有意识冻结」，不是欠账** ——
  * 用户 2026-10-13 裁定：`<el-tag type="success">系统运行正常</el-tag>` **保留绿 tag**。
- * 它与 D 组那 9 处同类（见独立文档 §4）：**棘轮对它的语义是冻结（数量不许涨），不是催办**。
+ * 它与 D 组那 9 处同类：**棘轮对它的语义是冻结（数量不许涨），不是催办**。
  * 所以它**不会**被「已修干净必须销账」抓走，也**不该**被人顺手"修掉"。
  *
  * 剩下的 10 = 冻结的 1 + D组(9)。**B5 做完之后，这份表里没有"待拍板"的东西了。**
@@ -195,7 +195,7 @@ const TAG = /<(el-tag|el-alert|el-button)\b(?:"[^"]*"|[^>"])*>/g;
  * **`error` 从来没被计入**：`<el-alert type="error">` 是**彩底 + 彩边 + 彩色图标**的红条，
  * 与 `warning` 同族，却因为不在表里而**整个隐形**（2026-10-13 发现，当时全仓 2 处）。
  *
- * 教训与 §23.6 同族：**一份"语义色名单"是两个组件库语汇的并集，只抄了其中一半，
+ * 教训与「定义处之外 0 处」同族：**一份"语义色名单"是两个组件库语汇的并集，只抄了其中一半，
  * 漏掉的那一半不会报错、只会静默地不计入。**
  */
 const SEMANTIC = ['success', 'warning', 'danger', 'error', 'info', 'primary'];
@@ -203,7 +203,7 @@ const SEMANTIC = ['success', 'warning', 'danger', 'error', 'info', 'primary'];
 interface Hit {
   comp: string;
   type: string;
-  /** 合规的只有两种：§3.6 的**主操作色按钮**，和上面 `isDestructive` 那个**登记例外** */
+ /** 合规的只有两种：**主操作色按钮**，和上面 `isDestructive` 那个**登记例外** */
   compliant: boolean;
   /** 合规的原因。`null` = 不合规，要记进存量表 */
   exception: 'primary' | 'destructive' | null;
@@ -227,7 +227,7 @@ function hitsIn(text: string): Hit[] {
     if (comp === 'el-link' || comp === 'el-result') continue;
 
     if (comp === 'el-button') {
-      // 两种合规：§3.6 的主操作色，以及登记在案的破坏性操作（`danger`）。
+ // 两种合规：主操作色，以及登记在案的破坏性操作（`danger`）。
       const isPrimary = !dynamic && staticType === 'primary';
       const destructive = isDestructive(comp, dynamic, staticType);
       out.push({
@@ -367,7 +367,7 @@ function cardTagOffendersIn(text: string): string[] {
   return out;
 }
 
-describe('非状态类彩色控件棘轮（§12.5 / §23）', () => {
+describe('非状态类彩色控件棘轮', () => {
   const allHits = scanAll();
   /** 存量：`文件 → 不合规处数` */
   const offenders = new Map<string, number>(
@@ -480,7 +480,7 @@ describe('非状态类彩色控件棘轮（§12.5 / §23）', () => {
     expect(
       offenders,
       '这些文件的 `cardTag` 返回了语义色档（窄档卡片会把它渲染成彩底彩字胶囊，且扫描器看不见）。\n' +
-        "请改用 §3.3 的标记：状态用 `{ type: 'ring', status }`，中性则省略 type 或 `{ type: 'info' }`：\n" +
+        "请改用这套标记：状态用 `{ type: 'ring', status }`，中性则省略 type 或 `{ type: 'info' }`：\n" +
         offenders.map((f) => `  ${f}`).join('\n')
     ).toEqual([]);
 

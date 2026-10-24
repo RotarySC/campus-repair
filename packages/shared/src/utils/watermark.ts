@@ -94,7 +94,7 @@ export function addWatermarkToImage(file: File | Blob, options: WatermarkOptions
         const maxTextWidth = Math.max(m1, m2, m3);
 
         /*
-         * 品牌标识占位（§4.6 的 A6）。尺寸**跟着 fontSize 走**，所以它和文字永远是同一个比例：
+ * 品牌标识占位（A6）。尺寸**跟着 fontSize 走**，所以它和文字永远是同一个比例：
          * 2.4 倍字号 = 38px @16px 字，塞得进三行文字的高度（3 × 1.45 字号 = 4.35 字号），
          * 所以底卡的**高度不用动**，只有宽度变。
          */

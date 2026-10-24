@@ -36,7 +36,7 @@
               <div class="account-name">{{ userInfo?.realName || '—' }}</div>
               <!-- ⚠️ 2026-10-13（盲区 #3）：裸 `<el-tag>`（缺省即 `primary` 浅蓝）→ `MetaChip`。
                    「身份」是**条线的派生视图**（见 `CONTEXT.md`），不是状态，不借色相。
-                   §23.2 已经删掉过 `getUserTypeTag()`（行政=红/后勤=橙/教学=蓝/学生=灰）——
+                   此前已经删掉过 `getUserTypeTag()`（行政=红/后勤=橙/教学=蓝/学生=灰）——
                    这里那个浅蓝是同一件事的**最后一处残留**，只是它一直不在棘轮的口径里。 -->
               <MetaChip class="account-role">{{ identityText }}</MetaChip>
               <div class="account-line">账号：{{ userInfo?.username || '—' }}</div>
@@ -150,7 +150,7 @@
                 <div class="mini-kpi__label">{{ card.label }}</div>
                 <!-- 这里原先给六张卡各绑一个色值（累计报修蓝/待派单橙/在办紫…）。
                      D 把彩色收归状态语义，而**同一个状态色相只活在圆环那 2px 描边上**，
-                     不是拿来当六个大数字的配色（§3.4 的「安静」正是这么来的）。 -->
+ 不是拿来当六个大数字的配色（「安静」正是这么来的）。 -->
                 <div class="mini-kpi__value">
                   {{ card.value }}<span class="mini-kpi__unit">{{ card.unit }}</span>
                 </div>
@@ -176,7 +176,7 @@
             @row-click="openOrderDetail"
           >
             <template #col-status="{ row }">
-              <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字
+ <!-- V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字
                    （口径与工作台、我的工单、工单报表一致：**同一个状态在任何页都同一个色相**） -->
               <StatusRing :status="row.status" />
             </template>
@@ -230,8 +230,8 @@
                     <!--
                       ⚠️ 2026-10-13：`el-progress` 的 `:status`（`>=100%` 时 `exception`）**拿掉**。
                       理由与调度中心的负荷条同源：**条的长度已经在表达"量"，颜色是多余的第二信号**，
-                      而 `exception` 是 EP 的语义红 —— 属「用颜色表达紧急度」，§3.3 把这件事交给了**填充**。
-                      严重度改由下面那枚 §3.3 的**警戒档实心点**承担（只给真正超载的那一档）。
+                      而 `exception` 是 EP 的语义红 —— 属「用颜色表达紧急度」，而 D 把这件事交给了**填充**。
+                      严重度改由下面那枚**警戒档实心点**承担（只给真正超载的那一档）。
                     -->
                     <el-progress
                       :percentage="workerProfile.loadRate"
@@ -395,7 +395,7 @@ const passwordRules: FormRules = {
 };
 
 /** 报修概览 KPI：空值一律渲染 `—`，不伪造兜底数字。
- *  ⚠️ 这里**不再带 `color` 字段**（原先六张卡六个色值）。见模板内注释与 §3.4。 */
+ *  ⚠️ 这里**不再带 `color` 字段**（原先六张卡六个色值）。见模板内注释。 */
 const repairCards = computed(() => {
   const s = repairSummary.value;
   const num = (v: number | undefined) => (s ? String(v ?? 0) : '—');
@@ -422,7 +422,7 @@ const orderColumns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      // §5 的 V7 修订：卡片形态与表格形态共用同一份状态色值
+ // V7 修订：卡片形态与表格形态共用同一份状态色值
       type: 'ring',
       status: row.status
     })
@@ -840,7 +840,7 @@ onMounted(async () => {
 }
 .mini-kpi__value {
   font-size: var(--fs-xl);
-  /* §3.5：KPI 大数字也是常规字重（实测 400 命中 988 次）。原先这里是 600。 */
+ /* KPI 大数字也是常规字重（实测 400 命中 988 次）。原先这里是 600。 */
   font-weight: var(--fw-normal);
   line-height: 1.4;
   color: var(--ink);

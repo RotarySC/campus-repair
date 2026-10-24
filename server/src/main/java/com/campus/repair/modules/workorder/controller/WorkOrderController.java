@@ -59,7 +59,7 @@ public class WorkOrderController {
      * 三个「读单张工单」端点都必须带上调用者身份做属主判定。
      *
      * <p>此前它们**既没有 `@PreAuthorize`、Service 签名里也没有调用者 id**，任意登录用户
-     * 按 id 遍历即可读到全校工单——包括报修人姓名与手机号（分析报告 §3.2 的 IDOR 实测：
+     * 按 id 遍历即可读到全校工单——包括报修人姓名与手机号（IDOR 实测：
      * student02 能读到 student01 的 1001 并让前端页面正常渲染）。放行集合是
      * 「报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理」，判定在 Service 里（`assertReadable`）。
      */

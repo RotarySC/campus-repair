@@ -2,9 +2,9 @@
   <div class="inventory-view">
     <div class="view-content">
       <!-- 1. 低库存常驻警戒横幅（当有低于安全库存时显示）
-           §4.6 G4 指定的口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**。
+ G4 指定的口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**。
            取代原先的 `linear-gradient(#FFF1F0,#FFF2E8)` ＋ `#FFA39E` 边框 ＋ 自造投影 ＋
-           `WarningFilled` 红图标——那是「用颜色表达紧急度」，而 D 把紧急度挪到了**填充**维度（§3.3）。 -->
+ `WarningFilled` 红图标——那是「用颜色表达紧急度」，而 D 把紧急度挪到了**填充**维度。 -->
       <div v-if="summary.lowStockCount > 0" class="low-stock-alert-banner">
         <div class="alert-left">
           <!--
@@ -114,7 +114,7 @@
             <el-button type="primary" size="small" :icon="Plus" @click="openCreateDialog">
               新增物料档案
             </el-button>
-            <!-- 中性化（§24 执行顺序 1）：导出不是状态，原 `success` 绿与「成功」无关。 -->
+ <!-- 中性化（执行顺序 1）：导出不是状态，原 `success` 绿与「成功」无关。 -->
             <el-button size="small" :icon="Download" :loading="exporting" @click="handleExportAdvice">
               导出采购建议
             </el-button>
@@ -135,7 +135,7 @@
 
           <template #col-partName="{ row }">
             <span class="part-name">{{ row.partName }}</span>
-            <!-- 低库存＝警戒：**实心圆点 + 文字**（§3.3），不再是一个实心红底标签。
+ <!-- 低库存＝警戒：**实心圆点 + 文字**，不再是一个实心红底标签。
                  「低库存」这件事在本页原先有**四处**表达（名称旁的实心红胶囊、数量上的红底药丸、
                  KPI 卡的浅红底 + 红数字、页顶横幅），这里收成一处。
                  间距走 `--text-after`（`--mark-gap` 12px）——
@@ -199,7 +199,7 @@
             >
               编辑
             </el-button>
-            <!-- 中性化（§24 执行顺序 1）：只读跳转，原 `info` 染色没有语义。 -->
+ <!-- 中性化（执行顺序 1）：只读跳转，原 `info` 染色没有语义。 -->
             <el-button
               link
               size="small"
@@ -208,7 +208,7 @@
               流水
             </el-button>
             <!--
-              ⚠️ **这一处刻意保留 `danger`**，它是登记在案的例外而非漏改（§24 决策摘要 B1）：
+ ⚠️ **这一处刻意保留 `danger`**，它是登记在案的例外而非漏改（决策摘要 B1）：
               「这个操作会毁东西」是跨行业通行约定，且本页删除不可逆（`ElMessageBox.confirm` 在 576 行）。
               判据见 `color-controls.spec.ts` 的 `isDestructive`：**只有 `el-button` + 字面 `danger`** 豁免，
               `tag`/`alert` 的 danger、以及绑定式 `:type=` 一律照旧计入。
@@ -367,7 +367,7 @@
 
       <template #footer>
         <el-button @click="inboundDialogVisible = false">取消</el-button>
-        <!-- 中性化（§24 执行顺序 1）：入库是否成功由提交结果与提示告知，不在提交前用绿色预告。 -->
+ <!-- 中性化（执行顺序 1）：入库是否成功由提交结果与提示告知，不在提交前用绿色预告。 -->
         <el-button :loading="inbounding" @click="submitInboundForm">确认入库并累加库存</el-button>
       </template>
     </el-dialog>
@@ -726,7 +726,7 @@ async function handleExportAdvice() {
 }
 
 .low-stock-alert-banner {
-  /* §4.6 G4：实心圆点 ＋ 中性字 ＋ 发丝线边框。无渐变、无彩底、无彩边、无自造阴影 */
+ /* G4：实心圆点 ＋ 中性字 ＋ 发丝线边框。无渐变、无彩底、无彩边、无自造阴影 */
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -764,7 +764,7 @@ async function handleExportAdvice() {
 }
 /* `.pulse-icon` 与它的 `@keyframes pulse` 已随 G4 一并删除：
    那个 1.6 秒缩放的红色警示图标是 D 明确不要的东西——
-   「紧急度」现在由那 9px **实心**圆点表达（§3.3），不需要动画再加一层。 */
+ 「紧急度」现在由那 9px **实心**圆点表达，不需要动画再加一层。 */
 .alert-text {
   font-size: var(--fs-base);
   color: var(--muted);
@@ -790,7 +790,7 @@ async function handleExportAdvice() {
 }
 .kpi-num {
   font-size: 24px;
-  /* §3.5：KPI 大数字是**常规字重**。原先这里是 700，而实测腾讯云 700 只出现 1 次、上限是 600。 */
+ /* KPI 大数字是**常规字重**。原先这里是 700，而实测腾讯云 700 只出现 1 次、上限是 600。 */
   font-weight: var(--fw-normal);
   color: var(--ink);
 }
@@ -858,7 +858,7 @@ async function handleExportAdvice() {
 }
 
 /* 库存数量的两档**只差中性层级**（原先是「浅红底 + 红字 + 700 药丸」对「深墨 + 600」）。
-   警戒不再由颜色面积承担——它由物料名旁那一个 9px 实心圆点说（§3.3）。 */
+ 警戒不再由颜色面积承担——它由物料名旁那一个 9px 实心圆点说。 */
 .stock-cell {
   color: var(--muted);
 }

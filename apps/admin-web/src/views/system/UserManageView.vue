@@ -19,7 +19,7 @@
           :show-file-list="false"
           accept=".xlsx,.xls"
         >
-          <!-- 中性化（§24 执行顺序 1）：导入不是状态，原 `success` 绿与「成功」无关。 -->
+ <!-- 中性化（执行顺序 1）：导入不是状态，原 `success` 绿与「成功」无关。 -->
           <el-button icon="Upload" :loading="importing">批量导入用户(Excel)</el-button>
         </el-upload>
       </div>
@@ -47,7 +47,7 @@
 
       <template #col-isFirstLogin="{ row }">
         <!--
-          ⚠️ 2026-10-13（C 组 #4）：`el-tag`（warning/info）→ §3.3 的**提示档**（6px 中性点，静止）。
+ ⚠️ 2026-10-13（C 组 #4）：`el-tag`（warning/info）→ **提示档**（6px 中性点，静止）。
           这是 C 组 6 处里**唯一保留标记**的一处，理由：多数账号是「已改密」，而「需改密」是**少数派**，
           管理员会去催 —— 逐行容器里给少数派画标记，正是把注意力引过去的手段（与「加急」同一类）。
           但它**不是警戒**：改密由系统在首次登录时强制（`is_first_login=1`），不构成风险，
@@ -135,7 +135,7 @@ const columns: TableColumn<any>[] = [
     width: 110,
     align: 'center',
     card: 'tag',
-    // ⚠️ 2026-10-13（C 组 #4）：带语义 `type`（warning）的胶囊 → §3.3 的**提示档**中性点
+ // ⚠️ 2026-10-13（C 组 #4）：带语义 `type`（warning）的胶囊 → **提示档**中性点
     //    （`type:'ring'` + `variant:'dot'` + `tone:'muted'`）。与宽档 `#col-isFirstLogin` 同一个长相。
     //    「已改密」是正常态 ⇒ 不带 `type` ⇒ `is-info`（已与 `MetaChip` 统一的中性胶囊）。
     cardTag: (row) =>

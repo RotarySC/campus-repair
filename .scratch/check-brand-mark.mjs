@@ -1,5 +1,5 @@
 /**
- * 品牌标识「缺口楼宇」的**渲染侧**判据（§4.6 的 A1/A2/A5/A6 共用同一个图形）。
+ * 品牌标识「缺口楼宇」的**渲染侧**判据（A1/A2/A5/A6 共用同一个图形）。
  *
  * 与 `packages/shared/test/brand-mark.spec.ts` 是**两条不同的判据**，都要有：
  *   · 那个 spec 查的是**源码**——三处（favicon / BrandMark.vue / watermark.ts）没有各抄一份 `d`；

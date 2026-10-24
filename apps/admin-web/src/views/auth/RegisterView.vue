@@ -235,7 +235,7 @@ async function onSubmit() {
   height: 36px;
   padding-inline: 8px;
   border: none;
-  /* 圆角由 8px 收到 --radius（§3.5：圆角 0–2px） */
+ /* 圆角由 8px 收到 --radius（圆角 0–2px） */
   border-radius: var(--radius);
   background-color: transparent;
   color: var(--muted);
@@ -273,7 +273,7 @@ async function onSubmit() {
 
 .register-form {
   background-color: var(--surface);
-  /* 圆角 10px → 0（§3.5：卡片圆角是 0）；
+ /* 圆角 10px → 0（卡片圆角是 0）；
      自造阴影 `0 1px 4px rgba(0,0,0,.04)` 按 V15 删除，层级改用发丝线边框 */
   border-radius: var(--radius-card);
   border: var(--hairline) solid var(--line);

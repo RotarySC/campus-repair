@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * **分类色板（§3.2b，方案甲）的机器判据。**
+ * **分类色板（方案甲）的机器判据。**
  *
  * 为什么这个测试必须存在：色板是**推出来的**，不是手挑的 ——
  * 明度、彩度、色相起始角三个参数由
@@ -75,7 +75,7 @@ function readPalette(): string[] {
   return out;
 }
 
-describe('分类色板 §3.2b', () => {
+describe('分类色板', () => {
   const pal = readPalette();
 
   it('tokens.css 里正好有 8 个 --cat-N，且都是 6 位 hex（否则下面全是空转）', () => {

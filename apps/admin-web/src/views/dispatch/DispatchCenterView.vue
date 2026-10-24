@@ -98,7 +98,7 @@
               <div class="order-no-wrap">
                 <span class="order-no">{{ order.orderNo }}</span>
                 <!--
-                  ⚡ 三种标记换成 §3.3 的标记语言（与工单报表 / 我的工单 / 工作台**同一个形状**）：
+                  ⚡ 三种标记换成新的标记语言（与工单报表 / 我的工单 / 工作台**同一个形状**）：
                   · 「返工单」的实心红胶囊**删掉**——同一张卡上的状态圆环已经写着「返工待派」
                     （色相 `--h6`），再加一个实心红底标签就是「同一件事两处颜色」；
                   · 「加急」的橙字胶囊 → **实心圆点**（实心＝警戒），它没有工单状态码，
@@ -154,7 +154,7 @@
               </span>
               <div class="action-btn-group">
                 <!--
-                  §24 执行顺序 1（中性化）：返工仲裁原 `warning`、时间轴原 `info`，两者**都不是状态**。
+ 执行顺序 1（中性化）：返工仲裁原 `warning`、时间轴原 `info`，两者**都不是状态**。
                   「要小心」由 `openArbitrateModal` 的仲裁弹窗承担；时间轴是纯只读跳转，染色没有语义。
                 -->
                 <el-button
@@ -257,7 +257,7 @@
                       <!--
                         ⚠️ 2026-10-13（C 组 #1）：`el-tag`（success/info）→ `MetaChip`。
                         「在岗 / 休息」**看起来像状态，其实是属性** —— 它的取值不随任何生命周期推进，
-                        只是这条师傅记录的一个字段。§3.3 的空心环是留给**工单生命周期**的，
+ 只是这条师傅记录的一个字段。空心环是留给**工单生命周期**的，
                         属性既不该借它，也不该借「警戒」那一档。
                         （"这个人现在不可派"由 `.worker-card.offduty` 的压暗承担，不靠颜色。）
                       -->
@@ -278,9 +278,9 @@
                 <div class="load-text-bar">
                   <span>实时在修负荷</span>
                   <!--
-                    ⚠️ 2026-10-13：**超载的"要动手"改由 §3.3 的警戒档实心点承担**。
+                    ⚠️ 2026-10-13：**超载的"要动手"改由警戒档实心点承担**。
                     这正是本文件早就写下过的结论（见 `getLoadToneClass` 的注释：
-                    「需要更醒目的「哪几个师傅超载」时，正解是 §3.3 的**实心圆点**，不是把整张卡染红」）——
+                    「需要更醒目的「哪几个师傅超载」时，正解是**实心圆点**，不是把整张卡染红」）——
                     当时把它挂起了，因为严重度还压在 `el-progress` 的 `:status` 上。那条现已拿掉。
 
                     只给 `isOverloaded` 画点：`loadRate >= 70` 是"接近满"（留意一下），
@@ -379,7 +379,7 @@
       :close-on-click-modal="false"
     >
       <!--
-        ⚠️ 2026-10-13：`el-alert type="error"` → **`AlertBanner`**（§4.6 G4 口径），
+ ⚠️ 2026-10-13：`el-alert type="error"` → **`AlertBanner`**（G4 口径），
         与同页另外两处警示条、以及全仓其余位置同一个形状。
 
         这一处是**棘轮的一处盲区**：`color-controls.spec.ts` 的 `SEMANTIC` 原先是
@@ -794,8 +794,8 @@ async function submitCancelOrder() {
  *
  * ⚠️ 2026-10-13 二改：剩下那个"另一处颜色"（`el-progress` 的 `:status`，
  * `exception` / `warning` / `success`）**也拿掉了** —— 原来这里的注释写的是
- * 「那是 EP 组件自身的语义色，属 §12.5 登记的策略，本批不动」，但同一条注释的后半句
- * 已经把正解写着：「**需要更醒目的「哪几个师傅超载」时，正解是 §3.3 的实心圆点，
+ * 「那是 EP 组件自身的语义色，属登记在案的策略，本批不动」，但同一条注释的后半句
+ * 已经把正解写着：「**需要更醒目的「哪几个师傅超载」时，正解是实心圆点，
  * 不是把整张卡染红**」。本轮照那句话落地：条**中性**、超载**给点**。
  *
  * `getProgressBarStatus()` 随之删除 —— 留着一个"把负荷投影成语义色"的函数，
@@ -835,7 +835,7 @@ function getLoadToneClass(worker: WorkerBoardVO): string {
 }
 
 /* 「实时刷新中」指示点。**不再是绿色**——「实时」不是工单状态，
-   而 §3.2 的 8 个色相只服务状态语义，给它绿色等于凭空添第 9 个色相。
+   而 8 个状态色相只服务状态语义，给它绿色等于凭空添第 9 个色相。
    呼吸动效保留（它表达的是「活着」，不是「属于哪一类」），光晕一并中性。 */
 .dot {
   width: 9px;
@@ -874,7 +874,7 @@ function getLoadToneClass(worker: WorkerBoardVO): string {
   flex: 0 0 55%;
   background-color: var(--surface);
   border-radius: var(--radius-card);
-  /* §3.5 / V15：禁止自造阴影（原有一条 `0 1px 3px rgba(0,0,0,.05)`），层级用发丝线建立 */
+  /* V15：禁止自造阴影（原有一条 `0 1px 3px rgba(0,0,0,.05)`），层级用发丝线建立 */
   border: var(--hairline) solid var(--line);
   display: flex;
   flex-direction: column;
@@ -895,7 +895,7 @@ function getLoadToneClass(worker: WorkerBoardVO): string {
   gap: 8px;
 }
 
-/* 筛选胶囊：圆角由 16px 收到 --radius（§3.5 圆角 0–2px；实测腾讯云没有一个 ≥8px 的圆角）。 */
+/* 筛选胶囊：圆角由 16px 收到 --radius（圆角 0–2px；实测腾讯云没有一个 ≥8px 的圆角）。 */
 .tab-pill {
   padding: 6px 12px;
   border-radius: var(--radius);
@@ -916,8 +916,8 @@ function getLoadToneClass(worker: WorkerBoardVO): string {
   color: var(--el-color-primary);
 }
 
-/* 选中态走 §4.2 统一后的主色令牌（品牌蓝 #1677FF 已退场）；
-   字重回 400——§3.5：层级靠字号 + 颜色建立，不靠加粗 */
+/* 选中态走统一后的主色令牌（品牌蓝 #1677FF 已退场）；
+ 字重回 400——层级靠字号 + 颜色建立，不靠加粗 */
 .tab-pill.active {
   background-color: var(--el-color-primary);
   color: var(--surface);
@@ -1068,7 +1068,7 @@ function getLoadToneClass(worker: WorkerBoardVO): string {
   color: var(--muted);
 }
 
-/* G4 口径（§4.6）：提示条**不用彩底彩边**——发丝线边框 + 中性字。
+/* G4 口径：提示条**不用彩底彩边**——发丝线边框 + 中性字。
    ⚠️ 2026-10-13 起**不再带实心点**：这条横幅读的是 `dispatchReason`（= 最近一条流转备注），
    实测取值里正向/中性（5 星通过、智能匹配成功、系统自动核销）占绝大多数，
    只有"师生评价 1 星"是真警戒 —— 给一个 11/12 不紧急的字段配红点等于把"发生了什么"读成"出事了"。
@@ -1198,8 +1198,8 @@ function getLoadToneClass(worker: WorkerBoardVO): string {
 /*
  * 超载卡片：原先整张卡染浅红底 + 红边（`#FFF1F0` / `#FFA39E`）。
  * **去掉色块**——严重度已经由这张卡里 `el-progress` 的 `:status="exception"` 表达
- * （EP 组件自身的语义色，属 §12.5 登记的 53 处策略），同一件事不该有两处颜色。
- * 需要更醒目的「哪几个师傅超载」时，正解是 §3.3 的**实心圆点**，不是把整张卡染红。
+ * （EP 组件自身的语义色，属登记在案的 53 处策略），同一件事不该有两处颜色。
+ * 需要更醒目的「哪几个师傅超载」时，正解是**实心圆点**，不是把整张卡染红。
  */
 .worker-card.overloaded {
   background-color: var(--surface);

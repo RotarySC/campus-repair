@@ -26,14 +26,14 @@
         <!-- ⚠️ 紧急度在宽档表格里**原先没有这个插槽**（只写了 `card: 'tag'`）。
              `ResponsiveTable` 的宽档对无插槽的列只挂 `prop`，`el-table` 于是直接渲染字段原值——
              用户看到的是 `2` 和 `1`，一个只对机器有意义的数字。窄档卡片走 `cardTag()` 反而是对的。
-             补上插槽顺带修掉它：加急＝§3.3 的实心圆（警戒），普通＝中性字。 -->
+ 补上插槽顺带修掉它：加急＝实心圆（警戒），普通＝中性字。 -->
         <template #col-urgencyLevel="{ row }">
           <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" class="status-ring--text-after" />
           <span v-else class="urgency-normal">普通</span>
         </template>
 
         <template #col-status="{ row }">
-          <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
+ <!-- V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
           <StatusRing :status="row.status" />
         </template>
       </ResponsiveTable>
@@ -86,7 +86,7 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) =>
       row.urgencyLevel === 2
-        ? // 加急＝警戒：实心圆（§3.3）。它没有工单状态码，色相恒为 `--alert`
+ ? // 加急＝警戒：实心圆。它没有工单状态码，色相恒为 `--alert`
           { text: '加急', type: 'ring', variant: 'dot' }
         : { text: '普通', type: 'info' }
   },
@@ -98,7 +98,7 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      // §5 的 V7 修订：卡片形态与表格形态共用同一份状态色值
+ // V7 修订：卡片形态与表格形态共用同一份状态色值
       type: 'ring',
       status: row.status
     })

@@ -148,9 +148,9 @@ onMounted(() => {
   width: 440px;
   padding: 40px;
   background: var(--surface);
-  /* §4.5：12px 圆角 → 2px（§3.5 的圆角区间是 0–2px） */
+ /* 12px 圆角 → 2px（圆角区间是 0–2px） */
   border-radius: var(--radius);
-  /* §4.5：删除 `box-shadow: 0 12px 32px rgba(0,0,0,.2)`（V3/V15 禁止自造阴影），
+ /* 删除 `box-shadow: 0 12px 32px rgba(0,0,0,.2)`（V3/V15 禁止自造阴影），
      改用 --line 边框分层 */
   border: 1px solid var(--line);
 }
@@ -162,7 +162,7 @@ onMounted(() => {
   margin: 0;
   font-size: 24px;
   color: var(--ink);
-  /* §4.5：标题 700 → 600（§3.5 实测 700 全站只有 1 次，600 是字重上限） */
+ /* 标题 700 → 600（实测 700 全站只有 1 次，600 是字重上限） */
   font-weight: var(--fw-medium);
 }
 .subtitle {

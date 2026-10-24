@@ -28,7 +28,7 @@
           </el-descriptions-item>
           <el-descriptions-item label="紧急度">
             <!--
-              加急＝警戒：§3.3 的**实心圆**（不是又一个彩色胶囊）。
+ 加急＝警戒：**实心圆**（不是又一个彩色胶囊）。
               原先这里是全仓**唯一一处**仍用 `danger` 胶囊表达加急的地方 ——
               工单报表 / 调度中心 / 我的工单 / 师傅工作台四处早已是实心圆点，
               同一条信息在第五个页面换了长相，正是「跨页一致」要消灭的那类漂移。
@@ -152,7 +152,7 @@
         </template>
 
         <!--
-          ⚠️ 2026-10-13（B5 落地）：`el-alert type="error"` → **`AlertBanner`**（§4.6 G4 口径：
+ ⚠️ 2026-10-13（B5 落地）：`el-alert type="error"` → **`AlertBanner`**（G4 口径：
           实心圆点 ＋ 中性字 ＋ 发丝线边框），与全仓其余 5 处警示条同一个形状。
 
           两件事一起做，因为它们是**同一件事的两个颜色通道**：
@@ -321,7 +321,7 @@ async function onSubmitEvaluation() {
   margin-bottom: 14px;
 }
 /*
- * 状态条（§5 的 V7 修订）。
+ * 状态条（V7 修订）。
  *
  * 改前是 `<el-alert :type="statusAlertType">`，而 `statusAlertType` 是一段**手写的 switch**，
  * 把 `order.status` 逐个映射成 EP 语义色 —— 那是「工单状态 → 颜色」的**第三个**投影

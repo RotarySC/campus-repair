@@ -104,7 +104,7 @@
             <template #default="{ row }">
               <!-- 🐞 第五处「四个装饰色」同族缺陷：这里原是
                    `:type="row.level === 1 ? 'primary' : 'success'"`——大类=蓝、二级细类=绿。
-                   层级是**分类**，不是状态（与 §17.3 删掉的 `getLevelTagType()` 逐字同病）。
+                   层级是**分类**，不是状态（与之前删掉的 `getLevelTagType()` 逐字同病）。
                    现在层级由 CategoryIcon 的图形承担，这里只留一枚**中性**的发丝线 chip。 -->
               <MetaChip>{{ row.level === 1 ? '大类' : '二级细类' }}</MetaChip>
             </template>
@@ -709,7 +709,7 @@ onMounted(() => {
 }
 /*
  * 层级标记（A3）：**中性发丝线 chip**。这里原来是 `el-tag type="primary|success"`——
- * 大类=蓝、二级细类=绿，与 §17.3 删掉的 `getLevelTagType()` 同一个病：
+ * 大类=蓝、二级细类=绿，与之前删掉的 `getLevelTagType()` 同一个病：
  * **层级是分类，不是状态**。注意 `el-tag` 的 `type` 缺省值就是 `primary`，
  * 所以「不传 type」**不是**中性，必须换元素。
  *

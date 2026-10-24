@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 登出与令牌吊销回归（P1 · 会话不可吊销，分析报告 §3.5）。
+ * 登出与令牌吊销回归（P1 · 会话不可吊销）。
  *
  * <p>修复前全仓 `logout` 命中 0 处：前端只清 localStorage，服务端签发的 Access Token
  * （默认 2h）与 Refresh Token（7d）继续有效，令牌泄漏或离职回收后最长 2h 内仍能操作，

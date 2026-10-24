@@ -19,16 +19,16 @@
     </el-card>
 
     <!--
-      缺料警戒（§4.6 G4 已定的口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**，不用渐变/彩底/彩边）。
+ 缺料警戒（G4 已定的口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**，不用渐变/彩底/彩边）。
 
-      这是本页**唯一真正的异常条件**，也是「实心＝警戒」（§3.3）在全站的第一处落点。
+ 这是本页**唯一真正的异常条件**，也是「实心＝警戒」在全站的第一处落点。
       阈值不是我拍的：`GET /inventory/summary` 的 `lowStockCount` 数的是
       `stock_quantity <= safety_stock_threshold` 且状态为**启用**的物料——
       「安全警戒线」本来就存在库里，见 `InventoryServiceImpl#getInventorySummary`。
 
       ⚠️ 两处刻意的实现选择：
       ① **没有做成第 7 张 KPI 卡**：KPI 行是 `:lg="4"`（一行 6 张），塞第 7 张会得到 6+1 的孤卡。
-         §3.3 说的是「KPI 的警戒项」，这里按「KPI 区的警戒条」落地，形态与 G4 已定的口径一致。
+         所以改为「KPI 区的警戒条」，形态与 G4 已定的口径一致。
       ② 只在 `lowStockCount > 0` 时出现——**没有异常就不渲染**，
          这也让「本页唯一允许出现的色相是那 9px 圆点」这件事可以被断言（断言在探针里）。
     -->
@@ -46,9 +46,9 @@
       <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :md="8" :lg="4">
         <el-card shadow="never" class="kpi-card">
           <div class="kpi-title">{{ card.label }}</div>
-          <!-- KPI 大数字**不再逐卡配色**：§3.5「层级靠字号 + 颜色建立，不靠加粗」，
-               而 §5 的 V4 修订把彩色收归状态语义——6 张卡各自的蓝/橙/绿/红/赭是纯装饰。
-               6 个颜色退场后，本页唯一允许出现的色相是状态圆环（§3.3）。 -->
+          <!-- KPI 大数字**不再逐卡配色**：「层级靠字号 + 颜色建立，不靠加粗」，
+ 而 V4 修订把彩色收归状态语义——6 张卡各自的蓝/橙/绿/红/赭是纯装饰。
+ 6 个颜色退场后，本页唯一允许出现的色相是状态圆环。 -->
           <div class="kpi-value">
             {{ card.value }}<span class="kpi-unit">{{ card.unit }}</span>
           </div>
@@ -263,7 +263,7 @@ function scheduleResize() {
 }
 
 /**
- * 缺料警戒（§4.6 G4）。**刻意独立于 `fetchAllData` 的 try/catch**：
+ * 缺料警戒（G4）。**刻意独立于 `fetchAllData` 的 try/catch**：
  *
  * `fetchAllData` 是 5 个 analytics 端点的 `Promise.all`——任一失败就整批落空。
  * 这一个调的是**另一个模块**的端点（`/inventory/summary`，只对 DISPATCHER/PLATFORM_ADMIN 开放），
@@ -480,7 +480,7 @@ function renderSpatialChart(data: SpatialHeatVO[]) {
             { offset: 0, color: theme.primaryLight },
             { offset: 1, color: theme.primary }
           ]),
-          /* §3.5 圆角区间 0–2px；柱条原来给了 4px（阶外值） */
+ /* 圆角区间 0–2px；柱条原来给了 4px（阶外值） */
           borderRadius: 0
         }
       }
@@ -507,7 +507,7 @@ function renderSpatialChart(data: SpatialHeatVO[]) {
  * 同一个色相在一屏上同时表示两件事。另外它的明度极差 38.1，扇区重量随机。
  *
  * 现在色值住在 `tokens.css`（D 的规矩：颜色只活在 token 层），这里只负责**按序取**。
- * 推导过程与三条约束见 tokens.css 里 §3.2b 那段注释；回归锁在
+ * 推导过程与三条约束见 tokens.css 里那段分类色板注释；回归锁在
  * `packages/shared/test/category-palette.spec.ts`。
  */
 function categoryPalette(): string[] {
@@ -571,7 +571,7 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
       textAlign: 'center',
       textVerticalAlign: 'middle',
       textStyle: {
-        // §3.5：层级靠字号 + 颜色建立，**不靠加粗**（`title` 默认是 bold，显式写回 normal）
+ // 层级靠字号 + 颜色建立，**不靠加粗**（`title` 默认是 bold，显式写回 normal）
         color: theme.ink,
         fontSize: 26,
         fontWeight: 'normal',
@@ -624,8 +624,8 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
   gap: 16px;
 }
 
-/* §4.6 G4 的警戒口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**。
-   无渐变、无彩底、无彩边、无自造阴影——色相只活在 StatusRing 那 9px 圆点上（§3.3）。 */
+/* G4 的警戒口径：**实心圆点 ＋ 中性字 ＋ 发丝线边框**。
+ 无渐变、无彩底、无彩边、无自造阴影——色相只活在 StatusRing 那 9px 圆点上。 */
 .alert-strip {
   display: flex;
   align-items: center;
@@ -652,7 +652,7 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
   text-underline-offset: 3px;
 }
 
-/* §3.5：卡片圆角 0（腾讯云卡片实测 0px，没有一个 ≥8px） */
+/* 卡片圆角 0（腾讯云卡片实测 0px，没有一个 ≥8px） */
 .account-card {
   border-radius: var(--radius-card);
 }
@@ -696,7 +696,7 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 
 .kpi-value {
   font-size: 26px;
-  /* §3.5：**KPI 大数字也是常规字重**。层级靠字号 + 颜色建立，不靠加粗（实测 400 命中 988 次） */
+ /* **KPI 大数字也是常规字重**。层级靠字号 + 颜色建立，不靠加粗（实测 400 命中 988 次） */
   font-weight: var(--fw-normal);
   line-height: 1.2;
   color: var(--ink);
@@ -748,7 +748,7 @@ function renderCategoryPie(data: CategoryRatioVO[]) {
 /*
   荣誉榜名次徽标。
   原先第 1/2/3 名各配一种彩色（#F5222D 红 / #FA8C16 橙 / #FADB14 黄）——
-  §5 的 V4 修订把口径收成「彩色只服务状态语义」，**名次不是状态** ⇒ 退到中性阶梯：
+ V4 修订把口径收成「彩色只服务状态语义」，**名次不是状态** ⇒ 退到中性阶梯：
   第 1 名 `--ink`、其余 `--muted`。名次层级仍然可读（深浅对比），但不再引入三个色相。
   ⚠️ 已知重复：`ResponsiveTable` 卡片态里还有一个 `.rl-card__rank`（同为名次徽标）——
   榜单一页同时给了 `ranked` 与 `#col-rank` 插槽，窄档下名次会**出现两次**。

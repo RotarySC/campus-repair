@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 服务端强制首登改密回归（P1，分析报告 §3.4）。
+ * 服务端强制首登改密回归（P1）。
  *
  * <p>修复前 `is_first_login` 只是前端 {@code App.vue} 的一个弹窗：实测 student01
  * （`isFirstLogin=1`）不改密直接调 `GET /work-orders/my` 返回 200 与 5 条工单。初始密码是

@@ -25,7 +25,7 @@
  * ⚠️ 几何断言一律与**页面缩放**无关：本机 `getComputedStyle` 把 1px 边框报成 0.8px
  * （dpr≈1 时也是）。判据用「颜色 + 关系 + 数值区间」，不写 `=== '1px'`。
  * ⚠️ 若它卡住不返回：多半是上次被 kill 的探针留下了半开的浏览器级 WS 连接
- * （Edge 的 /devtools/browser 只接受一个客户端）。见 AGENTS §2.2「CDP 连接被占」条。
+ * （Edge 的 /devtools/browser 只接受一个客户端）。见 AGENTS.md 的「CDP 连接被占」条。
  *
  * 用法: node .scratch/assert-worker-ui.mjs   （需 Edge 9222 + 后端 8080 + 前端 3000）
  */
@@ -621,7 +621,7 @@ check('完工页 alert 不再边到边（圆角恢复）', f?.noticeRadius && f.
 check('完工页 alert 用 14px 下边距与卡片同距', f?.noticeMarginBottom === '14px', `margin-bottom=${f?.noticeMarginBottom}`);
 // ⚠️ V13（2026-09-27）把这条断言锁的规则**改掉了**：内容列由 760 放宽到 1280 并分两栏。
 // 旧值 `760px` 是 V5 时期的口径——V5 只解决"居中"这一半（见「V5 的由来」），
-// 表单页那一半一直是缺的。看到这里 diff 请对照 §3.3.4，不要当成回归。
+// 表单页那一半一直是缺的。看到这里 diff 属预期形态，不要当成回归。
 // 二轮修订：760 的上限在**所有档位**都已撤掉（初版只撤到 ≥1440，于是 1272 档量出
 // 「提示条 985 / 表单 760」——正是 V13 第①条要消灭的形态，只是小一号）。
 check('完工页 宽档内容列限宽 1280px（V13）', f?.formMaxWidth === '1280px', `max-width=${f?.formMaxWidth}`);

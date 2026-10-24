@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 工单读接口属主校验回归（P1 · IDOR，分析报告 §3.2）。
+ * 工单读接口属主校验回归（P1 · IDOR）。
  *
  * <p>修复前 `GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` 三个端点
  * **既没有 `@PreAuthorize`、Service 签名里也没有调用者 id**：任意登录用户按 id 遍历即可读到

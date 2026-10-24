@@ -104,7 +104,7 @@ async function applyBand(width, height = 900) {
     await cdp('Page.captureScreenshot', { format: 'png' });
     await sleep(320);
   }
-  // 兜底：后台标签偶发不投递 Emulation 触发的 resize（见 AGENTS §2.2），补一次合成事件让
+  // 兜底：后台标签偶发不投递 Emulation 触发的 resize（见 AGENTS.md 的 CDP 说明），补一次合成事件让
   // useViewport 的监听器重读 window.innerWidth（度量本身已是新值，读取结果是真的）。
   await evalJs(`window.dispatchEvent(new Event('resize')); 'ok'`);
   await sleep(250);

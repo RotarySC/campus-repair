@@ -138,7 +138,7 @@
 
           <div class="actions-right">
             <!--
-              中性化（§24 执行顺序 1）：**导出既不成功也不失败**，它只是一个动作 —— 原 `success` 绿
+ 中性化（执行顺序 1）：**导出既不成功也不失败**，它只是一个动作 —— 原 `success` 绿
               与「成功」没有任何关系，属纯装饰。
               顺带去掉 `plain`：它只是语义色的「洗淡」修饰，**没有 `type` 时完全惰性**，
               留着会让下一个人以为这里有什么讲究。
@@ -153,7 +153,7 @@
             </el-button>
 
             <!--
-              中性化（§24 执行顺序 1）：原 `warning` 琥珀在说「**这个操作要小心**」，
+ 中性化（执行顺序 1）：原 `warning` 琥珀在说「**这个操作要小心**」，
               而它不是状态。「要小心」这件事已由 `handleArchiveClick` 里的
               `ElMessageBox.confirm` 承担（实测在 441~443 行）——不该再由一个色相说第二遍。
             -->
@@ -178,7 +178,7 @@
         >
           <template #col-orderNo="{ row }">
             <span class="order-no">{{ row.orderNo }}</span>
-            <!-- 加急＝警戒：§3.3 的「实心圆」而不是又一个彩色胶囊。
+ <!-- 加急＝警戒：「实心圆」而不是又一个彩色胶囊。
                  原先这里是 `el-tag type="danger" effect="dark"`（实心红底白字，本页最响的一处），
                  现在换成 6px 实心点 + 中性字——**信号的形状变了，强度没降**。
                  间距走 `--text-after`（`--mark-gap` 12px），**不是**本页自己写一个 6px：
@@ -193,7 +193,7 @@
           </template>
 
           <template #col-status="{ row }">
-            <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
+ <!-- V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
             <StatusRing :status="row.status" />
           </template>
 
@@ -290,7 +290,7 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
       左对齐后环左缘恒为单元格内容左缘（实测 475）。
     */
     card: 'tag',
-    // 'ring' = 9px 状态圆环，与宽档表格的 `#col-status` 共用同一份色值（§4.3 的契约变更）
+ // 'ring' = 9px 状态圆环，与宽档表格的 `#col-status` 共用同一份色值（契约变更）
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
       type: 'ring',
@@ -506,7 +506,7 @@ async function handleArchiveClick() {
   gap: 16px;
 }
 
-/* §3.5：卡片圆角 0 */
+/* 卡片圆角 0 */
 .search-card {
   border-radius: var(--radius-card);
 }
@@ -532,7 +532,7 @@ async function handleArchiveClick() {
 }
 /*
   这里原本写的是 `#1890FF` —— 全仓的**第三种蓝**（既不是 EP 的 #409EFF，也不是品牌 #1677FF，
-  而且它连 §3.1 之前那份文档令牌都不属于，是就地敲进去的）。
+  而且它连既有令牌体系都不属于，是就地敲进去的）。
   「共检索到 N 条」是要读的数字，不是需要强调的色块 ⇒ 归到 --ink。
 */
 .result-count strong {
@@ -552,7 +552,7 @@ async function handleArchiveClick() {
   margin-top: 16px;
 }
 
-/* 单号用等宽字体便于逐位核对；字重回到 §3.5 的上限 600 */
+/* 单号用等宽字体便于逐位核对；字重回到上限 600 */
 .order-no {
   font-family: monospace;
   font-weight: var(--fw-medium);

@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p><b>③ `engine` 语义</b>——它记的是「模型有没有**贡献**可用结果」，**不是**「模型有没有被调」。
  * 模型返回的 id 全是规则已命中的、或候选位已被规则占满时，一个候选都不会多，`engine` 必须
- * 如实保持 `RULE`（"调了但没用上"与"没调"对外是同一件事；§3.6 原文只写了"返回空列表不算贡献"，
+ * 如实保持 `RULE`（"调了但没用上"与"没调"对外是同一件事；而"返回空列表不算贡献"是明确写下的判据，
  * 这是同一口径在"非空但无用"上的推广）。**所以任何"模型被调了没有"的断言都不能拿 `engine` 当代理**
  * ——那是恒真/恒假信号，只能看 `calls`。
  *
@@ -227,7 +227,7 @@ class AssistantLlmEscalationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.candidates[0].categoryId").value(leafId.intValue()))
                 // 本用例的模型答的是**规则已经命中的那一条**（见 @BeforeEach 的 transport.response），
-                // 一个候选都没多 ⇒ 按 §3.6 的口径它没贡献，engine 如实保持 RULE。
+                // 一个候选都没多 ⇒ 按该口径它没贡献，engine 如实保持 RULE。
                 // 「模型被调了」由下面的 calls 断言，不再由 engine 兼任（那是恒真代理，见类注释）。
                 .andExpect(jsonPath("$.data.engine").value("RULE"));
 
@@ -343,7 +343,7 @@ class AssistantLlmEscalationTest {
 
         // ① 模型答的是规则**已经命中**的那条（@BeforeEach 里的 transport.response = envelope(leafId)）：
         //    问了，但一个候选都没多 ⇒ 与"没调"对外是同一件事，engine 必须是 RULE。
-        //    这正是 §3.6「engine = 模型有没有贡献可用结果」在"非空但无用"上的推广——
+        // 这正是「engine = 模型有没有贡献可用结果」在"非空但无用"上的推广——
         //    此前实现只要 ids 非空就置 RULE+LLM，于是这条用例会红。
         suggest(weakHitText)
                 .andExpect(status().isOk())

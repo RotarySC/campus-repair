@@ -35,7 +35,7 @@
           </div>
 
           <!--
-            状态跳变——**这才是圆环该出现的地方**（§5 的 V7）：
+ 状态跳变——**这才是圆环该出现的地方**（V7）：
             空心圆环＝分类，正好是「变成了哪一类」的语义，色相由 `ORDER_STATUS_HUE` 推导，
             与表格状态列**同一个来源、同一份色值**（V9：两份投影、一处来源）。
             `fromStatus` 用中性字：它可能是 `DRAFT` 这种生命周期之外的码（见 script 里的词表），
@@ -120,7 +120,7 @@ async function fetchTimeline() {
 /**
  * ⚠️ 原先这里有两个类型别名（`NodeType` / `TagType`）、一张 `ROLE_STYLES` 表与
  * `getNodeType` / `getRoleTagType` 两个函数，把 `operator_role` 映射成时间轴节点色与标签色。
- * 第二期按 §5 的 V7 把「职能」的颜色全部撤掉（职能是文字信息，本来就有中文标签），
+ * 第二期按 V7 把「职能」的颜色全部撤掉（职能是文字信息，本来就有中文标签），
  * 这些东西**没有剩下的用途，已整体删除**。
  *
  * 那张表当年还承担另一件事——**收录两代词表，免得历史日志掉进 default 分支**——
@@ -138,7 +138,7 @@ async function fetchTimeline() {
  * 于是 `|| status` 的兜底会把**裸码 `DRAFT` 直接渲染给用户**——
  * 正是本仓库约定禁止的那类（「不许把 `PLUMBER` 这种字典码端给用户」）。
  *
- * **刻意不并进 `OrderStatusLabels`**：那张表同时驱动 §3.2 的 8 个色相，
+ * **刻意不并进 `OrderStatusLabels`**：那张表同时驱动 8 个色相，
  * 「9 个业务状态 ↔ 8 个色相」的映射是锁定的（`status-hue.spec.ts` 逐值比对），
  * 塞一个没有色相的码进去会打破它。所以补丁打在这里，作用域仅限本组件。
  */
@@ -179,7 +179,7 @@ function parseImages(imagesJson?: string): string[] {
   background: var(--surface);
   border-radius: var(--radius-card);
   padding: 12px 14px;
-  /* §3.5 / V15：禁止自造阴影，层级用发丝线边框建立（原先有一条 0 1px 3px 的投影） */
+  /* V15：禁止自造阴影，层级用发丝线边框建立（原先有一条 0 1px 3px 的投影） */
   border: var(--hairline) solid var(--line);
 }
 
@@ -192,7 +192,7 @@ function parseImages(imagesJson?: string): string[] {
   margin-bottom: 8px;
 }
 /* 动作徽标：**中性发丝线小胶囊**。原先六组「浅底 + 同色文字」按操作人职能上色，
-   而职能**不是** §3.2 锁定的 8 个状态色相之一——给它颜色等于新增色相，
+   而职能**不是**那 8 个锁定的状态色相之一——给它颜色等于新增色相，
    正是 D 明确不做的事（色相只有 8 个，且只服务状态语义）。 */
 .action-badge {
   font-size: var(--fs-base);

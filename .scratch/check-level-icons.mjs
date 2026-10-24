@@ -98,7 +98,7 @@ async function open(user, path) {
   check('② 旧的装饰色层级标签已撤（页面上不再有「校区/组团/楼栋/房间」的 el-tag）',
     res.oldTags.length === 0, res.oldTags.join(', '));
   check('③ 图标可继承颜色（stroke=currentColor，不是写死的色值）', res.stroke === 'currentColor', String(res.stroke));
-  check('③ 图标尺寸落在 §4.6 V3 的 16–20px 阈值内', Number(res.size) >= 16 && Number(res.size) <= 20, `${res.size}px`);
+ check('③ 图标尺寸落在 V3 的 16–20px 阈值内', Number(res.size) >= 16 && Number(res.size) <= 20, `${res.size}px`);
   console.log(`INFO  页面上出现的层级名：${res.labels.join('、')}`);
 }
 

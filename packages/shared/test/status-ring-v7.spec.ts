@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
  * 静态扫不出来；而 `orderStatusTagType()` 正是「把工单状态投影成 EP 语义色」的**唯一出口**
  * （见 shared/constants/status.ts），所以「它的调用点为 0」与「状态不再渲染成带底色标签」等价。
  *
- * `orderStatusTagType()` **本身保留不删**：它是 §5 V9 说的「两份投影、一处来源」里的另一份，
+ * `orderStatusTagType()` **本身保留不删**：它是 V9 说的「两份投影、一处来源」里的另一份，
  * 且 `status-hue.spec.ts` 用 10 个取值锁死了它。删掉它等于把那份契约一并删掉。
  *
  * ⚠️ 第二条断言是**反向自证**：只写第一条的话，如果哪天 `SRC` 路径写错、或 `walk` 扫不到文件，

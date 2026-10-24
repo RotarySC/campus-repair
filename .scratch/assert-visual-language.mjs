@@ -3,20 +3,20 @@
  *
  * 断言分七组：
  *  ① **token 覆盖棘轮（静态）**：`apps/admin-web/src` 下出现色值字面量的文件必须是「已登记名单」的子集。
- *     新增文件、或往已迁移文件里塞回 `#RRGGBB`，这条会红——它是 §7.2「新增页面不得出现 # 形式色值」
+ *     新增文件、或往已迁移文件里塞回 `#RRGGBB`，这条会红——它是「新增页面不得出现 # 形式色值」
  *     的可执行形式（用棘轮而不是「全仓为 0」，因为第二期还有 9 页没铺开）。
  *     ⚠️ 注释里的色值是**文档**（本仓习惯写「原来是 #1890FF」），扫描前先剥注释。
- *  ② **§3.1/§3.2 令牌**：7 个中性/结构令牌 + 8 个色相在 `:root` 上解析得出来，且 8 个色相互不相同。
- *  ③ **§3.3 标记语义（2026-10-13 修订）**：圆环 9px / 2px 描边 / 圆角 100% / 不填充；
+ *  ② **令牌**：7 个中性/结构令牌 + 8 个色相在 `:root` 上解析得出来，且 8 个色相互不相同。
+ *  ③ **标记语义（2026-10-13 修订）**：圆环 9px / 2px 描边 / 圆角 100% / 不填充；
  *     实心标记 6px / 填充 / **警戒档还会呼吸**（`prefers-reduced-motion` 下退回静止）。
  *     ⚠️ 修订前这条写的是「实心圆与空心圆环同为 9px，**只差填充这一个变量**」，
  *     2026-10-13 让**尺寸也参与区分**：`加急`（实心）与 `返工待派`（空心环）**色相相同**
  *     （都落在 `#F5222D`，因为 `--alert` 就定义为 `var(--h6)`），两者在调度卡片上紧挨着，
  *     「填充与否」一个变量在 9px 上承担不动两个轴。理由详见 `StatusRing.vue` 的 `VARIANT_SIZE`。
- *  ④ **§3.4 表格**：表头白底、0.667px 发丝线、行 `border-bottom: 0`、`13px 10px` / `14px 10px`、
+ *  ④ **表格**：表头白底、0.667px 发丝线、行 `border-bottom: 0`、`13px 10px` / `14px 10px`、
  *     内层 `.cell` 水平内边距已归零（否则与外层叠加成 22px）、无竖线、无斑马纹。
- *  ⑤ **§3.5 形状与排版**：卡片圆角 0、无自造阴影、字重上限 600、KPI 大数字为 400、基准字号 12px。
- *  ⑥ **V4 品牌蓝退场** + 登录页（§4.5，停在 G1 之前）。
+ *  ⑤ **形状与排版**：卡片圆角 0、无自造阴影、字重上限 600、KPI 大数字为 400、基准字号 12px。
+ * ⑥ **V4 品牌蓝退场** + 登录页（停在 G1 之前）。
  *  ⑦ **五档矩阵**：390 / 768 / 1272 / 1440 / 2524 下无横向溢出、双形态切换点正确、无意外 `el-empty`。
  *
  * ⚠️ 几何断言一律与**页面缩放**无关：本机每源缩放下 `getComputedStyle` 会把 1px 报成 0.8px
@@ -178,14 +178,14 @@ console.log('\n===== ① token 覆盖棘轮 =====');
   check('名单里已迁干净的文件已销账（无残留）', UNMIGRATED.size === offenders.filter((o) => UNMIGRATED.has(o.rel)).length, `${UNMIGRATED.size} 个名单项`);
 }
 
-/* §3.6「边框 0.667px」**只能断言声明值**：本机 150% 每源缩放下，浏览器把 `1px` 与 `0.667px`
+/* 「边框 0.667px」**只能断言声明值**：本机 150% 每源缩放下，浏览器把 `1px` 与 `0.667px`
    都吸附成一个设备像素，`getComputedStyle` 一律报 `0.666667px`（125% 时同理报 0.8px，
    见 diag-page-zoom.mjs）——**计算值分辨不出这两者**，所以去读源文件。 */
 {
   const css = readFileSync(join(SRC, 'styles', 'element-overrides.css'), 'utf8');
   const decl = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
   check('element-overrides.css 为按钮声明了发丝线边框', /\.el-button\s*\{[^}]*border-width:\s*var\(--hairline\)/.test(decl));
-  check('§3.6 的按钮几何在覆盖层里被声明（30px / 0 20px / 圆角 0 / 字重 400）',
+ check('按钮几何在覆盖层里被声明（30px / 0 20px / 圆角 0 / 字重 400）',
     /height:\s*30px/.test(decl) && /padding:\s*0 20px/.test(decl) &&
     /border-radius:\s*0/.test(decl) && /font-weight:\s*var\(--fw-normal\)/.test(decl));
   check('该层本身不含色值字面量（只用令牌，否则令牌层就被绕开了）', !/#[0-9A-Fa-f]{3,8}\b/.test(decl));
@@ -277,7 +277,7 @@ const SNAPSHOT = `(() => {
       labelColor: cs(firstLabel, 'color'), labelWeight: cs(firstLabel, 'font-weight'), labelSize: cs(firstLabel, 'font-size')
     } : null,
     /*
-     * §3.3 修订（2026-10-13，**二改**）：实心标记 6px；**点本身不动**，
+     * 标记语义修订（2026-10-13，**二改**）：实心标记 6px；**点本身不动**，
      * 外圈一圈淡光晕（伪元素 ::after）在呼吸。
      *
      * ⚠️ 本段住在 SNAPSHOT 这个**模板字面量**里：**不许出现反引号**（一个都不行）。
@@ -307,7 +307,7 @@ const SNAPSHOT = `(() => {
       haloShadow: cs(dotMark, 'box-shadow', '::after') + ' | ' + cs(dotMark, 'box-shadow'),
       hasBreatheClass: dots[0].classList.contains('is-breathing')
     } : null,
-    /* §30（2026-10-13）：本页**有几枚**实心点在呼吸。工单报表的「加急」是逐行的点，
+    /* 2026-10-13：本页**有几枚**实心点在呼吸。工单报表的「加急」是逐行的点，
        它必须为 0 —— 动效只给页面级汇总。这条让"逐行静止"成为正面断言，不是省略。 */
     dotBreathingCount: dots.filter(r => r.classList.contains('is-breathing')).length,
     dotBreathingLabels: [...new Set(dots.filter(r => r.classList.contains('is-breathing')).map(r => r.textContent.trim()))],
@@ -453,7 +453,7 @@ const PAGES = [
 
 /**
  * 只跑「五档无横向溢出」的补充页。
- * 专门挑**按钮最密**的几页：§3.6 把内边距从 `15px 15px` 改成 `0 20px`
+ * 专门挑**按钮最密**的几页：按钮口径把内边距从 `15px 15px` 改成 `0 20px`
  * 会让每个按钮变宽，最可能的坏结果是工具栏在窄档溢出或被挤出视口——
  * 这三页正是那个风险面（调度中心 12 个按钮 / 进销存 5 个 / 空间字典 8 个）。
  */
@@ -476,17 +476,17 @@ const dash = snapshots['/'];
 const report = snapshots['/reports/orders'];
 console.log(`\n（契约断言取自 ${login.width}px 窗口下的三个代表页）`);
 
-console.log('\n===== ② §3.1 / §3.2 令牌 =====');
+console.log('\n===== ② 令牌 =====');
 const T = login.tokens;
 check('7 个中性/结构令牌都在 :root 上解析得出', ['ink', 'muted', 'faint', 'line', 'canvas', 'surface'].every((k) => !!T[k]), `ink=${T.ink} line=${T.line} canvas=${T.canvas}`);
 check('中性色是同一个黑的四档透明度（不是四种灰）', [T.ink, T.muted, T.faint].every((v) => v.startsWith('rgba(0, 0, 0')), `${T.ink} / ${T.muted} / ${T.faint}`);
 const hues = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8'].map((k) => T[k]);
 check('8 个色相全部解析得出且互不相同', hues.every(Boolean) && new Set(hues).size === 8, hues.join(' '));
 check('--alert 存在（实心圆的警戒色）', !!T.alert, T.alert);
-check('§4.2 EP 主题已对齐（12px / 2px / #0052d9）', T.elFontSizeBase === '12px' && T.elRadiusBase === '2px' && T.primary === '#0052d9', `${T.elFontSizeBase} / ${T.elRadiusBase} / ${T.primary}`);
+check('EP 主题已对齐（12px / 2px / #0052d9）', T.elFontSizeBase === '12px' && T.elRadiusBase === '2px' && T.primary === '#0052d9', `${T.elFontSizeBase} / ${T.elRadiusBase} / ${T.primary}`);
 check('主色的派生档也已覆盖（否则 plain 按钮/标签底色还是旧蓝）', T.primaryLight9 === '#e6eefb', String(T.primaryLight9));
 
-console.log('\n===== ③ §3.3 标记语义：实心＝警戒，空心＝分类 =====');
+console.log('\n===== ③ 标记语义：实心＝警戒，空心＝分类 =====');
 check('工单报表渲染出了空心圆环', !!report.ring);
 if (report.ring) {
   check('圆环外径 9px', report.ring.w === '9px' && report.ring.h === '9px', `${report.ring.w}×${report.ring.h}`);
@@ -509,10 +509,10 @@ if (report.dot && report.ring) {
   check('实心标记仍是圆、仍是填充 currentColor', report.dot.radius === '100%' && report.dot.fill === report.dot.color, `${report.dot.radius} / ${report.dot.fill}`);
   /*
    * ⚠️ **这一条 2026-10-13 从"必须呼吸"翻成了"必须不呼吸"**（不是回归）。
-   * 工单报表里的「加急」是**逐行**的点；§30 把动效收给了页面级汇总那一枚。
+   * 工单报表里的「加急」是**逐行**的点；动效只给页面级汇总那一枚。
    * 改前这里是「警戒档带呼吸类 → true」，现在它**正确地**是 false。
    */
-  check('§30：工单报表的**逐行**警戒点不呼吸（动效只给页面级汇总那一枚）',
+ check('工单报表的**逐行**警戒点不呼吸（动效只给页面级汇总那一枚）',
     report.dot.hasBreatheClass === false && report.dotBreathingCount === 0,
     `is-breathing=${report.dot.hasBreatheClass} · 本页呼吸 ${report.dotBreathingCount} 枚`);
   check('**点本身不动**（animation-name: none）—— 它必须一直满不透明"在"着', report.dot.markAnim === 'none', String(report.dot.markAnim));
@@ -520,7 +520,7 @@ if (report.dot && report.ring) {
 /*
  * 呼吸的**形态与动效**改到「进销存」页量 —— 那里有页面级汇总那一枚。
  * 这一段与上面那段的分工：上面管**几何**（点 6px / 环 9px / 填充），这里管**动效**。
- * 拆开的理由：§30 之后这两件事落在**不同的元素**上了（逐行的点静止、汇总的点在动），
+ * 拆开的理由：动效收口之后这两件事落在**不同的元素**上了（逐行的点静止、汇总的点在动），
  * 继续在同一个元素上断言两者，就会得到一个恒真的假绿或一个恒假的假红。
  */
 console.log('\n===== ③b 呼吸的形态与动效（采样对象＝页面级汇总那一枚） =====');
@@ -544,7 +544,7 @@ if (breathSnap.dotBreathingCount >= 1 && bd) {
   check('**没有 box-shadow**（光晕是伪元素画的一个圆，V15 无自造阴影）', bd.haloShadow === 'none | none', bd.haloShadow);
 }
 
-/* ---- §3.3 修订（2026-10-13）：动效只许动 opacity，且必须给 reduced-motion 退路 ----
+/* ---- 标记语义修订（2026-10-13）：动效只许动 opacity，且必须给 reduced-motion 退路 ----
    这两条**只能静态读 SFC**：`prefers-reduced-motion` 在探针里没法模拟（代理不暴露
    `Emulation.setEmulatedMedia`），而「关键帧里有什么」本来也是**声明**层面的事实。 */
 const ringSfc = readFileSync(join(SRC, 'components', 'StatusRing.vue'), 'utf8');
@@ -585,7 +585,7 @@ const toHex = (rgb) => {
   return m ? '#' + [1, 2, 3].map((i) => Number(m[i]).toString(16).padStart(2, '0')).join('') : rgb;
 };
 const hueWrong = Object.entries(report.hueByLabel).filter(([label, rgb]) => EXPECTED_HUE[label] && toHex(rgb) !== EXPECTED_HUE[label]);
-check(`圆环色相逐值符合 §3.2 锁定表（页上出现 ${Object.keys(report.hueByLabel).length} 个状态）`, hueWrong.length === 0, hueWrong.map(([l, c]) => `${l}=${toHex(c)}≠${EXPECTED_HUE[l]}`).join(', '));
+check(`圆环色相逐值符合锁定表（页上出现 ${Object.keys(report.hueByLabel).length} 个状态）`, hueWrong.length === 0, hueWrong.map(([l, c]) => `${l}=${toHex(c)}≠${EXPECTED_HUE[l]}`).join(', '));
 const missing = Object.keys(EXPECTED_HUE).filter((l) => !(l in report.hueByLabel));
 console.log(`INFO  演示数据里未出现、因而未被核对的状态标签：${missing.join('、') || '（无）'}`);
 
@@ -602,7 +602,7 @@ check(
   `实测 ${Object.keys(report.hueByLabel).length} 个状态：${Object.keys(report.hueByLabel).join('、')}`
 );
 
-console.log('\n===== ④ §3.4 表格口径 =====');
+console.log('\n===== ④ 表格口径 =====');
 if (report.table) {
   const t = report.table;
   check('表头白底（不是灰底）', t.headerBg === 'rgb(255, 255, 255)', t.headerBg);
@@ -620,7 +620,7 @@ if (report.table) {
   check('工单报表应为表格形态', false, '未找到 .el-table');
 }
 
-console.log('\n===== ⑤ §3.5 形状与排版 =====');
+console.log('\n===== ⑤ 形状与排版 =====');
 for (const [label, s] of [['登录页', login], ['控制台概览', dash], ['工单报表', report]]) {
   // ⚠️ 先确认这个页面上**真的找到了**卡片。选择器写错时集合为空，
   //    后面两条 `filter(...).length === 0` 会**恒真**——那是"假绿灯"，比不测更糟。
@@ -636,7 +636,7 @@ check('侧栏导航选中态全部中性（无品牌蓝，色条为 --ink）', !
 check('侧栏导航字号回到基准 12px', dash.navLabelSize === '12px', dash.navLabelSize);
 check('顶栏标题用字号阶梯的 16px', dash.pageTitle === '16px', dash.pageTitle);
 
-console.log('\n===== ⑥ 登录页（§4.5，止于 G1） =====');
+console.log('\n===== ⑥ 登录页（止于 G1） =====');
 {
   const L = login.login;
   check('卡片圆角 2px（原 12px）', L?.radius === '2px', L?.radius);
@@ -647,11 +647,11 @@ console.log('\n===== ⑥ 登录页（§4.5，止于 G1） =====');
   check('主按钮已是新主色 #0052D9', L?.btnBg === 'rgb(0, 82, 217)', L?.btnBg);
   /*
     ⚠️ **这条断言被改写过两次，不是回归。**
-    它最初（只有 §4.2 那 4 个变量时）断言「按钮圆角 **2px**」——那是当时的**能覆盖到的上限**，
-    而 §3.6 的口径本来就要求圆角 **0**。`element-overrides.css` 落地后 2px 变成 0px，
+    它最初（只有那 4 个变量时）断言「按钮圆角 **2px**」——那是当时的**能覆盖到的上限**，
+    而按钮口径本来就要求圆角 **0**。`element-overrides.css` 落地后 2px 变成 0px，
     这条也就必须跟着改：**它原来测的是"妥协后的现状"，不是规范。**
   */
-  check('按钮圆角 0（§3.6；曾被 §4.2 的变量折中成 2px）、字号 12px',
+  check('按钮圆角 0（曾用 4 个 EP 变量折中成 2px）、字号 12px',
     L?.btnRadius === '0px' && L?.btnFontSize === '12px', `${L?.btnRadius} / ${L?.btnFontSize}`);
   /*
     ⚠️ **这一条是改写过的旧断言，不是回归。**
@@ -676,7 +676,7 @@ console.log('\n===== ⑥ 登录页（§4.5，止于 G1） =====');
   check('体积 ≤ 120 KB（「可压到极小体积」）', bytes > 0 && bytes <= 120 * 1024, `${(bytes / 1024).toFixed(1)} KB`);
 }
 
-console.log('\n===== ⑧ §3.6 按钮（结构级覆盖层 element-overrides.css） =====');
+console.log('\n===== ⑧ 按钮（结构级覆盖层 element-overrides.css） =====');
 {
   const rows = JSON.parse(await evalJs(BUTTON_PROBE));
   const B = Object.fromEntries(rows.map((r) => [r.id, r]));
@@ -709,7 +709,7 @@ console.log('\n===== ⑧ §3.6 按钮（结构级覆盖层 element-overrides.css
     `${B['b-loading'].color} / ${B['b-loading'].bg}`);
 }
 
-console.log('\n===== ⑨ 实心圆＝警戒（§3.3 ＋ §4.6 G4） =====');
+console.log('\n===== ⑨ 实心圆＝警戒（G4） =====');
 {
   // 阈值**不是前端写死的**：先把后端真值取回来，再跟页面上显示的数字对
   const invRes = await fetch(`${BACKEND}/inventory/summary`, {
@@ -740,7 +740,7 @@ console.log('\n===== ⑨ 实心圆＝警戒（§3.3 ＋ §4.6 G4） =====');
     check(`${name}：有且只有一个实心圆点`, a.dotCount === 1, `${a.dotCount} 个`);
     check(`${name}：圆点色相 = --alert (#F5222D)`, a.dotColor === 'rgb(245, 34, 45)', a.dotColor);
     check(`${name}：圆点是**实心**（填充 === 描边色）`, a.dotFill === a.dotColor, `${a.dotFill} vs ${a.dotColor}`);
-    // ⚠️ 这一条**刻意推翻**了旧值（旧：`a.dotSize === '9px'`）。理由与 §3.3 的修订同源：
+    // ⚠️ 这一条**刻意推翻**了旧值（旧：`a.dotSize === '9px'`）。理由与标记语义的修订同源：
     //    实心点缩到 6px，**尺寸也参与区分** —— 旧的「只差填充这一个变量」已作废。**不是回归。**
     check(`${name}：圆点外径 6px（2026-10-13 起；旧值是 9px）`, a.dotSize === '6px', a.dotSize);
     check(`${name}：圆点用的是 dot 变体（不是 ring）`, (a.dotVariantClass || '').includes('status-ring--dot'), a.dotVariantClass);
@@ -781,7 +781,7 @@ for (const page of [...PAGES, ...MATRIX_EXTRA]) {
         cardCount: d.querySelectorAll('.rl-card').length,
         emptyCount: d.querySelectorAll('.el-empty').length,
         buttonCount: btns.length,
-        // §3.6 让按钮变宽，最可能的坏结果是**被挤出视口**（而非页面整体溢出）
+        // 按钮变宽后，最可能的坏结果是**被挤出视口**（而非页面整体溢出）
         maxButtonRight: btns.length ? Math.max(...btns.map((b) => b.getBoundingClientRect().right)) : 0
       };
       f.remove();
