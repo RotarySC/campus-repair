@@ -1,15 +1,44 @@
 import { defineStore } from 'pinia';
 import { UserInfo, LoginResult } from '@campus/shared';
+import type { AccountStatus } from '@campus/shared';
 import { createHttpClient } from '@campus/shared';
+
+/** 身份核验状态的本地持久化键（Phase 01）；与登录三件套一起清理 */
+const IDENTITY_VERIFIED_KEY = 'identity_verified';
+const ACCOUNT_STATUS_KEY = 'account_status';
+
+/**
+ * 读取本地核验状态。**缺省按「已核验 / 正常」**——与后端「存量账号回填
+ * `identity_verified=1`」同口径，也避免升级前建立的会话被误跳到 `/pending`。
+ */
+function readIdentityVerified(): boolean {
+  const raw = localStorage.getItem(IDENTITY_VERIFIED_KEY);
+  return raw === null ? true : raw !== 'false';
+}
+
+function readAccountStatus(): AccountStatus {
+  const raw = Number(localStorage.getItem(ACCOUNT_STATUS_KEY));
+  return raw === 0 || raw === 2 ? raw : 1;
+}
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     accessToken: localStorage.getItem('access_token') || '',
     refreshToken: localStorage.getItem('refresh_token') || '',
-    userInfo: JSON.parse(localStorage.getItem('user_info') || 'null') as UserInfo | null
+    userInfo: JSON.parse(localStorage.getItem('user_info') || 'null') as UserInfo | null,
+    /**
+     * 是否已通过身份核验（Phase 01）。
+     * 与 `accountStatus` 分开存：`2` 待核验 / `0` 停用是「账号能不能用」，
+     * `identityVerified` 是「身份核验过没有」——页面与路由守卫各取所需。
+     */
+    identityVerified: readIdentityVerified(),
+    /** 账号三态：`0` 停用 / `1` 正常 / `2` 待核验 */
+    accountStatus: readAccountStatus() as AccountStatus
   }),
   getters: {
-    isAuthenticated: (state) => !!state.accessToken
+    isAuthenticated: (state) => !!state.accessToken,
+    /** 路由守卫用：未核验或处于待核验三态时应落 `/pending` */
+    needsIdentityReview: (state) => !state.identityVerified || state.accountStatus === 2
   },
   actions: {
     setAuth(loginResult: LoginResult) {
@@ -17,9 +46,45 @@ export const useAuthStore = defineStore('auth', {
       this.refreshToken = loginResult.refreshToken;
       this.userInfo = loginResult.userInfo;
 
+      // Phase 01：登录响应在 data 顶层平铺 identityVerified/accountStatus；
+      // 旧响应没有这两个字段时回退到 userInfo 上的同源字段，再回退到「已核验/正常」。
+      this.identityVerified =
+        loginResult.identityVerified ?? loginResult.userInfo?.identityVerified ?? true;
+      this.accountStatus = loginResult.accountStatus ?? loginResult.userInfo?.status ?? 1;
+
       localStorage.setItem('access_token', loginResult.accessToken);
       localStorage.setItem('refresh_token', loginResult.refreshToken);
       localStorage.setItem('user_info', JSON.stringify(loginResult.userInfo));
+      this.persistIdentityState();
+    },
+    /**
+     * 用 `GET /users/me` 的完整资料刷新登录快照（个人中心等页面进入时调用）。
+     * 只覆盖字段齐备的数据；核验字段缺失时保留当前值（旧后端过渡期）。
+     */
+    setUserInfo(userInfo: UserInfo) {
+      this.userInfo = userInfo;
+      if (typeof userInfo.identityVerified === 'boolean') {
+        this.identityVerified = userInfo.identityVerified;
+      }
+      if (userInfo.status === 0 || userInfo.status === 1 || userInfo.status === 2) {
+        this.accountStatus = userInfo.status;
+      }
+      localStorage.setItem('user_info', JSON.stringify(userInfo));
+      this.persistIdentityState();
+    },
+    /**
+     * 刷新令牌（`POST /auth/refresh-token`）也回传 `identityVerified/accountStatus`，
+     * 但 `packages/shared/src/api/http.ts` 的换票拦截器目前只消费 tokens（该文件不在
+     * Phase 01 前端写权限内）。接上换票路径时调用本 action 即可，避免仅靠本地快照判断。
+     */
+    setIdentityState(identityVerified: boolean, accountStatus: AccountStatus) {
+      this.identityVerified = identityVerified;
+      this.accountStatus = accountStatus;
+      this.persistIdentityState();
+    },
+    persistIdentityState() {
+      localStorage.setItem(IDENTITY_VERIFIED_KEY, String(this.identityVerified));
+      localStorage.setItem(ACCOUNT_STATUS_KEY, String(this.accountStatus));
     },
     updateTokens(accessToken: string, refreshToken: string) {
       this.accessToken = accessToken;
@@ -59,9 +124,14 @@ export const useAuthStore = defineStore('auth', {
       this.accessToken = '';
       this.refreshToken = '';
       this.userInfo = null;
+      // 核验状态归零回默认，避免下一位登录者继承上一位的「已核验」
+      this.identityVerified = true;
+      this.accountStatus = 1;
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user_info');
+      localStorage.removeItem(IDENTITY_VERIFIED_KEY);
+      localStorage.removeItem(ACCOUNT_STATUS_KEY);
     }
   }
 });

@@ -38,11 +38,25 @@
       </template>
 
       <template #col-status="{ row }">
-        <el-switch
-          :model-value="row.status === 1"
-          aria-label="账号状态"
-          @change="(val: boolean) => toggleStatus(row, val)"
-        />
+        <!-- Phase 01：账号三态。开关只对 0/1 生效；2 = 待核验，不做启停 -->
+        <div class="status-cell">
+          <el-switch
+            v-if="row.status === 0 || row.status === 1"
+            :model-value="row.status === 1"
+            aria-label="账号状态"
+            @change="(val: boolean) => toggleStatus(row, val)"
+          />
+          <span v-if="row.status === 0 || row.status === 1" class="status-text">
+            {{ statusLabel(row.status) }}
+          </span>
+          <StatusRing
+            v-else-if="row.status === 2"
+            variant="dot"
+            tone="muted"
+            label="待核验"
+          />
+          <span v-else class="text-faint">未知状态</span>
+        </div>
       </template>
 
       <template #col-isFirstLogin="{ row }">
@@ -61,7 +75,18 @@
       </template>
 
       <template #col-actions="{ row }">
-        <el-button link type="primary" size="small" @click="handleResetPassword(row)">重置密码</el-button>
+        <div class="row-actions">
+          <el-button
+            v-if="row.status === 2"
+            link
+            type="primary"
+            size="small"
+            @click="goIdentityReview"
+          >
+            去核验
+          </el-button>
+          <el-button link type="primary" size="small" @click="handleResetPassword(row)">重置密码</el-button>
+        </div>
       </template>
     </ResponsiveTable>
 
@@ -104,11 +129,15 @@
 import MetaChip from '../../components/MetaChip.vue';
 import StatusRing from '../../components/StatusRing.vue';
 import { ref, reactive, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { branchLabel } from '@campus/shared';
+import { AccountStatusLabels, branchLabel } from '@campus/shared';
+import type { AccountStatus } from '@campus/shared';
 import { httpClient } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
+
+const router = useRouter();
 
 const loading = ref(false);
 const importing = ref(false);
@@ -143,8 +172,8 @@ const columns: TableColumn<any>[] = [
         ? { text: '需改密', type: 'ring', variant: 'dot', tone: 'muted' }
         : { text: '已改密' }
   },
-  { key: 'status', label: '账号状态', width: 100, align: 'center' },
-  { key: 'actions', label: '操作', width: 140, align: 'center', card: 'action' }
+  { key: 'status', label: '账号状态', width: 120, align: 'center' },
+  { key: 'actions', label: '操作', width: 180, align: 'center', card: 'action' }
 ];
 
 const query = reactive({
@@ -153,6 +182,11 @@ const query = reactive({
   keyword: '',
   userType: ''
 });
+
+/** 账号状态中文名：`status` 来自后端分页 VO（number），按三态取值收敛类型 */
+function statusLabel(status: number): string {
+  return AccountStatusLabels[status as AccountStatus] || '未知状态';
+}
 
 const reportVisible = ref(false);
 const importReport = ref<any>({});
@@ -180,6 +214,8 @@ function handleSearch() {
 }
 
 async function toggleStatus(row: any, val: boolean) {
+  // 三态下开关只服务 0/1；2（待核验）必须走「身份核验」，不能用启停覆盖核验状态
+  if (row.status !== 0 && row.status !== 1) return;
   const newStatus = val ? 1 : 0;
   try {
     const res = await httpClient.put<null>(`/users/${row.id}/status`, null, {
@@ -194,8 +230,12 @@ async function toggleStatus(row: any, val: boolean) {
   }
 }
 
-function handleResetPassword(row: any) {
-  ElMessageBox.prompt(`请输入用户【${row.realName}】的新初始密码（留空默认 InitPass@2026）：`, '重置登录密码', {
+/** 待核验账号跳「身份核验」页处理（路由由 Lead 集成：/system/identity） */
+function goIdentityReview() {
+  router.push('/system/identity');
+}
+
+function handleResetPassword(row: any) {  ElMessageBox.prompt(`请输入用户【${row.realName}】的新初始密码（留空默认 InitPass@2026）：`, '重置登录密码', {
     confirmButtonText: '确定重置',
     cancelButtonText: '取消',
     inputValue: 'InitPass@2026'
@@ -279,6 +319,23 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+.status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-text {
+  font-size: var(--fs-base);
+  color: var(--muted);
+}
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.text-faint {
+  color: var(--faint);
 }
 .user-table {
   display: block;

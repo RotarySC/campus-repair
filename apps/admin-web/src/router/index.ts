@@ -9,12 +9,14 @@ import WorkOrderReportView from '../views/analytics/WorkOrderReportView.vue';
 import ForbiddenView from '../views/error/ForbiddenView.vue';
 import LoginView from '../views/login/LoginView.vue';
 import RegisterView from '../views/auth/RegisterView.vue';
+import PendingReviewView from '../views/auth/PendingReviewView.vue';
 import RoleHomeGate from '../views/home/RoleHomeGate.vue';
 import StudentSubmitRepairView from '../views/student/StudentSubmitRepairView.vue';
 import StudentOrderDetailView from '../views/student/StudentOrderDetailView.vue';
 import PersonalCenterView from '../views/profile/PersonalCenterView.vue';
 import WorkbenchView from '../views/worker/WorkbenchView.vue';
 import WorkerFinishView from '../views/worker/WorkerFinishView.vue';
+import IdentityReviewView from '../views/system/IdentityReviewView.vue';
 
 /**
  * 职能集合，与后端 `@PreAuthorize` 保持一致（口径见仓库根 CONTEXT.md）。
@@ -85,6 +87,13 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '个人中心', requiresAuth: true }
       },
       {
+        // 身份待核验落地页：未核验账号只允许在这里、个人中心与登录/注册页活动
+        path: 'pending',
+        name: 'PendingReview',
+        component: PendingReviewView,
+        meta: { title: '身份待核验', requiresAuth: true }
+      },
+      {
         path: 'worker/workbench',
         name: 'WorkerWorkbench',
         component: WorkbenchView,
@@ -125,6 +134,14 @@ const routes: RouteRecordRaw[] = [
         name: 'UserManage',
         component: UserManageView,
         meta: { title: '用户台账管理', requiresAuth: true, functions: ADMIN_FUNCTIONS }
+      },
+      {
+        // 身份核验只授权平台管理员：后端 approve/reject 是 hasRole('PLATFORM_ADMIN')，
+        // 这里刻意不用 ADMIN_FUNCTIONS，避免调度点进来吃 403
+        path: 'system/identity',
+        name: 'IdentityReview',
+        component: IdentityReviewView,
+        meta: { title: '身份核验', requiresAuth: true, functions: ['PLATFORM_ADMIN'] }
       }
     ]
   },
@@ -165,6 +182,16 @@ router.beforeEach((to, from, next) => {
   if (!to.meta.requiresAuth) {
     next();
     return;
+  }
+
+  // 身份待核验：可登录、可看个人中心与待核验页，其余一律拦回 /pending。
+  // 与后端 1010 闸门（仅 status=1 且 identityVerified=1 可提单）同一口径。
+  if (authStore.needsIdentityReview) {
+    const allowedWhenPending = new Set(['/pending', '/profile']);
+    if (!allowedWhenPending.has(to.path)) {
+      next('/pending');
+      return;
+    }
   }
 
   const functions = getUserFunctions(authStore);

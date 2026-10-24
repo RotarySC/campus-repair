@@ -4,7 +4,8 @@ export type NotificationCategory =
   | 'SLA_ALERT'
   | 'REWORK_ALERT'
   | 'STOCK_WARNING'
-  | 'BROADCAST';
+  | 'BROADCAST'
+  | 'IDENTITY_AUDIT';
 
 export const NotificationCategoryLabels: Record<string, string> = {
   ORDER_DISPATCH: '派单提醒',
@@ -12,7 +13,9 @@ export const NotificationCategoryLabels: Record<string, string> = {
   SLA_ALERT: '催办报警',
   REWORK_ALERT: '返工通知',
   STOCK_WARNING: '库存告警',
-  BROADCAST: '全校公告'
+  BROADCAST: '全校公告',
+  // Phase 01：身份核验结论（通过 / 驳回）的站内信分类
+  IDENTITY_AUDIT: '身份审核'
 };
 
 export interface NotificationItemVO {

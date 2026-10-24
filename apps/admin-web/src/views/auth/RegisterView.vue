@@ -14,6 +14,7 @@
       </div>
 
       <el-form
+        v-if="!registerResult"
         ref="registerFormRef"
         :model="form"
         :rules="rules"
@@ -86,6 +87,60 @@
           确认注册并激活
         </el-button>
       </el-form>
+
+      <!--
+        注册结果两态（Phase 01）：提交后不再一律 toast + 跳登录。
+        A）名单命中，自动通过 → 告知可直接登录；
+        B）待核验 → 就地显示原因与学号，让用户知道「为什么还不能提单」。
+        结果态跟表单同宽同卡片长相，避免从表单突然跳到一个孤零零的提示条。
+      -->
+      <section v-else class="register-form register-result" role="status" aria-live="polite">
+        <div class="result-head">
+          <StatusRing v-if="isPending" variant="dot" tone="muted" label="待核验" />
+          <h3>{{ isPending ? '注册已提交，等待管理员核验' : '注册成功' }}</h3>
+        </div>
+
+        <p class="result-desc">
+          <template v-if="isPending">
+            账号已创建，但校内身份还需管理员确认。核验通过后即可提交报修申请。
+          </template>
+          <template v-else>名单核验已通过，请使用刚设置的密码登录。</template>
+        </p>
+
+        <!-- 待核验原因：中性提示块（不用 el-alert 的语义色，发送给用户的是一条解释而非警报） -->
+        <div v-if="isPending" class="result-reason">
+          <span class="result-reason__label">待核验原因</span>
+          <span class="result-reason__text">{{ pendingReasonText }}</span>
+        </div>
+
+        <dl class="result-meta">
+          <div class="result-meta__row">
+            <dt>学号/工号</dt>
+            <dd>{{ form.username }}</dd>
+          </div>
+          <div class="result-meta__row">
+            <dt>真实姓名</dt>
+            <dd>{{ form.realName }}</dd>
+          </div>
+          <div class="result-meta__row">
+            <dt>账号状态</dt>
+            <dd>{{ AccountStatusLabels[registerResult.status] || '待核验' }}</dd>
+          </div>
+          <div class="result-meta__row">
+            <dt>名单比对</dt>
+            <dd>{{ IdentityMatchResultLabels[registerResult.matchResult] || registerResult.matchResult }}</dd>
+          </div>
+        </dl>
+
+        <div class="result-actions">
+          <el-button type="primary" size="large" class="submit-btn" @click="router.push('/login')">
+            返回登录
+          </el-button>
+          <el-button v-if="isPending" size="large" @click="registerResult = null">
+            修改资料重新提交
+          </el-button>
+        </div>
+      </section>
     </div>
   </div>
 </template>
@@ -96,13 +151,33 @@ import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { ArrowLeft } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
-import { BranchOrgPlaceholders, PASSWORD_PATTERN, PASSWORD_RULE_MESSAGE } from '@campus/shared';
-import type { OrgBranch, OrgNodeVO } from '@campus/shared';
+import {
+  AccountStatusLabels,
+  BranchOrgPlaceholders,
+  IdentityMatchResultLabels,
+  PASSWORD_PATTERN,
+  PASSWORD_RULE_MESSAGE
+} from '@campus/shared';
+import type { OrgBranch, OrgNodeVO, RegisterResultVO } from '@campus/shared';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
+import StatusRing from '../../components/StatusRing.vue';
 
 const router = useRouter();
 const loading = ref(false);
 const registerFormRef = ref<FormInstance>();
+
+/**
+ * 注册结果（Phase 01）。`null` = 还在填表；非空 = 展示两态结果页。
+ * `status=1 & identityVerified=true` 为自动通过，其余一律按「待核验」展示
+ * （宁可多给一条核验说明，也不要把未核验账号误报成注册完成）。
+ */
+const registerResult = ref<RegisterResultVO | null>(null);
+const isPending = computed(
+  () => !(registerResult.value?.status === 1 && registerResult.value?.identityVerified === true)
+);
+const pendingReasonText = computed(
+  () => registerResult.value?.pendingReason || '未在预导入名单中找到该学号/工号，需管理员人工核验'
+);
 
 /** 身份（学生/教职工）——注册页的表达层；服务端只收「组织条线」 */
 const identityType = ref<'STUDENT' | 'STAFF'>('STUDENT');
@@ -198,8 +273,16 @@ async function onSubmit() {
 
   loading.value = true;
   try {
-    const res = await httpClient.post<null>('/auth/register', { ...form, userType: currentBranch() });
-    if (res.code === 200) {
+    const res = await httpClient.post<RegisterResultVO>('/auth/register', {
+      ...form,
+      userType: currentBranch()
+    });
+    if (res.code === 200 && res.data) {
+      // 结果两态由页面承载，不再「toast 成功 + 一律跳登录」：
+      // 待核验账号必须先看到原因，否则登录后撞上 1010 只会一脸问号。
+      registerResult.value = res.data;
+    } else if (res.code === 200) {
+      // 过渡期兼容：旧后端仍返回 R<Void>，退回原来的「成功 + 去登录」
       ElMessage.success('注册成功，请使用新密码登录');
       router.push('/login');
     } else {
@@ -284,5 +367,91 @@ async function onSubmit() {
   width: 100%;
   min-height: 44px;
   margin-top: 8px;
+}
+
+/* ---------- 注册结果两态（Phase 01） ---------- */
+.register-result {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px 20px 28px;
+}
+
+.result-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-head h3 {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
+}
+
+.result-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.result-meta {
+  margin: 0;
+  padding-top: 12px;
+  border-top: var(--hairline) solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-reason {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background-color: var(--canvas);
+}
+
+.result-reason__label {
+  font-size: var(--fs-base);
+  color: var(--faint);
+}
+
+.result-reason__text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.result-meta__row {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.result-meta dt {
+  flex: 0 0 84px;
+  color: var(--muted);
+}
+
+.result-meta dd {
+  margin: 0;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.result-actions .submit-btn {
+  width: auto;
+  flex: 1 1 180px;
+  margin-top: 0;
 }
 </style>

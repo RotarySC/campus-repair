@@ -3,6 +3,9 @@
  * 与后端 `modules/user/vo/RepairSummaryVO`、`MyWorkerProfileVO` 一一对应。
  */
 
+import type { AccountStatus } from './identity';
+import type { UserInfo } from './auth';
+
 /** 师生「我的报修概览」；avgRating 无评价时为 null（前端渲染 `—`，不做兜底假值） */
 export interface RepairSummaryVO {
   totalCount: number;
@@ -44,6 +47,18 @@ export interface OrgNodeVO {
   /** 1-正常, 0-停用（前端取数一律带 onlyEnabled=true） */
   status: number;
   children: OrgNodeVO[];
+}
+
+/**
+ * 当前登录用户的完整资料（`GET /users/me`，同时是登录响应的 `userInfo`）。
+ *
+ * 与后端 `modules/user/vo/UserProfileVO` 一一对应：Phase 01 起新增
+ * `status`（`0/1/2`）与 `identityVerified`，两者与 `UserInfo` 里的同名字段同源。
+ * `GET /users/me` 是**待核验账号唯一放行的资料端点**（见阶段文档 §4.4 白名单）。
+ */
+export interface UserProfileVO extends UserInfo {
+  status: AccountStatus;
+  identityVerified: boolean;
 }
 
 /** 师傅「我的作业概览」；无 worker_profile 档案时后端返回 data=null */

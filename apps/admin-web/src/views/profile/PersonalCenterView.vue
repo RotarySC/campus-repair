@@ -42,6 +42,8 @@
               <div class="account-line">账号：{{ userInfo?.username || '—' }}</div>
               <div class="account-line">单位：{{ userInfo?.department || '—' }}</div>
               <div class="account-line">注册时间：{{ formatDateTime(userInfo?.createdAt) }}</div>
+              <!-- Phase 01：身份核验状态（与账号三态分开；待审核时仍可查看资料、不能提单） -->
+              <div class="account-line">身份核验：{{ identityVerified ? '已通过' : '待审核' }}</div>
             </div>
           </div>
         </el-card>
@@ -286,7 +288,8 @@ import type {
   MyWorkerProfileVO,
   OrgNodeVO,
   RepairSummaryVO,
-  UserInfo
+  UserInfo,
+  UserProfileVO
 } from '@campus/shared';
 import { useViewport } from '../../composables/useViewport';
 import DrilldownCascader from '../../components/DrilldownCascader.vue';
@@ -301,6 +304,8 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const userInfo = computed<UserInfo | null>(() => authStore.userInfo);
+/** 身份核验状态（Phase 01）：与账号三态分开，待审核时账号仍可登录看资料 */
+const identityVerified = computed(() => authStore.identityVerified);
 /** 页面显隐一律按**职能**判定（口径见 CONTEXT.md）；userType 只用于单位字典的条线 */
 const identity = useIdentity();
 const hasReporter = computed(() => identity.isReporter.value);
@@ -509,12 +514,12 @@ function applyUserInfoToForm() {
  */
 async function refreshProfile() {
   try {
-    const res = await httpClient.get<UserInfo>('/users/me');
+    const res = await httpClient.get<UserProfileVO>('/users/me');
     // 形状校验：旧版该端点只返回 userId/username/roles，直接覆盖会丢 userType →
     // 角色化的统计区会整块消失（本轮实测踩到），因此只在字段齐备时替换快照。
     if (res.code === 200 && res.data?.id && res.data?.userType) {
-      authStore.userInfo = res.data;
-      localStorage.setItem('user_info', JSON.stringify(res.data));
+      // 统一走 store action：同步 userInfo / identityVerified / accountStatus 与 localStorage
+      authStore.setUserInfo(res.data);
     }
   } catch (_) {
     // 非关键路径：保留本地快照
@@ -602,8 +607,7 @@ async function uploadAvatar(options: UploadRequestOptions) {
       throw new Error(saved.message || '头像保存失败');
     }
 
-    authStore.userInfo = saved.data;
-    localStorage.setItem('user_info', JSON.stringify(saved.data));
+    authStore.setUserInfo(saved.data);
     ElMessage.success('头像已更新');
   } catch (err: any) {
     ElMessage.error(err.response?.data?.message || err.message || '头像上传失败');

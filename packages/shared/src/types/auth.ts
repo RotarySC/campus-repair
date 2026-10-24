@@ -1,3 +1,5 @@
+import type { AccountStatus } from './identity';
+
 export interface ApiResponse<T = any> {
   code: number;
   message: string;
@@ -23,6 +25,14 @@ export interface UserInfo {
   avatarUrl?: string;
   /** 注册时间（个人中心「账户概览」）；老会话的 localStorage 快照里可能没有 */
   createdAt?: string;
+  /**
+   * 账号状态：`0` 停用 / `1` 正常 / `2` 待核验（Phase 01）。
+   * 与 `identityVerified` 是两个事实（见 `types/identity.ts`）；
+   * 旧版后端 / 老 localStorage 快照里没有该字段，读取方需回退。
+   */
+  status?: AccountStatus;
+  /** 身份核验是否已通过（Phase 01）；老快照里没有该字段时按已核验处理 */
+  identityVerified?: boolean;
 }
 
 export interface LoginResult {
@@ -30,6 +40,15 @@ export interface LoginResult {
   refreshToken: string;
   expiresIn: number;
   userInfo: UserInfo;
+  /**
+   * 账号状态与核验状态（Phase 01 起 `LoginResponseVO` 在 data 顶层平铺这两个字段）。
+   *
+   * 刻意声明为可选：`PUT /users/password/change` 等「换票类」响应也复用本类型，
+   * 它们并不承诺带核验字段；旧后端也有一个过渡窗口。读取方应以
+   * `loginResult.identityVerified ?? userInfo.identityVerified ?? true` 的方式回退。
+   */
+  identityVerified?: boolean;
+  accountStatus?: AccountStatus;
 }
 
 export interface CaptchaResult {

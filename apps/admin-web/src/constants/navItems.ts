@@ -24,7 +24,9 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { path: '/reports/orders', label: '工单检索报表', icon: 'Document', requires: 'ADMIN_SIDE' },
   { path: '/inventory', label: '耗材进销存台账', icon: 'Box', requires: 'ADMIN_SIDE' },
   { path: '/spatial', label: '空间与分类字典', icon: 'Grid', requires: 'ADMIN_SIDE' },
-  { path: '/system/users', label: '用户台账管理', icon: 'User', requires: 'ADMIN_SIDE' }
+  { path: '/system/users', label: '用户台账管理', icon: 'User', requires: 'ADMIN_SIDE' },
+  // 核验只给平台管理员：后端 approve/reject 是 hasRole('PLATFORM_ADMIN')
+  { path: '/system/identity', label: '身份核验', icon: 'Stamp', requires: 'PLATFORM_ADMIN' }
 ];
 
 /** 师生导航：提单与跟单两个高频入口 */
