@@ -228,7 +228,9 @@ public class WorkOrderService {
                     .build();
         }
 
-        eventPublisher.publishEvent(new OrderCreatedEvent(this, order.getId(), order.getOrderNo()));
+        // 提交后发布：异步的自动派单监听器若在事务提交前就绪，会读不到这一行（selectById 为空），
+        // 表现为「偶尔不自动派单」且没有任何日志。与复核通过/重提两条路径保持同一口径。
+        publishOrderCreatedAfterCommit(order.getId(), order.getOrderNo());
 
         return WorkOrderSubmitResultVO.builder()
                 .orderId(order.getId())
