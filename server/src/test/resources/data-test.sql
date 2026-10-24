@@ -43,3 +43,12 @@ INSERT INTO org_node (id, parent_id, name, level_type, audience, full_path_name,
 (1013, 1010, '计算机学院',    2, 'FACULTY',   '所属单位 计算机学院',            20, 1),
 (1014, 1010, '已停用单位',    2, 'LOGISTICS', '所属单位 已停用单位',            99, 0),
 (1015, 1010, '信息中心',     2, 'ADMIN',     '所属单位 信息中心',              90, 1);
+
+-- ---------------------------------------------------------------------------
+-- 校内人员名单（Phase 01）：种子账号必须在册，否则自助注册路径无法演示「自动通过」。
+-- 测试用例自己需要的学号/工号由用例内插入，不要往这里堆。
+-- ---------------------------------------------------------------------------
+INSERT INTO sys_identity_roster (username, real_name, user_type, department, phone, status, import_batch) VALUES
+('admin',    '管理员', 'ADMIN',     NULL,                 '13800000000', 1, 'seed'),
+('worker01', '李师傅', 'LOGISTICS', NULL,                 '13800000002', 1, 'seed'),
+('student01','张同学', 'STUDENT',   '2024级 计算机学院',   '13800000003', 1, 'seed');

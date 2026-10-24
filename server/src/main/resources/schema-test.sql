@@ -1,3 +1,9 @@
+DROP TABLE IF EXISTS sys_operation_log;
+DROP TABLE IF EXISTS sys_announcement;
+DROP TABLE IF EXISTS sys_content_review;
+DROP TABLE IF EXISTS sys_sensitive_word;
+DROP TABLE IF EXISTS sys_identity_review;
+DROP TABLE IF EXISTS sys_identity_roster;
 DROP TABLE IF EXISTS repair_material_consume;
 DROP TABLE IF EXISTS spare_part_inbound;
 DROP TABLE IF EXISTS spare_part;
@@ -24,7 +30,10 @@ CREATE TABLE sys_user (
   department VARCHAR(64),
   default_space_id BIGINT,
   avatar_url VARCHAR(255),
+  -- 0-停用, 1-正常, 2-待审核（身份核验中：可登录、不可提单）
   status TINYINT NOT NULL DEFAULT 1,
+  -- 身份核验结论：1-已核验, 0-未核验。存量账号默认 1（升级时视为已核验，避免集体打回待审核）
+  identity_verified TINYINT NOT NULL DEFAULT 1,
   is_first_login TINYINT NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -169,6 +178,8 @@ CREATE TABLE repair_order (
   urgency_level TINYINT NOT NULL DEFAULT 1,
   appointment_period VARCHAR(64) NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'PENDING_DISPATCH',
+  -- 内容审核闸门（不是工单状态）：PASSED 可派单 / PENDING 待复核 / REJECTED 已驳回待修改
+  review_status VARCHAR(16) NOT NULL DEFAULT 'PASSED',
   worker_id BIGINT,
   worker_name VARCHAR(32),
   worker_phone VARCHAR(20),
@@ -218,6 +229,8 @@ CREATE TABLE spare_part (
   guide_price DECIMAL(10,2) NOT NULL,
   stock_quantity INT NOT NULL DEFAULT 0,
   safety_stock_threshold INT NOT NULL DEFAULT 5,
+  -- 库存告警冷却水位：null=从未告警；入库补回阈值以上时清空
+  last_warning_at TIMESTAMP DEFAULT NULL,
   status TINYINT NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -277,7 +290,125 @@ CREATE TABLE sys_notification (
   content VARCHAR(1000) NOT NULL,
   category VARCHAR(32) NOT NULL,
   related_order_id BIGINT,
+  -- 公告扇出来源（BROADCAST 类通知回指 sys_announcement.id）
+  announcement_id BIGINT,
   is_read TINYINT NOT NULL DEFAULT 0,
   read_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ---------------------------------------------------------------------------
+-- Phase 01 · 校内身份核验
+-- ---------------------------------------------------------------------------
+
+-- 校内人员名单：由教务/人事导入，是「注册核验」的依据；不存密码、不参与认证。
+-- 离校/离职只置 status=0，不删行（审核轨迹要能回指）。
+CREATE TABLE sys_identity_roster (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(64) NOT NULL,
+  real_name VARCHAR(32) NOT NULL,
+  user_type VARCHAR(20) NOT NULL,
+  department VARCHAR(64),
+  phone VARCHAR(20),
+  status TINYINT NOT NULL DEFAULT 1,
+  import_batch VARCHAR(32),
+  imported_by BIGINT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (username)
+);
+
+-- 校内身份审核轨迹：每次注册/重新提交一行；核验只允许把 PENDING 改成 APPROVED/REJECTED（一次性决策）。
+CREATE TABLE sys_identity_review (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  username VARCHAR(64) NOT NULL,
+  apply_type VARCHAR(16) NOT NULL,        -- REGISTER / REAPPLY
+  match_result VARCHAR(16) NOT NULL,      -- MATCHED / MISMATCHED / MISMATCHED_TYPE / NOT_IN_ROSTER
+  outcome VARCHAR(16) NOT NULL,           -- PENDING / APPROVED / REJECTED
+  reason VARCHAR(255),
+  reviewer_id BIGINT,
+  reviewer_name VARCHAR(32),
+  reviewed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_identity_review_user ON sys_identity_review (user_id, created_at);
+CREATE INDEX idx_identity_review_outcome ON sys_identity_review (outcome, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Phase 02 · 内容审核（初筛 → 复核 → 轨迹）与公告先审后发
+-- ---------------------------------------------------------------------------
+
+-- 敏感词表：四类命中口径的数据来源（AD/ABUSE/PRIVACY/IRRELEVANT），后台可维护
+CREATE TABLE sys_sensitive_word (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  word VARCHAR(64) NOT NULL,
+  category VARCHAR(16) NOT NULL,
+  enabled TINYINT NOT NULL DEFAULT 1,
+  created_by BIGINT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (word)
+);
+
+-- 内容审核轨迹：append-only；只有「初筛命中」或「报修人重提」才落行
+CREATE TABLE sys_content_review (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  biz_type VARCHAR(16) NOT NULL,          -- ORDER / ANNOUNCEMENT
+  biz_id BIGINT NOT NULL,
+  biz_no VARCHAR(32),
+  submit_round INT NOT NULL DEFAULT 1,
+  content_snapshot VARCHAR(1000) NOT NULL,
+  attachments VARCHAR(2000),
+  hit_rules VARCHAR(500),
+  screen_result VARCHAR(16) NOT NULL,     -- SUSPECTED（本表只存进队列的）
+  outcome VARCHAR(16) NOT NULL DEFAULT 'PENDING',  -- PENDING / APPROVED / REJECTED
+  reviewer_id BIGINT,
+  reviewer_name VARCHAR(32),
+  review_reason VARCHAR(500),
+  reviewed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_content_review_biz ON sys_content_review (biz_type, biz_id, submit_round);
+CREATE INDEX idx_content_review_outcome ON sys_content_review (outcome, created_at);
+
+-- 维修公告本体：草稿 → 待审 → 通过/驳回 → 发布
+CREATE TABLE sys_announcement (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(128) NOT NULL,
+  content VARCHAR(2000) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'DRAFT',  -- DRAFT/PENDING_REVIEW/APPROVED/REJECTED/PUBLISHED
+  author_id BIGINT NOT NULL,
+  author_name VARCHAR(32) NOT NULL,
+  reviewer_id BIGINT,
+  reviewer_name VARCHAR(32),
+  review_reason VARCHAR(500),
+  submitted_at TIMESTAMP,
+  reviewed_at TIMESTAMP,
+  published_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_announcement_status ON sys_announcement (status, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Phase 04 · 字典/参数变更审计（append-only）
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE sys_operation_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  module VARCHAR(32) NOT NULL,            -- SPATIAL / CATEGORY / CONFIG
+  action VARCHAR(16) NOT NULL,            -- CREATE / UPDATE / DELETE / STATUS / IMPORT
+  target_type VARCHAR(32) NOT NULL,       -- SPATIAL_NODE / REPAIR_CATEGORY / SYS_CONFIG
+  target_id BIGINT,
+  target_name VARCHAR(128),
+  before_snapshot VARCHAR(2000),
+  after_snapshot VARCHAR(2000),
+  operator_id BIGINT NOT NULL,
+  operator_name VARCHAR(32) NOT NULL,
+  operator_role VARCHAR(32) NOT NULL,
+  remark VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_operation_log_module ON sys_operation_log (module, created_at);
+CREATE INDEX idx_operation_log_target ON sys_operation_log (target_type, target_id);
