@@ -26,6 +26,7 @@ import com.campus.repair.modules.user.mapper.SysRoleMapper;
 import com.campus.repair.modules.user.mapper.SysUserMapper;
 import com.campus.repair.modules.user.mapper.SysUserRoleMapper;
 import com.campus.repair.modules.user.mapper.WorkerProfileMapper;
+import com.campus.repair.modules.user.vo.UserAdminVO;
 import com.campus.repair.modules.user.vo.UserImportResultVO;
 import com.campus.repair.modules.user.vo.UserProfileVO;
 import lombok.RequiredArgsConstructor;
@@ -256,7 +257,7 @@ public class UserService {
         }
     }
 
-    public IPage<SysUser> pageUsers(int page, int size, String keyword, String userType, Integer status) {
+    public IPage<UserAdminVO> pageUsers(int page, int size, String keyword, String userType, Integer status) {
         Page<SysUser> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<SysUser> query = new LambdaQueryWrapper<>();
 
@@ -273,7 +274,51 @@ public class UserService {
         }
         query.orderByDesc(SysUser::getId);
 
-        return userMapper.selectPage(pageParam, query);
+        Page<SysUser> userPage = userMapper.selectPage(pageParam, query);
+
+        // 手机号可见性：平台管理看完整（账号管理要联系本人），调度只看掩码。
+        // 判据取安全上下文里的职能，不信任请求参数；取不到主体（内部/定时调用）时按最保守口径掩码。
+        boolean fullPhoneVisible = currentViewerIsPlatformAdmin();
+
+        Page<UserAdminVO> resultPage = new Page<>(userPage.getCurrent(), userPage.getSize(), userPage.getTotal());
+        resultPage.setRecords(userPage.getRecords().stream()
+                .map(user -> toUserAdminVO(user, fullPhoneVisible))
+                .collect(java.util.stream.Collectors.toList()));
+        return resultPage;
+    }
+
+    /**
+     * 实体 → 台账行。**这是 password 与 deleted 不出现在响应里的唯一原因**：
+     * 返回值里根本没有这两个字段，而不是靠序列化注解去「记得忽略」。
+     */
+    private UserAdminVO toUserAdminVO(SysUser user, boolean fullPhoneVisible) {
+        List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());
+        return UserAdminVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .realName(user.getRealName())
+                .userType(user.getUserType())
+                .department(user.getDepartment())
+                .phoneDisplay(fullPhoneVisible
+                        ? user.getPhone()
+                        : com.campus.repair.framework.util.SensitiveMasker.maskPhone(user.getPhone()))
+                .status(user.getStatus())
+                .identityVerified(isIdentityVerified(user))
+                .roleCodes(roleCodes != null ? roleCodes : List.of())
+                .isFirstLogin(user.getIsFirstLogin())
+                .createdAt(user.getCreatedAt())
+                .build();
+    }
+
+    /** 当前请求主体是否持有「平台管理」职能（台账里看完整手机号的唯一放行条件） */
+    private boolean currentViewerIsPlatformAdmin() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (authentication != null
+                && authentication.getPrincipal() instanceof com.campus.repair.framework.security.LoginUserPrincipal principal) {
+            return principal.hasFunction(IdentityCodes.FUNC_PLATFORM_ADMIN);
+        }
+        return false;
     }
 
     public void updateUserStatus(Long userId, Integer status) {

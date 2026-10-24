@@ -8,11 +8,11 @@ import com.campus.repair.modules.auth.vo.LoginResponseVO;
 import com.campus.repair.modules.user.dto.AvatarUpdateRequest;
 import com.campus.repair.modules.user.dto.PasswordChangeRequest;
 import com.campus.repair.modules.user.dto.UserProfileUpdateRequest;
-import com.campus.repair.modules.user.entity.SysUser;
 import com.campus.repair.modules.user.service.ProfileStatisticsService;
 import com.campus.repair.modules.user.service.UserService;
 import com.campus.repair.modules.user.vo.MyWorkerProfileVO;
 import com.campus.repair.modules.user.vo.RepairSummaryVO;
+import com.campus.repair.modules.user.vo.UserAdminVO;
 import com.campus.repair.modules.user.vo.UserImportResultVO;
 import com.campus.repair.modules.user.vo.UserProfileVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -82,7 +82,7 @@ public class UserController {
     @Operation(summary = "管理员分页查询用户台账")
     @GetMapping("/page")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
-    public R<IPage<SysUser>> pageUsers(
+    public R<IPage<UserAdminVO>> pageUsers(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String keyword,

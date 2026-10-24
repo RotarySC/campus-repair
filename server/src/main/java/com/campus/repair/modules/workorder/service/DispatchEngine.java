@@ -64,6 +64,16 @@ public class DispatchEngine {
             return false;
         }
 
+        // 内容审核闸门：只有 review_status=PASSED 的单才允许派出去。
+        // 正常情况下命中初筛的单不会发布派单事件（提单闸门），但事件也可能来自「复核通过补发」
+        // 或未来新增的调用点；这一道防御保证待复核/被驳回的单永远不会被派给师傅，
+        // 同时避免监听器读到提交前旧快照时把 review_status 回写成 PENDING。
+        if (order.getReviewStatus() != null
+                && !com.campus.repair.modules.workorder.constant.ContentReviewStatus.PASSED.equals(order.getReviewStatus())) {
+            log.info("[DispatchEngine] 工单 {} 内容审核状态={}，跳过自动派单", order.getOrderNo(), order.getReviewStatus());
+            return false;
+        }
+
         // 若已被派单，则直接返回成功
         if (OrderStatusEnum.ASSIGNED.name().equals(order.getStatus())) {
             return true;

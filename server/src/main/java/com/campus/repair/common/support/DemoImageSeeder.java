@@ -23,7 +23,7 @@ import java.util.List;
 /**
  * 本地演示占位照片生成器（仅 local profile）。
  *
- * <p>背景：{@code data-demo.sql} 的工单/评价/审计记录引用了 18 个
+ * <p>背景：{@code data-demo.sql} 的工单/评价/审计记录引用了 19 个
  * {@code /uploads/demo/xxx.jpg} 形式的演示照片路径，但 {@code uploads/} 目录是运行时产物
  * （已在 .gitignore 中忽略），因此干净克隆后这些路径必然 404：
  * 工单详情页的「现场维修实况对比（Visual Diff）」两张照片会双双裂图、控制台持续报 404。
@@ -39,10 +39,16 @@ import java.util.List;
 @Slf4j
 public class DemoImageSeeder {
 
-    /** 与 data-demo.sql 中的引用逐一对应（fault-01~08 为报修实况，finish-09~19 为完工实况） */
+    /**
+     * 与 data-demo.sql 中的引用逐一对应（fault-01~09 为报修实况，finish-09~19 为完工实况）。
+     *
+     * <p>fault-09 是 Phase 02 新增的「内容初筛命中 → 待复核」演示单（1021）的现场照片：
+     * 该单需要一张附件图，复核页的附件缩略图/图片抽检演示才有素材。
+     */
     static final List<String> DEMO_IMAGES = List.of(
             "fault-01.jpg", "fault-02.jpg", "fault-03.jpg", "fault-04.jpg",
             "fault-05.jpg", "fault-06.jpg", "fault-07.jpg", "fault-08.jpg",
+            "fault-09.jpg",
             "finish-09.jpg", "finish-10.jpg", "finish-11.jpg", "finish-12.jpg",
             "finish-13.jpg", "finish-14.jpg", "finish-15.jpg", "finish-16.jpg",
             "finish-17.jpg", "finish-19.jpg"

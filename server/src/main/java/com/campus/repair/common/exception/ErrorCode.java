@@ -36,6 +36,7 @@ public enum ErrorCode {
     ORDER_CANCEL_NOT_ALLOWED(2006, "当前工单状态不允许报修人取消"),
     REVIEW_ALREADY_DECIDED(2007, "该审核单已被处理，不能重复审核"),
     ANNOUNCEMENT_NOT_APPROVED(2008, "公告未通过审核，不能发布"),
+    REVIEW_NOT_FOUND(2009, "审核记录不存在"),
     INVENTORY_OUT_OF_STOCK(3001, "备件物理库存不足，无法完成核销出库"),
     WORKER_LOAD_EXCEEDED(4001, "指定维修师傅当前并发负荷已达上限");
 

@@ -52,3 +52,30 @@ INSERT INTO sys_identity_roster (username, real_name, user_type, department, pho
 ('admin',    '管理员', 'ADMIN',     NULL,                 '13800000000', 1, 'seed'),
 ('worker01', '李师傅', 'LOGISTICS', NULL,                 '13800000002', 1, 'seed'),
 ('student01','张同学', 'STUDENT',   '2024级 计算机学院',   '13800000003', 1, 'seed');
+
+-- ---------------------------------------------------------------------------
+-- Phase 02 · 内容审核种子
+--   · 敏感词只用**中性占位词**（四类各 2~3 条）：仓库与论文里不出现真实脏词/广告词，
+--     真实词表由平台管理后台在运行时维护。命中只回传分类名，不回传词表原文。
+--   · 词表放在 data-test.sql（测试与本地演示共用一份）：local profile 会按
+--     data-test.sql → data-demo.sql 顺序加载，data-demo 不再重复插入同样的词，
+--     否则会撞 sys_sensitive_word 的 UNIQUE(word)。
+--   · 两个内容审核参数：`enabled=1` 与代码默认值一致；`image_sample_rate` 在**测试种子**里
+--     刻意设为 0——图片抽检是确定性哈希（正文/单号 % 100 < rate），若测试环境用默认 30，
+--     既有用例里带图片的工单会按哈希随机进复核队列、进而派单失败（用例不可复现）。
+--     本地演示 profile 由 data-demo.sql 把它 UPDATE 回 30，演示数据仍能看到抽检效果。
+-- ---------------------------------------------------------------------------
+INSERT INTO sys_sensitive_word (id, word, category, enabled, created_by) VALUES
+(1, '代做',           'AD',         1, 1),
+(2, '刷单',           'AD',         1, 1),
+(3, '加微信',         'AD',         1, 1),
+(4, '辱骂示例',       'ABUSE',      1, 1),
+(5, '攻击示例',       'ABUSE',      1, 1),
+(6, '隐私示例',       'PRIVACY',    1, 1),
+(7, '联系方式示例',   'PRIVACY',    1, 1),
+(8, '灌水示例',       'IRRELEVANT', 1, 1),
+(9, '与维修无关示例', 'IRRELEVANT', 1, 1);
+
+INSERT INTO sys_config (config_key, config_value, description) VALUES
+('content_review.enabled',           '1', '内容初筛总开关：0=关闭初筛（全部直接通过）'),
+('content_review.image_sample_rate', '0', '图片人工抽检比例（0-100）；测试种子置 0 保证用例可复现，演示 profile 调回 30');

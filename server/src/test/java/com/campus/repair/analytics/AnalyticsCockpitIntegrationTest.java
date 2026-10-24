@@ -177,11 +177,18 @@ public class AnalyticsCockpitIntegrationTest {
         WorkOrderSubmitResultVO subRes = workOrderService.submitOrder(testStudentId, sub);
         Long orderId = subRes.getOrderId();
 
+        // Phase 02 内容审核闸门是「内容维度」的，不影响任何统计口径：
+        // 正常文案初筛通过 → reviewStatus=PASSED，提单后的检索/导出行为与改造前一致
+        Assertions.assertEquals("PASSED", subRes.getReviewStatus(),
+                "内容审核通过不应改变工单进入分析口径的行为");
+
         // 调度指派
         WorkOrderManualDispatchRequest dispatchReq = new WorkOrderManualDispatchRequest();
         dispatchReq.setWorkerId(testWorkerId);
         dispatchReq.setDispatchRemark("调度中心紧急指派");
         workOrderService.manualDispatch(orderId, 1L, dispatchReq);
+        Assertions.assertEquals("PASSED", orderMapper.selectById(orderId).getReviewStatus(),
+                "人工指派不得改变内容审核状态");
 
         // 1. 测试按加急状态过滤
         WorkOrderFilterQueryRequest filterReq = new WorkOrderFilterQueryRequest();

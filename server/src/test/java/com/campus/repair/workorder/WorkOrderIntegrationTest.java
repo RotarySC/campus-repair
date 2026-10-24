@@ -91,7 +91,10 @@ class WorkOrderIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.orderNo", startsWith("BX")))
-                .andExpect(jsonPath("$.data.status").value("PENDING_DISPATCH"));
+                .andExpect(jsonPath("$.data.status").value("PENDING_DISPATCH"))
+                // Phase 02 起返回体带内容审核状态：正常文案初筛通过 → PASSED（旧字段口径不变）
+                .andExpect(jsonPath("$.data.reviewStatus").value("PASSED"))
+                .andExpect(jsonPath("$.data.reviewReason").value(nullValue()));
 
         // 4. 再次触发防重检查 -> 应返回 hasActiveOrder: true 并提示既有单号 (由于监听派单事件无可用师傅，已由引擎降级为 MANUAL_DISPATCH)
         mockMvc.perform(post("/api/v1/work-orders/check-duplicate")

@@ -152,10 +152,28 @@ public class NotificationService {
     }
 
     /**
-     * 向全校在册正常用户群体发布后勤广播公告 (Fan-out 扇出)
+     * 向全校在册正常用户群体发布后勤广播公告 (Fan-out 扇出)。
+     *
+     * <p>旧签名保留并委托给带 {@code announcementId} 的重载（传 null）：历史上只按
+     * 「标题 + 正文」扇出的调用方不需要改，但**新链路（公告先审后发）必须走 3 参版本**，
+     * 让每条站内信都能回指 {@code sys_announcement.id}。
      */
     @Transactional(rollbackFor = Exception.class)
     public int broadcastAnnouncement(String title, String content) {
+        return broadcastAnnouncement(title, content, null);
+    }
+
+    /**
+     * 公告发布扇出：向全校在册正常用户各写一条 BROADCAST 站内信，并回写公告 id。
+     *
+     * <p>只应由 {@code AnnouncementService#publish} 在公告状态迁移到 {@code PUBLISHED} 时调用——
+     * 任何未发布状态都不产生站内信，这是「先审后发」不可绕过的落点。
+     *
+     * @param announcementId 公告本体 id；null 表示不关联公告（兼容旧调用）
+     * @return 实际扇出的条数（= 正常账号数）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int broadcastAnnouncement(String title, String content, Long announcementId) {
         List<SysUser> activeUsers = userService.getAllActiveUsers();
         if (activeUsers == null || activeUsers.isEmpty()) {
             return 0;
@@ -169,13 +187,15 @@ public class NotificationService {
             notification.setTitle(title);
             notification.setContent(content);
             notification.setCategory("BROADCAST");
+            notification.setAnnouncementId(announcementId);
             notification.setIsRead(0);
             notification.setCreatedAt(now);
             notificationMapper.insert(notification);
             count++;
         }
 
-        log.info("[NotificationService] 成功向 {} 位系统活跃用户扇出发布全校后勤广播公告: {}", count, title);
+        log.info("[NotificationService] 成功向 {} 位系统活跃用户扇出发布全校后勤广播公告: {} (announcementId={})",
+                count, title, announcementId);
         return count;
     }
 }

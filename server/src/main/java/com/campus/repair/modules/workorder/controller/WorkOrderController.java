@@ -3,8 +3,11 @@ package com.campus.repair.modules.workorder.controller;
 import com.campus.repair.common.result.R;
 import com.campus.repair.framework.security.LoginUserPrincipal;
 import com.campus.repair.modules.workorder.dto.DuplicateCheckRequest;
+import com.campus.repair.modules.workorder.dto.WorkOrderReporterCancelRequest;
+import com.campus.repair.modules.workorder.dto.WorkOrderResubmitRequest;
 import com.campus.repair.modules.workorder.dto.WorkOrderSubmitRequest;
 import com.campus.repair.modules.workorder.service.WorkOrderService;
+import com.campus.repair.modules.workorder.vo.ContentReviewTraceVO;
 import com.campus.repair.modules.workorder.vo.DuplicateCheckResultVO;
 import com.campus.repair.modules.workorder.vo.WorkOrderSubmitResultVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -107,6 +110,42 @@ public class WorkOrderController {
             @Valid @RequestBody com.campus.repair.modules.workorder.dto.WorkOrderCancelRequest request) {
         workOrderService.cancelOrder(id, user.getUserId(), request);
         return R.success();
+    }
+
+    @Operation(summary = "报修人在维修师傅接单前自助取消工单")
+    @PostMapping("/{id}/cancel-by-reporter")
+    @PreAuthorize("hasRole('REPORTER')")
+    public R<Void> cancelByReporter(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody(required = false) WorkOrderReporterCancelRequest request) {
+        workOrderService.cancelByReporter(id, user.getUserId(), request);
+        return R.success("工单已取消", null);
+    }
+
+    @Operation(summary = "报修人修改被驳回的内容并重新提交（轮次 +1，重新初筛）")
+    @PostMapping("/{id}/review-resubmit")
+    @PreAuthorize("hasRole('REPORTER')")
+    public R<WorkOrderSubmitResultVO> resubmitContent(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user,
+            @Valid @RequestBody WorkOrderResubmitRequest request) {
+        return R.success(workOrderService.resubmitContent(id, user.getUserId(), request));
+    }
+
+    /**
+     * 审核轨迹：报修人看自己被驳回的理由，指派师傅/调度管理看全量。
+     *
+     * <p>没有 `@PreAuthorize` 的刻意原因与 `/timeline`、`/{id}` 一致：属主判定只能由
+     * Service 里的 `assertReadable` 完成（注解只能表达「你是什么角色」，表达不了
+     * 「这张单是不是你的」）。
+     */
+    @Operation(summary = "获取工单内容审核轨迹（限报修人本人/指派师傅/调度管理）")
+    @GetMapping("/{id}/reviews")
+    public R<java.util.List<ContentReviewTraceVO>> getContentReviewTrace(
+            @PathVariable Long id,
+            @AuthenticationPrincipal LoginUserPrincipal user) {
+        return R.success(workOrderService.getContentReviewTrace(id, user.getUserId(), user.isDispatchSide()));
     }
 
     // ==================== 维修师傅移动作业台接口 ====================

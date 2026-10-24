@@ -25,6 +25,9 @@ public class NotificationVO {
 
     private Long relatedOrderId;
 
+    /** 公告类通知回指的公告 id（非 BROADCAST 为 null）；前端据此跳公告管理页。 */
+    private Long announcementId;
+
     private Integer isRead;
 
     private LocalDateTime readAt;

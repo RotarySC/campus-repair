@@ -47,6 +47,12 @@ class BroadcastApiIntegrationTest {
     private com.campus.repair.modules.user.mapper.SysUserMapper userMapper;
 
     @Autowired
+    private com.campus.repair.modules.notification.mapper.SysNotificationMapper notificationMapper;
+
+    @Autowired
+    private com.campus.repair.modules.review.mapper.SysAnnouncementMapper announcementMapper;
+
+    @Autowired
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @BeforeEach
@@ -99,11 +105,12 @@ class BroadcastApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("管理员发布全校广播应返回扇出人数（> 0）")
+    @DisplayName("管理员发布全校广播：语义已改为「只建公告草稿」，返回 announcementId 且不扇出")
     void testAdminBroadcastSucceeds() throws Exception {
         String token = loginAndGetToken("admin", "password");
+        Long notificationsBefore = notificationMapper.selectCount(null);
 
-        mockMvc.perform(post("/api/v1/notifications/broadcast")
+        MvcResult result = mockMvc.perform(post("/api/v1/notifications/broadcast")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -111,7 +118,17 @@ class BroadcastApiIntegrationTest {
                                 "content", "因管网检修，明日上午 9:00-11:00 全校暂停供水。"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data").value(org.hamcrest.Matchers.greaterThan(0)));
+                .andExpect(jsonPath("$.data.announcementId").isNumber())
+                .andReturn();
+
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsByteArray()).path("data");
+        long announcementId = data.path("announcementId").asLong();
+        com.campus.repair.modules.review.entity.SysAnnouncement draft =
+                announcementMapper.selectById(announcementId);
+        org.junit.jupiter.api.Assertions.assertNotNull(draft, "旧广播端点必须落一条公告草稿");
+        org.junit.jupiter.api.Assertions.assertEquals("DRAFT", draft.getStatus());
+        org.junit.jupiter.api.Assertions.assertEquals(notificationsBefore, notificationMapper.selectCount(null),
+                "先审后发：建草稿不得产生任何 sys_notification");
     }
 
     @Test

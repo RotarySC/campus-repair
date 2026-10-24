@@ -28,6 +28,12 @@ public class SysNotification {
     private Long relatedOrderId;
 
     /**
+     * 公告扇出来源：BROADCAST 类通知回指 {@code sys_announcement.id}，便于「点通知跳公告」与回溯。
+     * 非公告通知为 null。公告未到 PUBLISHED 不会产生通知，因此该列只会在发布时写入。
+     */
+    private Long announcementId;
+
+    /**
      * 0-未读, 1-已读
      */
     private Integer isRead;

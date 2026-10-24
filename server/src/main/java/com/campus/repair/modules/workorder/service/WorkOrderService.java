@@ -6,17 +6,31 @@ import com.campus.repair.common.exception.BusinessException;
 import com.campus.repair.common.exception.ErrorCode;
 import com.campus.repair.framework.security.LoginUserPrincipal;
 import com.campus.repair.modules.identity.constant.IdentityReviewCodes;
+import com.campus.repair.modules.notification.service.NotificationService;
+import com.campus.repair.modules.review.entity.SysContentReview;
+import com.campus.repair.modules.review.service.ContentReviewRecordService;
+import com.campus.repair.modules.review.service.ContentScreenService;
 import com.campus.repair.modules.spatial.entity.RepairCategory;
 import com.campus.repair.modules.spatial.entity.SpatialNode;
 import com.campus.repair.modules.spatial.service.RepairCategoryService;
 import com.campus.repair.modules.spatial.service.SpatialNodeService;
 import com.campus.repair.modules.user.entity.SysUser;
 import com.campus.repair.modules.user.service.UserService;
+import com.campus.repair.modules.workorder.constant.ContentReviewStatus;
+import com.campus.repair.modules.workorder.constant.WorkOrderActionCodes;
 import com.campus.repair.modules.workorder.dto.DuplicateCheckRequest;
+import com.campus.repair.modules.workorder.dto.WorkOrderReporterCancelRequest;
+import com.campus.repair.modules.workorder.dto.WorkOrderResubmitRequest;
 import com.campus.repair.modules.workorder.dto.WorkOrderSubmitRequest;
 import com.campus.repair.modules.workorder.entity.RepairOrder;
+import com.campus.repair.modules.workorder.enums.OrderStatusEnum;
+import com.campus.repair.modules.workorder.event.OrderCancelledEvent;
 import com.campus.repair.modules.workorder.event.OrderCreatedEvent;
+import com.campus.repair.modules.workorder.mapper.ContentReviewTraceMapper;
 import com.campus.repair.modules.workorder.mapper.RepairOrderMapper;
+import com.campus.repair.modules.workorder.vo.ContentReviewDecisionVO;
+import com.campus.repair.modules.workorder.vo.ContentReviewTraceVO;
+import com.campus.repair.modules.workorder.vo.DispatchOrderItemVO;
 import com.campus.repair.modules.workorder.vo.DuplicateCheckResultVO;
 import com.campus.repair.modules.workorder.vo.WorkOrderSubmitResultVO;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -50,6 +64,26 @@ public class WorkOrderService {
     private final ObjectMapper objectMapper;
     private final com.campus.repair.modules.inventory.service.InventoryService inventoryService;
     private final com.campus.repair.modules.workorder.mapper.RepairOrderEvaluationMapper evaluationMapper;
+
+    /** 内容初筛（纯逻辑，词表与配置由内容审核模块内部缓存/读取） */
+    private final ContentScreenService contentScreenService;
+    /** 审核轨迹写入与一次性决策（只碰 sys_content_review，不反向依赖本类） */
+    private final ContentReviewRecordService contentReviewRecordService;
+    /** 审核轨迹只读查询（工单侧详情页要能看每一轮为什么进队列） */
+    private final ContentReviewTraceMapper contentReviewTraceMapper;
+    /** 联系方式按「查看者关系」脱敏的统一策略 */
+    private final ContactVisibilityPolicy contactVisibilityPolicy;
+    /**
+     * 站内信：复核驳回必须**同步**通知到报修人。
+     *
+     * <p>这里不用领域事件而直接调用，是因为「驳回结论」与「通知落库」必须在同一事务里：
+     * 异步监听器在事务提交前读不到审核行，一旦通知丢失，报修人会永远不知道自己被驳回，
+     * 而工单又停在待派单——那是最难排查的一类静默卡单。
+     */
+    private final NotificationService notificationService;
+
+    /** `sys_content_review.biz_type` 的工单取值（公告类由内容审核模块自行处理） */
+    private static final String BIZ_TYPE_ORDER = "ORDER";
 
     // 活跃状态集合：存在这些状态的工单算作未结单（全量非终态，无时间窗口限制）
     private static final Set<String> ACTIVE_STATUSES = Set.of(
@@ -139,13 +173,23 @@ public class WorkOrderService {
         order.setIsArchived(0);
 
         // 图片 JSON 序列化
+        String faultImagesJson = null;
         if (request.getFaultImages() != null && !request.getFaultImages().isEmpty()) {
             try {
-                order.setFaultImages(objectMapper.writeValueAsString(request.getFaultImages()));
+                faultImagesJson = objectMapper.writeValueAsString(request.getFaultImages());
+                order.setFaultImages(faultImagesJson);
             } catch (Exception e) {
                 log.warn("序列化报修图片失败", e);
             }
         }
+
+        // 6.1 内容初筛闸门（Phase 02）：命中四类规则 → 转人工复核，且**不发布派单事件**。
+        //     审核是「内容维度的闸门」而不是工单的第七个状态：工单照常落库、报修人照常可查，
+        //     只是不进派单池（池查询与人工指派都以 review_status='PASSED' 为前置）。
+        ContentScreenService.ScreenResult screenResult =
+                screenContent(order.getDescription(), faultImagesJson, phone);
+        boolean contentSuspected = !screenResult.passed();
+        order.setReviewStatus(contentSuspected ? ContentReviewStatus.PENDING : ContentReviewStatus.PASSED);
 
         orderMapper.insert(order);
 
@@ -158,16 +202,39 @@ public class WorkOrderService {
                 "SUBMIT",
                 "DRAFT",
                 "PENDING_DISPATCH",
-                "师生提交报修工单，等待系统调度分派"
+                contentSuspected
+                        ? "师生提交报修工单，内容命中初筛规则，转入人工复核（复核通过后自动派单）"
+                        : "师生提交报修工单，等待系统调度分派"
         );
 
-        // 8. 发布领域事件，触发自动派单异步监听器
+        // 8. 命中初筛：落审核轨迹并**跳过**派单事件；未命中：原行为（发布事件触发自动派单）
+        if (contentSuspected) {
+            contentReviewRecordService.recordPending(
+                    BIZ_TYPE_ORDER,
+                    order.getId(),
+                    order.getOrderNo(),
+                    1,
+                    order.getDescription(),
+                    faultImagesJson,
+                    screenResult.hitRules()
+            );
+            log.info("[WorkOrderService] 工单 {} 内容命中初筛规则，已转入人工复核", order.getOrderNo());
+            return WorkOrderSubmitResultVO.builder()
+                    .orderId(order.getId())
+                    .orderNo(order.getOrderNo())
+                    .status(order.getStatus())
+                    .reviewStatus(ContentReviewStatus.PENDING)
+                    .reviewReason(ContentReviewReasonFormatter.summary(screenResult.hitRules()))
+                    .build();
+        }
+
         eventPublisher.publishEvent(new OrderCreatedEvent(this, order.getId(), order.getOrderNo()));
 
         return WorkOrderSubmitResultVO.builder()
                 .orderId(order.getId())
                 .orderNo(order.getOrderNo())
                 .status(order.getStatus())
+                .reviewStatus(ContentReviewStatus.PASSED)
                 .build();
     }
 
@@ -204,13 +271,9 @@ public class WorkOrderService {
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> resultPage =
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
                         orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
-        resultPage.setRecords(orderPage.getRecords().stream().map(order -> {
-            com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo =
-                    new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
-            org.springframework.beans.BeanUtils.copyProperties(order, vo);
-            vo.setStatus(order.getStatus());
-            return vo;
-        }).collect(java.util.stream.Collectors.toList()));
+        resultPage.setRecords(orderPage.getRecords().stream()
+                .map(order -> buildOrderItemVO(order, studentUserId, false, false, false))
+                .collect(java.util.stream.Collectors.toList()));
         return resultPage;
     }
 
@@ -218,18 +281,77 @@ public class WorkOrderService {
             Long orderId, Long viewerUserId, boolean dispatchSide) {
         RepairOrder order = loadOrder(orderId);
         assertReadable(order, viewerUserId, dispatchSide);
-        com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo = new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
+        return buildOrderItemVO(order, viewerUserId, dispatchSide, true, false);
+    }
+
+    /**
+     * 工单列表/详情 VO 的**统一装配入口**（我的工单 / 工单详情 / 调度池 / 师傅工作台共用）。
+     *
+     * <p>为什么必须收敛到一处：`DispatchOrderItemVO` 同时承载「工单事实」与「按查看者裁剪后的
+     * 联系方式」，四处各写一遍 `BeanUtils.copyProperties` 时，新增字段（如 `canCancel`、
+     * `viewerRelation`）很容易只改了三处——而漏掉的那一处恰好可能是报修人自己的列表，
+     * 于是「取消入口不出现」这类问题会以「前端 bug」的形式被误报。
+     *
+     * @param viewerUserId  查看者 id（调度池没有具体查看者，传 null）
+     * @param dispatchSide  查看者是否属于调度/平台管理侧
+     * @param withCampus    是否解析根校区（列表页不需要，详情/调度台需要）
+     * @param withLastLog   是否带最后一条流转说明（调度池/师傅工作台的「待办原因」）
+     */
+    private com.campus.repair.modules.workorder.vo.DispatchOrderItemVO buildOrderItemVO(
+            RepairOrder order, Long viewerUserId, boolean dispatchSide, boolean withCampus, boolean withLastLog) {
+        com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo =
+                new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
         org.springframework.beans.BeanUtils.copyProperties(order, vo);
         vo.setStatus(order.getStatus());
-        Long rootCampusId = spatialNodeService.resolveRootCampusId(order.getSpaceId());
-        vo.setCampusId(rootCampusId);
-        if (rootCampusId != null) {
-            SpatialNode rootNode = spatialNodeService.getNodeById(rootCampusId);
-            if (rootNode != null) {
-                vo.setCampusName(rootNode.getName());
+
+        if (withCampus) {
+            Long rootCampusId = spatialNodeService.resolveRootCampusId(order.getSpaceId());
+            vo.setCampusId(rootCampusId);
+            if (rootCampusId != null) {
+                SpatialNode rootNode = spatialNodeService.getNodeById(rootCampusId);
+                if (rootNode != null) {
+                    vo.setCampusName(rootNode.getName());
+                }
             }
         }
+
+        if (withLastLog) {
+            // 查询最新的日志说明，提供如“未匹配到在岗电工”或“师傅申请转派：水管爆裂需特种水工”的提示
+            List<com.campus.repair.modules.workorder.entity.RepairOrderLog> logs = orderLogService.getTimeline(order.getId());
+            if (logs != null && !logs.isEmpty()) {
+                vo.setDispatchReason(logs.get(logs.size() - 1).getReasonOrRemark());
+            }
+        }
+
+        ContactVisibilityPolicy.ViewerRelation relation =
+                contactVisibilityPolicy.resolve(order, viewerUserId, dispatchSide);
+        contactVisibilityPolicy.apply(vo, order, relation);
+
+        vo.setReviewStatus(order.getReviewStatus());
+        vo.setReviewReason(resolveReviewReason(order));
         return vo;
+    }
+
+    /**
+     * 工单列表/详情上的内容审核摘要。
+     *
+     * <p>语义按状态分流：`REJECTED` 展示**复核驳回理由**（报修人要知道改什么），
+     * `PENDING` 展示**命中分类摘要**（不回传词表原文）。`PASSED` 不展示任何东西——
+     * 没进过队列的单不该凭空多一个「审核」字段，那会让报修人以为每张单都被审过。
+     */
+    private String resolveReviewReason(RepairOrder order) {
+        if (order.getReviewStatus() == null || ContentReviewStatus.PASSED.equals(order.getReviewStatus())) {
+            return null;
+        }
+        ContentReviewTraceVO latest = contentReviewTraceMapper.selectLatest(BIZ_TYPE_ORDER, order.getId());
+        if (latest == null) {
+            return null;
+        }
+        if (ContentReviewStatus.REJECTED.equals(order.getReviewStatus())
+                && StringUtils.hasText(latest.getReviewReason())) {
+            return latest.getReviewReason();
+        }
+        return ContentReviewReasonFormatter.summary(latest.getHitRules());
     }
 
     public com.campus.repair.modules.workorder.vo.DispatchPoolResultVO getDispatchPool(com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request) {
@@ -262,27 +384,9 @@ public class WorkOrderService {
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> orderPage = orderMapper.selectPage(pageParam, query);
 
         // 3. 组装 VO (附带流转原因提示与校区解析)
-        List<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> voList = orderPage.getRecords().stream().map(order -> {
-            com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo = new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
-            org.springframework.beans.BeanUtils.copyProperties(order, vo);
-
-            Long rootCampusId = spatialNodeService.resolveRootCampusId(order.getSpaceId());
-            vo.setCampusId(rootCampusId);
-            if (rootCampusId != null) {
-                SpatialNode rootNode = spatialNodeService.getNodeById(rootCampusId);
-                if (rootNode != null) {
-                    vo.setCampusName(rootNode.getName());
-                }
-            }
-
-            // 查询最新的日志说明，提供如“未匹配到在岗电工”或“师傅申请转派：水管爆裂需特种水工”的提示
-            List<com.campus.repair.modules.workorder.entity.RepairOrderLog> logs = orderLogService.getTimeline(order.getId());
-            if (logs != null && !logs.isEmpty()) {
-                com.campus.repair.modules.workorder.entity.RepairOrderLog lastLog = logs.get(logs.size() - 1);
-                vo.setDispatchReason(lastLog.getReasonOrRemark());
-            }
-            return vo;
-        }).collect(java.util.stream.Collectors.toList());
+        List<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> voList = orderPage.getRecords().stream()
+                .map(order -> buildOrderItemVO(order, null, true, true, true))
+                .collect(java.util.stream.Collectors.toList());
 
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> resultPage =
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
@@ -303,6 +407,12 @@ public class WorkOrderService {
 
     private LambdaQueryWrapper<RepairOrder> buildDispatchPoolQuery(com.campus.repair.modules.workorder.dto.DispatchPoolQueryRequest request, boolean withOrderBy) {
         LambdaQueryWrapper<RepairOrder> query = new LambdaQueryWrapper<>();
+
+        // 内容审核闸门（Phase 02）：只有 review_status='PASSED' 的单才允许出现在派单池，
+        // 也才允许被人工指派。否则调度可以在待派单池里把「待复核」的单直接派出去，审核形同虚设。
+        // 这个条件必须写在公共构造函数里：分页列表与各 Tab 计数（allCount 等）都走它，
+        // 否则会出现「列表看不到、红点却算它」的口径分裂。
+        query.eq(RepairOrder::getReviewStatus, ContentReviewStatus.DISPATCHABLE);
 
         // 调度池核心业务范围：待人工调度 MANUAL_DISPATCH、返工待指派 REWORK_PENDING 以及可改派工单 ASSIGNED
         String filter = request.getCategoryFilter();
@@ -357,6 +467,12 @@ public class WorkOrderService {
         RepairOrder order = orderMapper.selectById(orderId);
         if (order == null) {
             throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        // 内容审核闸门（Phase 02）：人工指派是绕过自动派单引擎的另一条入口，
+        // 这里必须再判一次，否则「待复核」的单只要调度点一下就能被派出去。
+        if (!ContentReviewStatus.PASSED.equals(order.getReviewStatus())) {
+            throw new BusinessException(ErrorCode.ORDER_CONTENT_UNDER_REVIEW);
         }
 
         com.campus.repair.modules.workorder.enums.OrderStatusEnum currentStatus =
@@ -469,12 +585,339 @@ public class WorkOrderService {
                 "工单作废: " + request.getCancelReason().trim()
         );
 
-        // 发布领域事件，触发通知报修人工单已作废
-        eventPublisher.publishEvent(new com.campus.repair.modules.workorder.event.OrderCancelledEvent(
-                this, order.getId(), order.getOrderNo(), order.getStudentUserId(), request.getCancelReason().trim()
+        // 发布领域事件，触发通知报修人「已作废」，并让被指派的师傅知道任务已移除（负荷已回落，别再上门）
+        eventPublisher.publishEvent(new OrderCancelledEvent(
+                this, order.getId(), order.getOrderNo(), order.getStudentUserId(),
+                order.getWorkerId(), request.getCancelReason().trim(), false
         ));
 
         log.info("[WorkOrderService] 工单 {} 已核实作废: {}", order.getOrderNo(), request.getCancelReason());
+    }
+
+    // ==================== 内容审核闸门（Phase 02） ====================
+
+    /**
+     * 把人工复核结论落到工单侧（内容审核模块的 approve/reject 端点委托本方法处理 ORDER 类）。
+     *
+     * <p>六步语义（顺序不可调换）：
+     * <ol>
+     *   <li>查审核行：不存在 → {@code 2009}；</li>
+     *   <li>已决策过 → {@code 2007}（审核记录一次性决策，append-only 不可篡改）；</li>
+     *   <li>**条件更新审核行**：{@code WHERE id=? AND outcome='PENDING'}，影响 0 行说明并发下已被别人决策，
+     *       同样按 {@code 2007} 处理——这是并发双击的幂等防线，不是重复检查；</li>
+     *   <li>改工单 {@code review_status}：通过 → PASSED，驳回 → REJECTED（**工单状态不变**）；</li>
+     *   <li>通过且工单仍 {@code PENDING_DISPATCH} → 补发 {@link OrderCreatedEvent} 触发自动派单；
+     *       工单已取消或已不在待派 → 只落结论、**不派单**（给作废单派活是事故，不是功能）；</li>
+     *   <li>驳回 → 同步通知报修人（含理由）；两种情况都写工单日志 REVIEW_APPROVED / REVIEW_REJECTED。</li>
+     * </ol>
+     *
+     * <p>为什么「先更新再发事件」：事件监听器是 {@code @Async}，它读库时若工单还是
+     * {@code review_status=PENDING}，派单引擎看到的仍是待复核单；先落库再发事件才能保证
+     * 监听器读到 PASSED。重复点击第二次会在第 3 步返回 2007，不会重复派单。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ContentReviewDecisionVO decideContentReview(Long reviewId, boolean approved,
+                                                       Long reviewerId, String reviewerName, String reason) {
+        SysContentReview review = contentReviewRecordService.findById(reviewId);
+        if (review == null) {
+            throw new BusinessException(ErrorCode.REVIEW_NOT_FOUND);
+        }
+        if (!"PENDING".equals(review.getOutcome())) {
+            throw new BusinessException(ErrorCode.REVIEW_ALREADY_DECIDED);
+        }
+        // 防御：公告类审核行归内容审核模块自己处理，误调到这里不能被当成工单改坏数据
+        if (!BIZ_TYPE_ORDER.equals(review.getBizType())) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID.getCode(),
+                    "该审核记录不是工单类内容，公告类请走公告审核流程");
+        }
+
+        String outcome = approved ? "APPROVED" : "REJECTED";
+        int affected = contentReviewRecordService.decide(reviewId, outcome, reason, reviewerId, reviewerName);
+        if (affected == 0) {
+            throw new BusinessException(ErrorCode.REVIEW_ALREADY_DECIDED);
+        }
+
+        RepairOrder order = orderMapper.selectById(review.getBizId());
+        if (order == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        String fromStatus = order.getStatus();
+        order.setReviewStatus(approved ? ContentReviewStatus.PASSED : ContentReviewStatus.REJECTED);
+        // 只更新审核状态列：用 updateById 会把整行按读到的快照回写，若期间报修人刚好取消了工单，
+        // 就会把他的 CANCELLED 覆盖回 PENDING_DISPATCH（复活一张已作废的单）。
+        orderMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<RepairOrder>()
+                .eq(RepairOrder::getId, order.getId())
+                .set(RepairOrder::getReviewStatus, order.getReviewStatus()));
+
+        boolean dispatched = false;
+        String message;
+        if (approved) {
+            if (OrderStatusEnum.PENDING_DISPATCH.name().equals(order.getStatus())) {
+                publishOrderCreatedAfterCommit(order.getId(), order.getOrderNo());
+                dispatched = true;
+                message = "内容复核通过，工单已重新进入自动派单流程";
+            } else if (OrderStatusEnum.CANCELLED.name().equals(order.getStatus())) {
+                message = "工单已取消，审核结论已记录，不再派单";
+            } else {
+                message = String.format("工单当前状态为[%s]，审核结论已记录，不再派单", order.getStatus());
+            }
+        } else {
+            notifyReporterContentRejected(order, reason);
+            message = "内容复核未通过，已通知报修人修改后重新提交";
+        }
+
+        String reasonText = StringUtils.hasText(reason) ? reason.trim() : null;
+        String remark = approved
+                ? String.format("内容复核通过%s", reasonText != null ? "：" + reasonText : "")
+                : String.format("内容复核驳回：%s", reasonText != null ? reasonText : "未填写驳回理由");
+        orderLogService.recordLog(
+                order,
+                reviewerId,
+                reviewerName,
+                IdentityCodes.FUNC_DISPATCHER,
+                approved ? WorkOrderActionCodes.REVIEW_APPROVED : WorkOrderActionCodes.REVIEW_REJECTED,
+                fromStatus,
+                order.getStatus(),
+                remark
+        );
+
+        log.info("[WorkOrderService] 审核单 {} 决策={} 工单={} dispatched={}", reviewId, outcome, order.getOrderNo(), dispatched);
+        return ContentReviewDecisionVO.builder()
+                .reviewId(reviewId)
+                .outcome(outcome)
+                .orderId(order.getId())
+                .orderNo(order.getOrderNo())
+                .dispatched(dispatched)
+                .message(message)
+                .build();
+    }
+
+    /**
+     * 报修人修改被驳回的内容并重新提交（轮次 +1，重新初筛）。
+     *
+     * <p>准入只有一种合法组合：{@code review_status=REJECTED} **且** {@code status=PENDING_DISPATCH}。
+     * 其余情况一律 {@code 2005}——已经派出去的单改文案等于换了故障描述，应当重新提单；
+     * 已经取消/完结的单更不该被改。
+     *
+     * <p>重提**必然新插一行**审核记录（轮次递增），旧行保留原结论：这样「上一轮为什么被驳回、
+     * 这一轮改成了什么」可以逐轮追溯。初筛通过则补发派单事件，工单重新进入维修流程。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public WorkOrderSubmitResultVO resubmitContent(Long orderId, Long reporterUserId, WorkOrderResubmitRequest request) {
+        RepairOrder order = loadOrder(orderId);
+        if (reporterUserId == null || !reporterUserId.equals(order.getStudentUserId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "越权拦截：仅报修人本人可修改并重新提交本单内容");
+        }
+        if (!ContentReviewStatus.REJECTED.equals(order.getReviewStatus())
+                || !OrderStatusEnum.PENDING_DISPATCH.name().equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.ORDER_CONTENT_REJECTED);
+        }
+
+        order.setDescription(request.getDescription().trim());
+        if (request.getFaultImages() != null) {
+            try {
+                order.setFaultImages(objectMapper.writeValueAsString(request.getFaultImages()));
+            } catch (Exception e) {
+                log.warn("序列化重提报修图片失败", e);
+            }
+        }
+
+        int nextRound = Math.max(1, contentReviewRecordService.maxSubmitRound(BIZ_TYPE_ORDER, orderId) + 1);
+        ContentScreenService.ScreenResult screenResult =
+                screenContent(order.getDescription(), order.getFaultImages(), order.getApplicantPhone());
+        boolean contentSuspected = !screenResult.passed();
+        order.setReviewStatus(contentSuspected ? ContentReviewStatus.PENDING : ContentReviewStatus.PASSED);
+        // 只写回「重提允许改的三列」：正文、图片、审核状态。用 updateById 会把整行按快照回写，
+        // 有把并发取消后的 CANCELLED 覆盖回 PENDING_DISPATCH 的风险。
+        orderMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<RepairOrder>()
+                .eq(RepairOrder::getId, order.getId())
+                .set(RepairOrder::getDescription, order.getDescription())
+                .set(RepairOrder::getFaultImages, order.getFaultImages())
+                .set(RepairOrder::getReviewStatus, order.getReviewStatus()));
+
+        SysUser reporter = userService.getUserById(reporterUserId);
+        String reporterName = reporter != null ? reporter.getRealName() : order.getApplicantName();
+
+        if (contentSuspected) {
+            contentReviewRecordService.recordPending(
+                    BIZ_TYPE_ORDER,
+                    order.getId(),
+                    order.getOrderNo(),
+                    nextRound,
+                    order.getDescription(),
+                    order.getFaultImages(),
+                    screenResult.hitRules()
+            );
+            orderLogService.recordLog(
+                    order,
+                    reporterUserId,
+                    reporterName,
+                    IdentityCodes.FUNC_REPORTER,
+                    WorkOrderActionCodes.REVIEW_RESUBMIT,
+                    order.getStatus(),
+                    order.getStatus(),
+                    String.format("报修人第 %d 次提交内容，仍命中初筛规则，继续待人工复核", nextRound)
+            );
+            return WorkOrderSubmitResultVO.builder()
+                    .orderId(order.getId())
+                    .orderNo(order.getOrderNo())
+                    .status(order.getStatus())
+                    .reviewStatus(ContentReviewStatus.PENDING)
+                    .reviewReason(ContentReviewReasonFormatter.summary(screenResult.hitRules()))
+                    .build();
+        }
+
+        orderLogService.recordLog(
+                order,
+                reporterUserId,
+                reporterName,
+                IdentityCodes.FUNC_REPORTER,
+                WorkOrderActionCodes.REVIEW_RESUBMIT,
+                order.getStatus(),
+                order.getStatus(),
+                String.format("报修人第 %d 次提交内容，初筛通过，已重新进入自动派单流程", nextRound)
+        );
+        publishOrderCreatedAfterCommit(order.getId(), order.getOrderNo());
+
+        return WorkOrderSubmitResultVO.builder()
+                .orderId(order.getId())
+                .orderNo(order.getOrderNo())
+                .status(order.getStatus())
+                .reviewStatus(ContentReviewStatus.PASSED)
+                .build();
+    }
+
+    /**
+     * 在**事务提交之后**才发布派单事件。
+     *
+     * <p>为什么不能像提单那样直接发：提单是新插入的行，监听器读不到未提交数据最多是「这次没派」；
+     * 而复核通过/重提是**更新既有行**，监听器若在提交前读到旧快照（review_status=PENDING），
+     * 要么被审核闸门拦下永远不派单，要么把 `review_status` 用旧值回写覆盖掉刚落的 PASSED。
+     * 注册 afterCommit 回调让监听器一定读到提交后的状态，同时保留「事务回滚就不派单」的正确语义。
+     */
+    private void publishOrderCreatedAfterCommit(Long orderId, String orderNo) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            eventPublisher.publishEvent(new OrderCreatedEvent(WorkOrderService.this, orderId, orderNo));
+                        }
+                    });
+            return;
+        }
+        eventPublisher.publishEvent(new OrderCreatedEvent(this, orderId, orderNo));
+    }
+
+    /**
+     * 单张工单的审核轨迹（含每轮 {@code submitRound/outcome/hitRules/reviewReason/reviewedAt}）。
+     *
+     * <p>属主判定复用 {@link #assertReadable}：报修人本人能看自己被驳回的理由，
+     * 指派师傅与调度管理能看全量；无关用户 403。
+     */
+    public List<ContentReviewTraceVO> getContentReviewTrace(Long orderId, Long viewerUserId, boolean dispatchSide) {
+        RepairOrder order = loadOrder(orderId);
+        assertReadable(order, viewerUserId, dispatchSide);
+        return contentReviewTraceMapper.selectTrace(BIZ_TYPE_ORDER, orderId);
+    }
+
+    // ==================== 报修人自助取消（Phase 03） ====================
+
+    /**
+     * 报修人在**师傅接单前**自助取消工单。
+     *
+     * <p>与调度作废（{@link #cancelOrder}）的区别只在「谁做的」：状态都落到 {@code CANCELLED}，
+     * 靠审计的 {@code CANCEL_BY_REPORTER} + {@code REPORTER} 区分主体，不给状态机加新状态。
+     *
+     * <p>取消不是「改个状态」：{@code ASSIGNED} 的单已经占用了师傅负荷，必须回落，
+     * 否则那位师傅的并发额度会被一张作废单永久吃掉；同时给师傅发一条通知，
+     * 否则他可能正往现场跑。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelByReporter(Long orderId, Long reporterUserId, WorkOrderReporterCancelRequest request) {
+        RepairOrder order = loadOrder(orderId);
+        if (reporterUserId == null || !reporterUserId.equals(order.getStudentUserId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "越权拦截：仅报修人本人可取消自己的报修单");
+        }
+        if (!ReporterCancelPolicy.canCancel(order)) {
+            throw new BusinessException(ErrorCode.ORDER_CANCEL_NOT_ALLOWED);
+        }
+
+        OrderStatusEnum currentStatus = OrderStatusEnum.valueOf(order.getStatus());
+        stateMachine.verifyTransition(currentStatus, OrderStatusEnum.CANCELLED);
+
+        // 释放师傅负荷：本策略下实际只会命中 ASSIGNED（IN_PROGRESS/SUSPENDED 不允许报修人取消），
+        // 但判断条件与调度作废保持同一口径，避免以后放宽窗口时漏掉负荷回落
+        if (order.getWorkerId() != null
+                && (currentStatus == OrderStatusEnum.ASSIGNED
+                || currentStatus == OrderStatusEnum.IN_PROGRESS
+                || currentStatus == OrderStatusEnum.SUSPENDED)) {
+            workerService.decrementLoad(order.getWorkerId());
+        }
+
+        String reason = request != null && StringUtils.hasText(request.getReason())
+                ? request.getReason().trim()
+                : "报修人自行取消";
+        Long workerUserId = order.getWorkerId();
+
+        order.setStatus(OrderStatusEnum.CANCELLED.name());
+        order.setCancelReason(reason);
+        orderMapper.updateById(order);
+
+        SysUser reporter = userService.getUserById(reporterUserId);
+        String reporterName = reporter != null ? reporter.getRealName() : order.getApplicantName();
+
+        orderLogService.recordLog(
+                order,
+                reporterUserId,
+                reporterName,
+                IdentityCodes.FUNC_REPORTER,
+                WorkOrderActionCodes.CANCEL_BY_REPORTER,
+                currentStatus.name(),
+                OrderStatusEnum.CANCELLED.name(),
+                "报修人取消工单: " + reason
+        );
+
+        eventPublisher.publishEvent(new OrderCancelledEvent(
+                this, order.getId(), order.getOrderNo(), order.getStudentUserId(), workerUserId, reason, true
+        ));
+
+        log.info("[WorkOrderService] 报修人 {} 取消工单 {}: {}", reporterName, order.getOrderNo(), reason);
+    }
+
+    /**
+     * 内容初筛的统一调用点。
+     *
+     * <p>初筛是**辅助判定**，不是交易主链路：内容审核模块若因词表/配置读取异常抛错，
+     * 这里降级为「放行并记日志」，绝不因为审核组件故障把全部报修堵死。
+     * 真正的人工复核闸门在复核端点，降级只影响「该进队列的没进」，可事后补审。
+     */
+    private ContentScreenService.ScreenResult screenContent(String description, String attachmentsJson, String applicantPhone) {
+        try {
+            ContentScreenService.ScreenResult result = contentScreenService.screen(description, attachmentsJson, applicantPhone);
+            if (result == null) {
+                return new ContentScreenService.ScreenResult(true, "", "");
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("[WorkOrderService] 内容初筛执行异常，本次按放行处理（不阻断提单）", e);
+            return new ContentScreenService.ScreenResult(true, "", "");
+        }
+    }
+
+    /** 复核驳回通知报修人（含驳回理由；理由为空时给通用说明，不让报修人对着空白发呆） */
+    private void notifyReporterContentRejected(RepairOrder order, String reason) {
+        if (order.getStudentUserId() == null) {
+            return;
+        }
+        String reasonText = StringUtils.hasText(reason) ? reason.trim() : "内容不符合报修规范";
+        String content = String.format(
+                "您的报修单 [%s] 内容未通过人工复核。驳回理由: %s。请修改报修描述后重新提交，修改后会重新进入审核。",
+                order.getOrderNo(), reasonText);
+        notificationService.sendNotification(order.getStudentUserId(), "报修内容复核未通过", content, "ORDER_FLOW", order.getId());
     }
 
     // ==================== 师傅移动端专属业务实现 ====================
@@ -506,26 +949,9 @@ public class WorkOrderService {
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<RepairOrder> orderPage = orderMapper.selectPage(pageParam, query);
 
         // 3. 组装 VO
-        List<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> voList = orderPage.getRecords().stream().map(order -> {
-            com.campus.repair.modules.workorder.vo.DispatchOrderItemVO vo = new com.campus.repair.modules.workorder.vo.DispatchOrderItemVO();
-            org.springframework.beans.BeanUtils.copyProperties(order, vo);
-
-            Long rootCampusId = spatialNodeService.resolveRootCampusId(order.getSpaceId());
-            vo.setCampusId(rootCampusId);
-            if (rootCampusId != null) {
-                SpatialNode rootNode = spatialNodeService.getNodeById(rootCampusId);
-                if (rootNode != null) {
-                    vo.setCampusName(rootNode.getName());
-                }
-            }
-
-            List<com.campus.repair.modules.workorder.entity.RepairOrderLog> logs = orderLogService.getTimeline(order.getId());
-            if (logs != null && !logs.isEmpty()) {
-                com.campus.repair.modules.workorder.entity.RepairOrderLog lastLog = logs.get(logs.size() - 1);
-                vo.setDispatchReason(lastLog.getReasonOrRemark());
-            }
-            return vo;
-        }).collect(java.util.stream.Collectors.toList());
+        List<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> voList = orderPage.getRecords().stream()
+                .map(order -> buildOrderItemVO(order, workerUserId, false, true, true))
+                .collect(java.util.stream.Collectors.toList());
 
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.campus.repair.modules.workorder.vo.DispatchOrderItemVO> resultPage =
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());

@@ -81,17 +81,38 @@ public class OrderNotificationEventListener {
     }
 
     /**
-     * 工单作废通知 (通知师生)
+     * 工单取消通知（报修人 + 指派师傅）。
+     *
+     * <p>两种取消落到同一个 `CANCELLED` 状态，文案按 {@code byReporter} 分流：
+     * 报修人自己取消时不能对他说「已被调度中心核实作废」——那是另一件事；
+     * 而无论谁取消，**已指派的师傅都必须收到一条**：他的负荷已被释放，
+     * 再上门就是白跑。
      */
     @Async
     @EventListener
     public void handleOrderCancelled(OrderCancelledEvent event) {
-        log.info("[OrderNotificationEventListener] 监听到工单作废事件: orderNo={}", event.getOrderNo());
+        log.info("[OrderNotificationEventListener] 监听到工单取消事件: orderNo={}, byReporter={}",
+                event.getOrderNo(), event.isByReporter());
+        String reason = event.getCancelReason() != null ? event.getCancelReason() : "无";
+
         if (event.getStudentUserId() != null) {
-            String title = "工单核实作废提醒";
-            String content = String.format("您的报修单 [%s] 已由后勤调度中心核实作废。作废原因: %s。如有疑问可联系后勤服务热线。",
-                    event.getOrderNo(), event.getCancelReason() != null ? event.getCancelReason() : "无");
+            String title = event.isByReporter() ? "工单已取消" : "工单核实作废提醒";
+            String content = event.isByReporter()
+                    ? String.format("您已取消报修单 [%s]。取消原因: %s。如仍需维修，请重新提交报修单。",
+                            event.getOrderNo(), reason)
+                    : String.format("您的报修单 [%s] 已由后勤调度中心核实作废。作废原因: %s。如有疑问可联系后勤服务热线。",
+                            event.getOrderNo(), reason);
             notificationService.sendNotification(event.getStudentUserId(), title, content, "ORDER_FLOW", event.getOrderId());
+        }
+
+        if (event.getWorkerUserId() != null) {
+            String title = event.isByReporter() ? "报修人已取消工单" : "工单已作废提醒";
+            String content = event.isByReporter()
+                    ? String.format("您好，报修人已取消工单 [%s]，该任务已从您的工作台移除，请勿再上门。取消原因: %s。",
+                            event.getOrderNo(), reason)
+                    : String.format("工单 [%s] 已由后勤调度中心核实作废，该任务已从您的工作台移除，请勿再上门。作废原因: %s。",
+                            event.getOrderNo(), reason);
+            notificationService.sendNotification(event.getWorkerUserId(), title, content, "ORDER_FLOW", event.getOrderId());
         }
     }
 

@@ -45,6 +45,14 @@ public class RepairOrder implements Serializable {
 
     private String status; // PENDING_DISPATCH, MANUAL_DISPATCH, ASSIGNED, IN_PROGRESS, SUSPENDED, PENDING_ACCEPTANCE, REWORK_PENDING, COMPLETED, CANCELLED
 
+    /**
+     * 内容审核状态（**不是工单状态**）：PASSED 可派单 / PENDING 待人工复核 / REJECTED 已驳回待修改。
+     *
+     * <p>与 {@code status} 正交：审核状态只决定「能不能进派单池」，工单状态机保持冻结。
+     * 存量数据与建表默认值都是 PASSED，升级后老单不受影响。
+     */
+    private String reviewStatus;
+
     private Long workerId;
 
     private String workerName;

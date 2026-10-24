@@ -185,13 +185,17 @@ INSERT INTO sys_config (config_key, config_value, description) VALUES
 ('assistant_llm_escalate_below',  '10', '大模型升级阈值：规则最高分低于它才调模型（10=非HIGH就升级，1=只noMatch，0=每次都调）');
 
 -- Phase 02/04 新增参数（代码侧均有兜底默认值，落库只为让运维页面可见可调）
+-- 注：content_review.* 两个参数在 data-test.sql 里已种（测试与本地共用），此处不重复 INSERT，
+--     否则 local 按 data-test → data-demo 顺序加载时会撞 sys_config.config_key 的 UNIQUE。
+--     测试种子把 image_sample_rate 置 0 保证用例可复现；演示环境在这里调回 30。
 INSERT INTO sys_config (config_key, config_value, description) VALUES
-('content_review.enabled',           '1',  '内容初筛总开关：0=关闭初筛（全部直接通过）'),
-('content_review.image_sample_rate', '30', '图片人工抽检比例（0-100）'),
 ('inventory.warning_enabled',        '1',  '库存安全预警总开关'),
 ('inventory.warning_cooldown_hours', '24', '同一物料库存告警冷却小时数'),
 ('inventory.warning_scan_minutes',   '30', '库存预警定时扫描间隔（分钟，改动需重启生效）'),
 ('contact.reporter_see_worker_phone','0',  '报修人是否可见师傅完整号码：0=掩码，1=完整');
+
+UPDATE sys_config SET config_value = '30', description = '图片人工抽检比例（0-100）'
+WHERE config_key = 'content_review.image_sample_rate';
 
 -- ---------------------------------------------------------------------------
 -- 6. 耗材备件台账（含低于/等于安全库存的红色预警项与 1 个停用项）
@@ -307,6 +311,12 @@ VALUES (1019, CONCAT('BX', FORMATDATETIME(DATEADD('DAY', -5, CURRENT_TIMESTAMP),
 -- 7.20 维修中（西校区综合维修，跨工种兜底派单）
 INSERT INTO repair_order (id, order_no, student_user_id, applicant_name, applicant_phone, space_id, space_full_path, category_id, category_full_name, worker_skill_code, description, fault_images, urgency_level, appointment_period, status, worker_id, worker_name, worker_phone, dispatch_type, dispatched_time, accepted_time, sla_deadline, created_at)
 VALUES (1020, CONCAT('BX', FORMATDATETIME(DATEADD('DAY', -1, CURRENT_TIMESTAMP), 'yyyyMMdd'), '000120'), 21, '陈老师', '13800000021', 222, '西校区/教工生活区/教工宿舍A栋/502室', 301, '水暖管道/水龙头漏水', 'PLUMBER', '厨房水槽下方管道接口渗水', NULL, 1, '上午 09:00-12:00', 'IN_PROGRESS', 15, '吴综合', '13800000015', 'MANUAL', DATEADD('HOUR', -26, CURRENT_TIMESTAMP), DATEADD('HOUR', -4, CURRENT_TIMESTAMP), DATEADD('HOUR', 2, CURRENT_TIMESTAMP), DATEADD('DAY', -1, CURRENT_TIMESTAMP));
+
+-- 7.21 Phase 02 · 内容初筛命中 → 待复核（review_status=PENDING，不进派单池）
+--   文案刻意同时命中「广告导流」（词表：加微信/代做）与「他人隐私」（11 位手机号且非本人），
+--   用来演示复核页同时展示多条命中分类；本单不发布 OrderCreatedEvent，师傅负荷不变。
+INSERT INTO repair_order (id, order_no, student_user_id, applicant_name, applicant_phone, space_id, space_full_path, category_id, category_full_name, worker_skill_code, description, fault_images, urgency_level, appointment_period, status, review_status, created_at)
+VALUES (1021, CONCAT('BX', FORMATDATETIME(DATEADD('DAY', 0, CURRENT_TIMESTAMP), 'yyyyMMdd'), '001021'), 3, '张同学', '13800000003', 120, '东校区/学生生活区/1号宿舍楼/302室', 311, '电气照明/灯具损坏', 'ELECTRICIAN', '宿舍灯不亮，可以加微信 13800000009 详聊，代做也行', '["/uploads/demo/fault-09.jpg"]', 1, '上午 09:00-12:00', 'PENDING_DISPATCH', 'PENDING', DATEADD('HOUR', -2, CURRENT_TIMESTAMP));
 
 -- ---------------------------------------------------------------------------
 -- 8. 流转审计日志（不可篡改时间轴：SUBMIT -> 派单 -> 接单 -> 挂起/恢复 -> 完工 -> 验收/返工/作废）
@@ -476,3 +486,30 @@ INSERT INTO sys_notification (user_id, title, content, category, related_order_i
 
 (20, '【工单已结单】501室 网络不通已闭环', '感谢您的配合，欢迎对本次服务进行评价。', 'ORDER_FLOW', 1019, 0, DATEADD('DAY', -3, CURRENT_TIMESTAMP)),
 (20, '【返工已受理】您的差评已转主管督办', '已通知主管仲裁，将安排师傅二次上门。', 'REWORK_ALERT', 1015, 1, DATEADD('DAY', -4, CURRENT_TIMESTAMP));
+
+-- ---------------------------------------------------------------------------
+-- 12. Phase 02 · 内容审核与公告先审后发演示样本
+--   · 1021 号工单：初筛命中 → 一条 PENDING 审核轨迹（复核队列里能看到「为什么进队列」）；
+--   · 公告 1：DRAFT（可编辑/提交审核），公告 2：PENDING_REVIEW（可直接审核/驳回）；
+--   · 两份公告都**没有**产生任何 sys_notification —— 未到 PUBLISHED 对师生不可见。
+--   · 敏感词表在 data-test.sql 已种（测试与本地共用），此处不重复插入。
+-- ---------------------------------------------------------------------------
+INSERT INTO sys_content_review (id, biz_type, biz_id, biz_no, submit_round, content_snapshot, attachments, hit_rules, screen_result, outcome, created_at) VALUES
+(1, 'ORDER', 1021, CONCAT('BX', FORMATDATETIME(DATEADD('DAY', 0, CURRENT_TIMESTAMP), 'yyyyMMdd'), '001021'), 1,
+ '宿舍灯不亮，可以加微信 13800000009 详聊，代做也行', '["/uploads/demo/fault-09.jpg"]',
+ 'AD:广告导流|PRIVACY:他人手机号', 'SUSPECTED', 'PENDING', DATEADD('HOUR', -2, CURRENT_TIMESTAMP)),
+(2, 'ANNOUNCEMENT', 2, '关于秋季学期宿舍区安全用电检查的通知', 1,
+ CONCAT('关于秋季学期宿舍区安全用电检查的通知', ' ', '后勤维修中心将于下周对东校区宿舍区开展安全用电专项检查，请同学们提前整理插座与大功率电器，检查期间可能短时停电。'),
+ NULL, NULL, 'SUSPECTED', 'PENDING', DATEADD('HOUR', -4, CURRENT_TIMESTAMP));
+
+INSERT INTO sys_announcement (id, title, content, status, author_id, author_name, submitted_at, created_at, updated_at) VALUES
+(1, '关于东校区二次供水管网例行维保的通知',
+ '因二次供水管网例行维保，本周六 08:00-12:00 东校区全域停水，请各部门提前做好储水与告知工作。',
+ 'DRAFT', 10, '王调度', NULL, DATEADD('DAY', -1, CURRENT_TIMESTAMP), DATEADD('DAY', -1, CURRENT_TIMESTAMP)),
+(2, '关于秋季学期宿舍区安全用电检查的通知',
+ '后勤维修中心将于下周对东校区宿舍区开展安全用电专项检查，请同学们提前整理插座与大功率电器，检查期间可能短时停电。',
+ 'PENDING_REVIEW', 10, '王调度', DATEADD('HOUR', -4, CURRENT_TIMESTAMP), DATEADD('DAY', -1, CURRENT_TIMESTAMP), DATEADD('HOUR', -4, CURRENT_TIMESTAMP));
+
+-- 1021 的提单日志：SUBMIT 之后因内容待审没有派单节点（时间轴可解释「为什么还没派单」）
+INSERT INTO repair_order_log (order_id, order_no, operator_id, operator_name, operator_role, action_type, from_status, to_status, reason_or_remark, created_at)
+VALUES (1021, CONCAT('BX', FORMATDATETIME(DATEADD('DAY', 0, CURRENT_TIMESTAMP), 'yyyyMMdd'), '001021'), 3, '张同学', 'REPORTER', 'SUBMIT', 'DRAFT', 'PENDING_DISPATCH', '师生提交报修工单（内容初筛命中，转人工复核）', DATEADD('HOUR', -2, CURRENT_TIMESTAMP));
