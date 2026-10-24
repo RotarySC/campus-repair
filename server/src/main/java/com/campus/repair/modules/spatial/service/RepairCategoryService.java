@@ -2,6 +2,10 @@ package com.campus.repair.modules.spatial.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campus.repair.common.exception.BusinessException;
+import com.campus.repair.modules.audit.constant.AuditConstants;
+import com.campus.repair.modules.audit.service.OperationActor;
+import com.campus.repair.modules.audit.service.OperationLogService;
+import com.campus.repair.modules.audit.service.OperationSnapshotMaps;
 import com.campus.repair.modules.spatial.entity.RepairCategory;
 import com.campus.repair.modules.spatial.mapper.RepairCategoryMapper;
 import com.campus.repair.modules.spatial.vo.RepairCategoryVO;
@@ -23,6 +27,7 @@ public class RepairCategoryService {
     private static final int ASSISTANT_TEXT_MAX_LENGTH = 255;
 
     private final RepairCategoryMapper categoryMapper;
+    private final OperationLogService operationLogService;
 
     public List<RepairCategoryVO> getCategoryTree(boolean onlyEnabled) {
         LambdaQueryWrapper<RepairCategory> query = new LambdaQueryWrapper<RepairCategory>()
@@ -51,6 +56,12 @@ public class RepairCategoryService {
 
     @Transactional(rollbackFor = Exception.class)
     public RepairCategory createCategory(RepairCategory category) {
+        return createCategory(category, null);
+    }
+
+    /** 创建分类并在同一事务写审计；无操作人上下文时不落审计。 */
+    @Transactional(rollbackFor = Exception.class)
+    public RepairCategory createCategory(RepairCategory category, OperationActor actor) {
         if (!StringUtils.hasText(category.getName())) {
             throw new BusinessException("分类名称不能为空");
         }
@@ -75,12 +86,22 @@ public class RepairCategoryService {
         validateAssistantFields(category);
 
         categoryMapper.insert(category);
+        operationLogService.record(AuditConstants.MODULE_CATEGORY, AuditConstants.ACTION_CREATE,
+                AuditConstants.TARGET_REPAIR_CATEGORY, category.getId(), category.getName(),
+                null, OperationSnapshotMaps.of(AuditConstants.TARGET_REPAIR_CATEGORY, category), actor, null);
         return category;
     }
 
     public void updateCategory(RepairCategory category) {
+        updateCategory(category, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void updateCategory(RepairCategory category, OperationActor actor) {
         RepairCategory existing = categoryMapper.selectById(category.getId());
         if (existing == null) throw new BusinessException("分类不存在");
+        java.util.Map<String, Object> before =
+                OperationSnapshotMaps.of(AuditConstants.TARGET_REPAIR_CATEGORY, existing);
 
         existing.setName(category.getName());
         existing.setWorkerSkillCode(category.getWorkerSkillCode());
@@ -94,6 +115,9 @@ public class RepairCategoryService {
         validateAssistantFields(existing);
 
         categoryMapper.updateById(existing);
+        operationLogService.record(AuditConstants.MODULE_CATEGORY, AuditConstants.ACTION_UPDATE,
+                AuditConstants.TARGET_REPAIR_CATEGORY, existing.getId(), existing.getName(),
+                before, OperationSnapshotMaps.of(AuditConstants.TARGET_REPAIR_CATEGORY, existing), actor, null);
     }
 
     /**
@@ -117,12 +141,23 @@ public class RepairCategoryService {
     }
 
     public void deleteCategory(Long id) {
+        deleteCategory(id, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteCategory(Long id, OperationActor actor) {
         Long childCount = categoryMapper.selectCount(new LambdaQueryWrapper<RepairCategory>()
                 .eq(RepairCategory::getParentId, id));
         if (childCount > 0) {
             throw new BusinessException("存在子级分类，无法直接删除");
         }
+        RepairCategory existing = categoryMapper.selectById(id);
         categoryMapper.deleteById(id);
+        if (existing != null) {
+            operationLogService.record(AuditConstants.MODULE_CATEGORY, AuditConstants.ACTION_DELETE,
+                    AuditConstants.TARGET_REPAIR_CATEGORY, existing.getId(), existing.getName(),
+                    OperationSnapshotMaps.of(AuditConstants.TARGET_REPAIR_CATEGORY, existing), null, actor, null);
+        }
     }
 
     public RepairCategory getCategoryById(Long id) {

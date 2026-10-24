@@ -35,6 +35,12 @@ public class SparePart implements Serializable {
 
     private Integer status; // 1-正常在架, 0-停用下架
 
+    /**
+     * 库存告警冷却水位：上次向调度/平台管理推送 {@code STOCK_WARNING} 的时间。
+     * {@code null}=从未告警（或入库补回阈值以上后被清空）。
+     */
+    private LocalDateTime lastWarningAt;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

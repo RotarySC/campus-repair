@@ -118,6 +118,16 @@
             <el-button size="small" :icon="Download" :loading="exporting" @click="handleExportAdvice">
               导出采购建议
             </el-button>
+            <!-- Phase 04：主动预警演示端点（仅平台管理可见，与后端 @PreAuthorize 同集合） -->
+            <el-button
+              v-if="canScanStockWarning"
+              size="small"
+              :icon="Bell"
+              :loading="scanning"
+              @click="handleScanStockWarning"
+            >
+              立即扫描预警
+            </el-button>
           </div>
         </div>
 
@@ -409,14 +419,16 @@
 
 <script setup lang="ts">
 import EmptyState from '../../components/EmptyState.vue';
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Search,
   Plus,
-  Download
+  Download,
+  Bell
 } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
+import { useIdentity } from '../../composables/useIdentity';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import StatusRing from '../../components/StatusRing.vue';
 import MetaChip from '../../components/MetaChip.vue';
@@ -428,6 +440,7 @@ import {
   SparePartInboundVO,
   InventorySummaryVO,
   SparePartCategoryOptions,
+  StockWarningScanResultVO,
   todayIsoDate
 } from '@campus/shared';
 
@@ -471,6 +484,11 @@ const total = ref(0);
 const loadingTable = ref(false);
 const parts = ref<SparePartVO[]>([]);
 const exporting = ref(false);
+
+// Phase 04：安全库存主动预警（按钮仅平台管理可见，与后端同集合判据）
+const { has } = useIdentity();
+const canScanStockWarning = computed(() => has('PLATFORM_ADMIN'));
+const scanning = ref(false);
 
 // 新增/编辑状态
 const editDialogVisible = ref(false);
@@ -672,6 +690,29 @@ async function openHistoryDialog(row: SparePartVO) {
     ElMessage.error('获取入库历史失败');
   } finally {
     loadingHistory.value = false;
+  }
+}
+
+async function handleScanStockWarning() {
+  scanning.value = true;
+  try {
+    const res = await httpClient.post<StockWarningScanResultVO>('/inventory/stock-warning/scan');
+    if (res.code === 200 && res.data) {
+      const { scanned, notified } = res.data;
+      if (notified > 0) {
+        ElMessage.success(
+          `已扫描 ${scanned} 个低库存物料，向调度/平台管理推送 ${notified} 条库存预警`
+        );
+      } else if (scanned > 0) {
+        ElMessage.info(`扫描到 ${scanned} 个低库存物料，均在冷却期内，未重复推送`);
+      } else {
+        ElMessage.info('当前没有需要推送的安全库存预警');
+      }
+    }
+  } catch (err: any) {
+    ElMessage.error(err.message || '库存预警扫描失败');
+  } finally {
+    scanning.value = false;
   }
 }
 

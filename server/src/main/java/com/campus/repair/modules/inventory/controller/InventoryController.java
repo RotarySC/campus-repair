@@ -10,9 +10,11 @@ import com.campus.repair.modules.inventory.dto.SparePartQueryRequest;
 import com.campus.repair.modules.inventory.entity.RepairMaterialConsume;
 import com.campus.repair.modules.inventory.entity.SparePartInbound;
 import com.campus.repair.modules.inventory.service.InventoryService;
+import com.campus.repair.modules.inventory.service.StockWarningService;
 import com.campus.repair.modules.inventory.vo.InventorySummaryVO;
 import com.campus.repair.modules.inventory.vo.PurchaseAdviceExportVO;
 import com.campus.repair.modules.inventory.vo.SparePartVO;
+import com.campus.repair.modules.inventory.vo.StockWarningScanResultVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -34,6 +36,7 @@ import java.util.List;
 public class InventoryController {
 
     private final InventoryService inventoryService;
+    private final StockWarningService stockWarningService;
 
     @Operation(summary = "分页查询耗材备件物料清单")
     @GetMapping("/parts")
@@ -101,6 +104,13 @@ public class InventoryController {
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'DISPATCHER')")
     public R<List<SparePartInbound>> getInboundHistory(@PathVariable Long partId) {
         return R.success(inventoryService.getInboundHistoryByPartId(partId));
+    }
+
+    @Operation(summary = "立即执行一次安全库存预警扫描（只发告警，不改库存）")
+    @PostMapping("/stock-warning/scan")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
+    public R<StockWarningScanResultVO> scanStockWarning() {
+        return R.success(stockWarningService.scanLowStock());
     }
 }
 

@@ -4,7 +4,11 @@
       <!-- 空间网格管理 -->
       <el-tab-pane label="四级空间网格树" name="spatial">
         <div class="tab-toolbar">
-          <el-button type="primary" icon="Plus" @click="openCreateNodeDialog(0, 1)">添加校区根节点</el-button>
+          <div class="toolbar-group">
+            <el-button type="primary" icon="Plus" @click="openCreateNodeDialog(0, 1)">添加校区根节点</el-button>
+            <!-- Phase 04：字典变更审计（append-only）。抽屉内仍可切到「全部模块」。 -->
+            <el-button icon="Clock" @click="openAuditDrawer('SPATIAL')">变更记录</el-button>
+          </div>
           <el-switch v-model="onlyEnabled" active-text="仅看启用空间" inactive-text="全部空间" @change="loadSpatialTree" />
         </div>
 
@@ -70,7 +74,10 @@
       <!-- 故障分类与工种映射 -->
       <el-tab-pane label="故障分类与工种字典" name="category">
         <div class="tab-toolbar">
-          <el-button type="primary" icon="Plus" @click="openCreateCategoryDialog(0, 1)">添加一级故障大类</el-button>
+          <div class="toolbar-group">
+            <el-button type="primary" icon="Plus" @click="openCreateCategoryDialog(0, 1)">添加一级故障大类</el-button>
+            <el-button icon="Clock" @click="openAuditDrawer('CATEGORY')">变更记录</el-button>
+          </div>
         </div>
 
         <!-- 宽档=树形表格；窄档(<768px)=树形卡片列表（不再依赖 880px 宽的横向滚动） -->
@@ -300,6 +307,89 @@
         <el-button type="primary" @click="submitCategoryForm">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 字典变更记录抽屉（Phase 04）：append-only 审计行的只读视图 -->
+    <el-drawer
+      v-model="auditDrawerVisible"
+      title="字典变更记录"
+      size="min(820px, 96vw)"
+      direction="rtl"
+    >
+      <div class="audit-toolbar">
+        <el-select v-model="auditModule" size="small" style="width: 132px;" @change="handleAuditFilter">
+          <el-option label="全部模块" value="ALL" />
+          <el-option
+            v-for="(label, code) in OperationModuleLabels"
+            :key="code"
+            :label="label"
+            :value="code"
+          />
+        </el-select>
+        <el-date-picker
+          v-model="auditDateRange"
+          type="daterange"
+          size="small"
+          value-format="YYYY-MM-DD"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          style="max-width: 250px;"
+          @change="handleAuditFilter"
+        />
+        <el-button size="small" :loading="auditLoading" @click="loadAuditLogs">查询</el-button>
+      </div>
+
+      <el-table
+        v-loading="auditLoading"
+        :data="auditRecords"
+        size="small"
+        border
+        style="width: 100%; margin-top: 12px;"
+        empty-text="暂无变更记录"
+      >
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="audit-diff">
+              <div class="audit-diff__col">
+                <div class="audit-diff__title">修改前</div>
+                <pre class="audit-diff__json">{{ formatSnapshot(row.before) }}</pre>
+              </div>
+              <div class="audit-diff__col">
+                <div class="audit-diff__title">修改后</div>
+                <pre class="audit-diff__json">{{ formatSnapshot(row.after) }}</pre>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="时间" width="156" />
+        <el-table-column label="模块" width="92">
+          <template #default="{ row }">{{ operationModuleLabel(row.module) }}</template>
+        </el-table-column>
+        <el-table-column label="动作" width="72">
+          <template #default="{ row }">{{ operationActionLabel(row.action) }}</template>
+        </el-table-column>
+        <el-table-column prop="targetName" label="变更对象" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="operatorName" label="操作人" width="96" show-overflow-tooltip />
+        <el-table-column label="操作人职能" width="110">
+          <template #default="{ row }">
+            {{ OperatorRoleLabels[row.operatorRole] || row.operatorRole }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="130" show-overflow-tooltip />
+      </el-table>
+
+      <div class="pagination-wrap" v-if="auditTotal > 0">
+        <el-pagination
+          v-model:current-page="auditPage"
+          v-model:page-size="auditSize"
+          :total="auditTotal"
+          layout="total, prev, pager, next, sizes"
+          :page-sizes="[10, 20, 50]"
+          size="small"
+          @size-change="loadAuditLogs"
+          @current-change="loadAuditLogs"
+        />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -307,7 +397,17 @@
 import MetaChip from '../../components/MetaChip.vue';
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { branchLabel, WorkerSkillLabels, BuildingNatureOptions, buildingNatureLabelOf } from '@campus/shared';
+import {
+  branchLabel,
+  WorkerSkillLabels,
+  BuildingNatureOptions,
+  buildingNatureLabelOf,
+  OperationModuleLabels,
+  operationModuleLabel,
+  operationActionLabel,
+  OperatorRoleLabels
+} from '@campus/shared';
+import type { OperationLogVO } from '@campus/shared';
 import { httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
 import LevelIcon from '../../components/LevelIcon.vue';
@@ -320,6 +420,62 @@ const { isNarrowPhone } = useViewport();
 const spatialTree = ref<any[]>([]);
 const categoryList = ref<any[]>([]);
 const configList = ref<any[]>([]);
+
+// ---- 变更记录（Phase 04 审计抽屉）----
+const auditDrawerVisible = ref(false);
+const auditLoading = ref(false);
+const auditRecords = ref<OperationLogVO[]>([]);
+const auditTotal = ref(0);
+const auditPage = ref(1);
+const auditSize = ref(10);
+const auditModule = ref<string>('ALL');
+const auditDateRange = ref<[string, string] | null>(null);
+
+/** 打开抽屉：从空间/分类页签进来时预置对应模块筛选 */
+function openAuditDrawer(module: 'SPATIAL' | 'CATEGORY' | 'ALL' = 'ALL') {
+  auditModule.value = module;
+  auditDrawerVisible.value = true;
+  auditPage.value = 1;
+  loadAuditLogs();
+}
+
+function handleAuditFilter() {
+  auditPage.value = 1;
+  loadAuditLogs();
+}
+
+async function loadAuditLogs() {
+  auditLoading.value = true;
+  try {
+    const params: Record<string, unknown> = {
+      page: auditPage.value,
+      size: auditSize.value,
+      module: auditModule.value !== 'ALL' ? auditModule.value : undefined
+    };
+    if (auditDateRange.value && auditDateRange.value.length === 2) {
+      // 后端对「只给日期」的 end 取当日 23:59:59，这里直接传日期串即可覆盖整天
+      params.start = auditDateRange.value[0];
+      params.end = auditDateRange.value[1];
+    }
+    const res = await httpClient.get<{ records: OperationLogVO[]; total: number }>('/operation-logs', {
+      params
+    });
+    if (res.code === 200 && res.data) {
+      auditRecords.value = res.data.records || [];
+      auditTotal.value = res.data.total || 0;
+    }
+  } catch (err: any) {
+    ElMessage.error(err.message || '加载变更记录失败');
+  } finally {
+    auditLoading.value = false;
+  }
+}
+
+/** 前后值都是白名单字段组成的对象；空值（新增的前值 / 删除的后值）显示占位符 */
+function formatSnapshot(snapshot?: Record<string, unknown> | null) {
+  if (!snapshot) return '—';
+  return JSON.stringify(snapshot, null, 2);
+}
 
 const nodeDialogVisible = ref(false);
 const nodeForm = reactive({
@@ -563,6 +719,54 @@ onMounted(() => {
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 12px;
+}
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---- 变更记录抽屉（Phase 04）---- */
+.audit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.audit-diff {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+}
+.audit-diff__col {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.audit-diff__title {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.audit-diff__json {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--canvas);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow: auto;
+}
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 .tree-node-row {
   flex: 1;

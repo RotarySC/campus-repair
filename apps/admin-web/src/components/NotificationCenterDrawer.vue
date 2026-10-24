@@ -133,7 +133,8 @@ import AlertBanner from './AlertBanner.vue';
 import EmptyState from './EmptyState.vue';
 import { ref, onMounted } from 'vue';
 import { ElMessage, FormInstance, FormRules } from 'element-plus';
-import { httpClient } from '../stores/auth';
+import { useRouter } from 'vue-router';
+import { httpClient, useAuthStore } from '../stores/auth';
 import {
   NotificationItemVO,
   NotificationCategoryLabels,
@@ -154,6 +155,15 @@ const currentPage = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
 const notifications = ref<NotificationItemVO[]>([]);
+
+const router = useRouter();
+const authStore = useAuthStore();
+
+/** 库存预警只对调度/平台管理有意义；其它角色点击只标已读，不做无权跳转。 */
+function canOpenInventory(): boolean {
+  const codes = authStore.userInfo?.roleCodes ?? [];
+  return codes.includes('DISPATCHER') || codes.includes('PLATFORM_ADMIN');
+}
 
 onMounted(() => {
   fetchData();
@@ -219,6 +229,13 @@ async function handleMarkAllRead() {
 function handleItemClick(item: NotificationItemVO) {
   if (item.isRead === 0) {
     handleMarkSingleRead(item);
+  }
+  // 库存预警没有关联工单，落到进销存台账才看得到采购建议（Phase 04）
+  if (item.category === 'STOCK_WARNING') {
+    if (canOpenInventory()) {
+      router.push('/inventory');
+    }
+    return;
   }
   // 关联工单跳转交给宿主（AdminLayout）按角色路由：师生→详情，管理员→调度中心，师傅→作业台
   if (item.relatedOrderId) {

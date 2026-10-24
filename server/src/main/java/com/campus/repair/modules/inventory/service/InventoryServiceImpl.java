@@ -11,6 +11,7 @@ import com.campus.repair.modules.inventory.dto.SparePartQueryRequest;
 import com.campus.repair.modules.inventory.entity.RepairMaterialConsume;
 import com.campus.repair.modules.inventory.entity.SparePart;
 import com.campus.repair.modules.inventory.entity.SparePartInbound;
+import com.campus.repair.modules.inventory.event.StockLevelChangedEvent;
 import com.campus.repair.modules.inventory.mapper.RepairMaterialConsumeMapper;
 import com.campus.repair.modules.inventory.mapper.SparePartInboundMapper;
 import com.campus.repair.modules.inventory.mapper.SparePartMapper;
@@ -20,6 +21,7 @@ import com.campus.repair.modules.inventory.vo.SparePartVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -40,6 +42,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final SparePartMapper sparePartMapper;
     private final RepairMaterialConsumeMapper consumeMapper;
     private final SparePartInboundMapper inboundMapper;
+    private final ApplicationEventPublisher eventPublisher;
     private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
     private static final java.util.concurrent.atomic.AtomicLong LOCAL_INBOUND_COUNTER = new java.util.concurrent.atomic.AtomicLong(1);
 
@@ -51,6 +54,7 @@ public class InventoryServiceImpl implements InventoryService {
         }
 
         BigDecimal totalCost = BigDecimal.ZERO;
+        List<Long> affectedPartIds = new ArrayList<>();
 
         for (MaterialConsumeDTO item : items) {
             if (item.getConsumeQuantity() == null || item.getConsumeQuantity() <= 0) {
@@ -90,6 +94,14 @@ public class InventoryServiceImpl implements InventoryService {
             consume.setUnitPrice(unitPrice);
             consume.setTotalCost(itemTotalCost);
             consumeMapper.insert(consume);
+
+            affectedPartIds.add(part.getId());
+        }
+
+        // 扣减成功后在**同一事务内**发布事件；StockWarningListener 用 AFTER_COMMIT 接住，
+        // 只有事务提交成功才检查「本次涉及的物料是否跌破安全库存」。
+        if (!affectedPartIds.isEmpty()) {
+            eventPublisher.publishEvent(new StockLevelChangedEvent(List.copyOf(affectedPartIds)));
         }
 
         return totalCost;
@@ -248,6 +260,13 @@ public class InventoryServiceImpl implements InventoryService {
 
         // 原子累加物料在库物理库存
         sparePartMapper.addStockAtomic(part.getId(), request.getQuantity());
+
+        // 入库把库存补回阈值以上时清空告警冷却水位：当天再次跌破还能再提醒一次，
+        // 不会因为 24h 冷却把第二次真实缺料吞掉（phase-04 §4.3）。
+        int cleared = sparePartMapper.clearWarningCooldownIfAboveThreshold(part.getId());
+        if (cleared > 0) {
+            log.info("[Inventory] 物料 [{}] 入库后库存回到安全线以上，已清空库存告警冷却", part.getPartName());
+        }
 
         log.info("[Inventory] 采购入库登记成功: 单号={}, 物料={}, 入库量={}, 采购金额=¥{}",
                 inboundNo, part.getPartName(), request.getQuantity(), totalAmount);

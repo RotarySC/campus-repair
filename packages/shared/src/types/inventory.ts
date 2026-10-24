@@ -55,6 +55,18 @@ export interface InventorySummaryVO {
   disabledCount: number;
 }
 
+/**
+ * 「立即扫描预警」结果（Phase 04）。
+ *
+ * - `scanned`：本次通过「低库存 + 冷却期外」筛选的物料数；
+ * - `notified`：实际发出告警的物料数（同一物料的多位收件人只计 1）。
+ * 冷却期内不重复推送，所以「再扫一次」通常是 0/0。
+ */
+export interface StockWarningScanResultVO {
+  scanned: number;
+  notified: number;
+}
+
 export interface PurchaseAdviceItemVO {
   partCode: string;
   partName: string;

@@ -9,6 +9,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -82,6 +83,18 @@ public class GlobalExceptionHandler {
     public R<Void> handleMessageNotReadable(HttpMessageNotReadableException e) {
         log.warn("请求体解析失败: {}", e.getMessage());
         return R.error(ErrorCode.PARAM_INVALID.getCode(), "请求体格式错误，无法解析为 JSON");
+    }
+
+    /**
+     * 路径存在但 HTTP 方法没有对应处理器（例如对只读的审计接口发 PUT/DELETE）时，
+     * Spring 抛本异常；不注册这个处理器会被下面的 {@code Exception} 兜底成 **500**，
+     * 让「端点不存在」读起来像「服务端崩了」。按 HTTP 语义正确回 405。
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    public R<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        log.warn("请求方法不受支持: {} {}", e.getMethod(), e.getMessage());
+        return R.error(HttpStatus.METHOD_NOT_ALLOWED.value(), "请求方法不受支持");
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
