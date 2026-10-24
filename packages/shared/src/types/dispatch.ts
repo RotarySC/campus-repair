@@ -32,6 +32,33 @@ export interface DispatchOrderItemVO {
   createdAt: string;
   updatedAt: string;
   dispatchReason?: string;
+
+  /**
+   * ---- Phase 03：可见性 / 取消窗口（后端 `ContactVisibilityPolicy` 计算，前端只消费）----
+   * 当前查看者与这张工单的关系：属主报修人 / 被指派的师傅 / 调度与管理侧。
+   */
+  viewerRelation?: 'OWNER' | 'ASSIGNEE' | 'DISPATCH';
+  /**
+   * 报修人电话的**展示值**（后端已按查看者关系掩码，可能是 `138****0000`）。
+   * 新代码一律读这两个字段，不要再读 `applicantPhone` / `workerPhone`：
+   * 原始字段保留只为兼容旧页面，它不携带任何可见性判定。
+   */
+  applicantPhoneDisplay?: string;
+  /** 师傅电话的展示值（规则同 `applicantPhoneDisplay`）。 */
+  workerPhoneDisplay?: string;
+  /**
+   * 报修人能否自助取消。**规则只由后端 `ReporterCancelPolicy` 判定**，前端不要用
+   * `status` 手写一遍（否则状态机一改两边就漂）：可取消窗口 = 未派单 / 待人工调度，
+   * 或已指派但师傅尚未接单（`acceptedTime` 为空）。仅属主为 `true`。
+   */
+  canCancel?: boolean;
+  /**
+   * 内容审核状态（`repair_order.review_status`）：`PASSED` 默认放行；
+   * `PENDING` 命中敏感规则待人工复核；`REJECTED` 已驳回，报修人可修改后重新提交。
+   */
+  reviewStatus?: 'PASSED' | 'PENDING' | 'REJECTED';
+  /** 审核驳回理由 / 待复核摘要（`REJECTED` 时给学生看，不回传敏感词表原文）。 */
+  reviewReason?: string;
 }
 
 export interface DispatchPoolCategoryCountVO {

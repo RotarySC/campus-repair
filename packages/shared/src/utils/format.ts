@@ -69,6 +69,53 @@ export function todayIsoDate(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/** 11 位手机号的长度判据（与后端 `SensitiveMasker.MOBILE_LENGTH` 同一个值） */
+const MOBILE_LENGTH = 11;
+
+/**
+ * 手机号 / 电话号码的掩码展示值。
+ *
+ * **这是后端 `framework/util/SensitiveMasker#maskPhone` 的前端镜像，规则必须逐字一致**
+ * （两边各有一份实现，靠 `test/contact-mask.spec.ts` 锁死同一张长度规则表）：
+ *
+ * | 输入长度 | 输出 | 例 |
+ * | --- | --- | --- |
+ * | 11 | 前 3 + `****` + 后 4 | `13800000000` → `138****0000` |
+ * | 3~10、≥12 | 前 ⌊len/3⌋ + `***` + 后 ⌊len/3⌋ | `010888866666`(12) → `0108***6666`；`1234567`(7) → `12***67` |
+ * | ≤ 2 | `***`（全掩） | `12` → `***` |
+ * | 空 / 全空白 / null / undefined | `null` | — |
+ *
+ * 两端空白先裁掉再判定（后端同样先 `trim()`）；非数字字符**不特殊处理**——
+ * 掩码只做长度切片，校验是上游表单的事。空值返回 `null` 而不是空串，
+ * 避免调用方把「没有号码」与「号码是空字符串」渲染成两种占位。
+ */
+export function maskPhone(phone?: string | null): string | null {
+  if (phone === null || phone === undefined) return null;
+  const trimmed = String(phone).trim();
+  if (!trimmed) return null;
+  if (trimmed.length === MOBILE_LENGTH) {
+    return trimmed.slice(0, 3) + '****' + trimmed.slice(7);
+  }
+  if (trimmed.length <= 2) return '***';
+  const keep = Math.floor(trimmed.length / 3);
+  return trimmed.slice(0, keep) + '***' + trimmed.slice(trimmed.length - keep);
+}
+
+/**
+ * 是否「不可拨号」的号码。
+ *
+ * 判据与后端 `SensitiveMasker#isMasked` 一致：**含 `*` 即视为已掩码**；
+ * 另外这里把 `null`/`undefined`/空串也归为不可拨号——调用方据此决定
+ * 要不要生成 `tel:` 链接，没有号码时同样不该有拨号链接。
+ * 注意：`maskPhone` 的空值返回 `null`，所以「有掩码展示值」与「可拨号」
+ * 在页面上是互斥的两支，不会出现「显示 `***` 却能拨号」。
+ */
+export function isMaskedPhone(phone?: string | null): boolean {
+  if (phone === null || phone === undefined) return true;
+  const trimmed = String(phone).trim();
+  return trimmed === '' || trimmed.includes('*');
+}
+
 /**
  * `repair_order_log.operator_role` 的展示文案。
  *

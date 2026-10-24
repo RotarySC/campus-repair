@@ -61,6 +61,39 @@ export interface UserProfileVO extends UserInfo {
   identityVerified: boolean;
 }
 
+/**
+ * 用户台账行（`GET /users/page` 的 `records`）。
+ *
+ * 与后端 `modules/user/vo/UserAdminVO` 一一对应。**底层 `SysUser` 实体不再直接出网**：
+ * 旧接口把实体原样序列化，连 BCrypt 密码哈希与明文手机号一起吐给前端（隐私面）。
+ * 换 VO 之后 `password` / `deleted` 不可能出现在响应里，手机号只以掩码展示值出网。
+ *
+ * 手机号口径：`DISPATCHER` 拿掩码、`PLATFORM_ADMIN` 拿完整（管理员要联系账号本人），
+ * 判定在后端完成，本字段就是结果，前端不再二次加工。
+ */
+export interface UserAdminVO {
+  id: number;
+  username: string;
+  realName: string;
+  /** 组织条线：`STUDENT` / `FACULTY` / `LOGISTICS` / `ADMIN`（不是职能） */
+  userType: string;
+  department?: string;
+  /** 后端按当前登录人角色算好的展示值（掩码或完整），前端列直接渲染 */
+  phoneDisplay: string | null;
+  /** 账号三态：`0` 停用 / `1` 正常 / `2` 待核验 */
+  status: AccountStatus;
+  identityVerified: boolean;
+  /** 职能（可多值），权限判据，与 `@PreAuthorize` 一一对应 */
+  roleCodes: string[];
+  createdAt?: string;
+  /**
+   * 首次登录仍需改密（`sys_user.is_first_login`，0/1）。
+   * 契约只要求台账最小字段集，但「首次需改密」列是既有功能，后端同 VO 一并返回；
+   * 旧后端 / 老数据缺失时前端按「未知」处理，不做假值。
+   */
+  isFirstLogin?: number;
+}
+
 /** 师傅「我的作业概览」；无 worker_profile 档案时后端返回 data=null */
 export interface MyWorkerProfileVO {
   skillCode: string | null;

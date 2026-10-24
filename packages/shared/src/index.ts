@@ -18,3 +18,4 @@ export * from './api/http';
 export * from './utils/compressor';
 export * from './utils/watermark';
 export * from './utils/format';
+export * from './utils/orderActions';

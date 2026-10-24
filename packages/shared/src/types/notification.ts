@@ -25,6 +25,11 @@ export interface NotificationItemVO {
   content: string;
   category: NotificationCategory | string;
   relatedOrderId?: number;
+  /**
+   * 公告扇出来源（BROADCAST 类通知回指 `sys_announcement.id`）。
+   * 未走公告链路的通知为 null，前端据此决定能否跳转公告工作台。
+   */
+  announcementId?: number | null;
   isRead: number;
   readAt?: string;
   createdAt: string;
@@ -75,5 +80,11 @@ export const ActionTypeLabels: Record<string, string> = {
   AUTO_ACCEPT: '超72小时超时系统自动核销',
   REWORK_TRIGGER: '差评触发返工督办',
   REWORK_ASSIGN: '后勤主管返工仲裁调派',
-  CANCEL: '核实作废工单'
+  CANCEL: '核实作废工单',
+  // 报修人自助取消：与调度作废共用 CANCELLED 终态，靠动作词与 operatorRole 区分主体
+  CANCEL_BY_REPORTER: '报修人自行取消',
+  // 内容审核闸门（内容维度，不是工单状态）：通过 / 驳回 / 驳回后重提
+  REVIEW_APPROVED: '内容复核通过',
+  REVIEW_REJECTED: '内容复核驳回',
+  REVIEW_RESUBMIT: '内容修改后重新提交'
 };
