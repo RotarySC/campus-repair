@@ -69,6 +69,24 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         }
     }
 
+    /**
+     * 「分子 / 分母 × 100」的百分比口径，{@code HALF_UP} 保留 2 位小数；分母为 0 时返回 0.00。
+     *
+     * <p>完工闭环率与返工率共用此方法，确保两者的舍入方式与零分母语义不会各自漂移
+     * （0 在 VO 层表示「无数据」，由前端渲染为「—」）。
+     *
+     * <p>零分母也显式给 2 位小数（{@code 0.00}）而不是裸 {@code ZERO}：接口契约里
+     * 百分比字段恒为 2 位小数，前端与论文口径都不需要再判「这个 0 是几位」。
+     */
+    private static BigDecimal percentOf(long numerator, long denominator) {
+        if (denominator <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.valueOf(numerator)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
+    }
+
     @Override
     public DashboardKpiVO getDashboardKpi() {
         LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
@@ -80,13 +98,14 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         long todayOrders = safeLong(agg.getTodayOrders());
         long activeOrders = safeLong(agg.getActiveOrders());
         long completedOrders = safeLong(agg.getCompletedOrders());
+        long reworkOrders = safeLong(agg.getReworkOrders());
 
-        BigDecimal completionRate = BigDecimal.ZERO;
-        if (totalOrders > 0) {
-            completionRate = BigDecimal.valueOf(completedOrders)
-                    .multiply(BigDecimal.valueOf(100))
-                    .divide(BigDecimal.valueOf(totalOrders), 2, RoundingMode.HALF_UP);
-        }
+        BigDecimal completionRate = percentOf(completedOrders, totalOrders);
+
+        // 返工率：已结单且 rework_count>0 的工单数 / 已结单工单数（按单去重，HALF_UP 2 位）。
+        // 分母复用上面的 completedOrders —— 与「完工闭环率」的分子同源，两个指标可以互相解释；
+        // 无结单时分母为 0，percentOf 返回 0，前端据 completedOrderCount 渲染「—」。
+        BigDecimal reworkRate = percentOf(reworkOrders, completedOrders);
 
         BigDecimal avgHours = avgHoursFromMinutes(agg.getTimedOrders(), agg.getTotalMinutes());
 
@@ -106,6 +125,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .completionRatePercent(completionRate)
                 .averageResponseHours(avgHours)
                 .satisfactionScore(avgScore)
+                .completedOrderCount(completedOrders)
+                .reworkRatePercent(reworkRate)
                 .build();
     }
 

@@ -47,12 +47,19 @@ public interface AnalyticsReportMapper {
 
     /**
      * 大屏顶层 KPI：一次条件聚合取回全部计数与求和，替代原先的 4 次 count + 全量拉取。
+     *
+     * <p>{@code reworkOrders} 是返工率的分子：<b>已结单且触发过返工的工单数</b>。
+     * 用 {@code CASE WHEN ... THEN 1} 逐行计数（而不是 {@code SUM(rework_count)}）是刻意的：
+     * 一张工单被返工多次时 {@code rework_count} 会累加，若按次数求和，该比值会突破 100%，
+     * 失去与 {@code completedOrders} 互相解释的能力。因此口径是「按单去重」。
+     * 分母直接复用同一行的 {@code completedOrders}，不额外增加 DB 往返。
      */
     @Select("SELECT " +
             "  COUNT(*) AS \"totalOrders\", " +
             "  COALESCE(SUM(CASE WHEN created_at >= #{todayStart} THEN 1 ELSE 0 END), 0) AS \"todayOrders\", " +
             "  COALESCE(SUM(CASE WHEN status IN ('ASSIGNED', 'IN_PROGRESS', 'SUSPENDED') THEN 1 ELSE 0 END), 0) AS \"activeOrders\", " +
             "  COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS \"completedOrders\", " +
+            "  COALESCE(SUM(CASE WHEN status = 'COMPLETED' AND rework_count > 0 THEN 1 ELSE 0 END), 0) AS \"reworkOrders\", " +
             "  COALESCE(SUM(CASE WHEN status = 'COMPLETED' AND created_at IS NOT NULL AND closed_time IS NOT NULL THEN 1 ELSE 0 END), 0) AS \"timedOrders\", " +
             "  COALESCE(SUM(CASE WHEN status = 'COMPLETED' AND created_at IS NOT NULL AND closed_time IS NOT NULL " +
             "                    THEN CASE WHEN TIMESTAMPDIFF(MINUTE, created_at, closed_time) < 1 THEN 1 " +

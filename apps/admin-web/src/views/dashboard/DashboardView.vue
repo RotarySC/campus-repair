@@ -27,7 +27,8 @@
       「安全警戒线」本来就存在库里，见 `InventoryServiceImpl#getInventorySummary`。
 
       ⚠️ 两处刻意的实现选择：
-      ① **没有做成第 7 张 KPI 卡**：KPI 行是 `:lg="4"`（一行 6 张），塞第 7 张会得到 6+1 的孤卡。
+      ① **没有把缺料警戒做成 KPI 卡**：KPI 行是运营/质量指标（现为 7 张，第 7 张是「返工率」），
+         而缺料是**异常条件**，两者语汇不同；塞进 KPI 行还会占用 `:lg="3"` 的第 8 个槽位。
          所以改为「KPI 区的警戒条」，形态与 G4 已定的口径一致。
       ② 只在 `lowStockCount > 0` 时出现——**没有异常就不渲染**，
          这也让「本页唯一允许出现的色相是那 9px 圆点」这件事可以被断言（断言在探针里）。
@@ -41,14 +42,14 @@
       </span>
     </div>
 
-    <!-- 顶层核心指标：6 张 KPI 统计卡 -->
+    <!-- 顶层核心指标：7 张 KPI 统计卡（第 7 张「返工率」是质量指标，不是告警） -->
     <el-row :gutter="16" class="kpi-row">
-      <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :md="8" :lg="4">
+      <el-col v-for="card in kpiCards" :key="card.label" :xs="12" :sm="8" :md="6" :lg="3">
         <el-card shadow="never" class="kpi-card">
           <div class="kpi-title">{{ card.label }}</div>
           <!-- KPI 大数字**不再逐卡配色**：「层级靠字号 + 颜色建立，不靠加粗」，
- 而 V4 修订把彩色收归状态语义——6 张卡各自的蓝/橙/绿/红/赭是纯装饰。
- 6 个颜色退场后，本页唯一允许出现的色相是状态圆环。 -->
+ 而 V4 修订把彩色收归状态语义——7 张卡各自的蓝/橙/绿/红/赭是纯装饰。
+ 这些颜色退场后，本页唯一允许出现的色相是状态圆环。 -->
           <div class="kpi-value">
             {{ card.value }}<span class="kpi-unit">{{ card.unit }}</span>
           </div>
@@ -147,6 +148,9 @@ import { httpClient, useAuthStore } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import StatusRing from '../../components/StatusRing.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
+// KPI 卡的「数值 → 文案」映射（含「0 是无数据还是真 0」的判定）抽在同目录纯函数里，
+// 便于单独复核返工率/满意度的零值口径，不必在图表组件里翻找
+import { buildKpiCards } from './kpiCards';
 import {
   DashboardKpiVO,
   TrendChartVO,
@@ -176,7 +180,9 @@ const kpi = ref<DashboardKpiVO>({
   activeProcessingCount: 0,
   completionRatePercent: 0,
   averageResponseHours: 0,
-  satisfactionScore: 0
+  satisfactionScore: 0,
+  completedOrderCount: 0,
+  reworkRatePercent: 0
 });
 const leaderboard = ref<WorkerLeaderboardVO[]>([]);
 const pendingTrend = ref<TrendChartVO | null>(null);
@@ -203,19 +209,7 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let resizeRafId: number | null = null;
 
-const kpiCards = computed(() => {
-  const avgHours = Number(kpi.value.averageResponseHours);
-  const score = Number(kpi.value.satisfactionScore);
-  return [
-    { label: '累计报修总量', value: kpi.value.totalOrderCount, unit: '单', sub: '全校区台账' },
-    { label: '今日新增提单', value: kpi.value.todayNewOrderCount, unit: '单', sub: '实时接报调度' },
-    { label: '当前在修在办', value: kpi.value.activeProcessingCount, unit: '单', sub: '现场施工推进' },
-    { label: '完工闭环率', value: kpi.value.completionRatePercent, unit: '%', sub: '验收结单水准' },
-    // 无完工单 / 无有效评价时后端返回 0，此处显示占位符而不是伪造的均值
-    { label: '平均响应解决耗时', value: avgHours > 0 ? avgHours : '—', unit: avgHours > 0 ? '小时' : '', sub: '提单至竣工核销' },
-    { label: '师生好评综合均分', value: score > 0 ? score : '—', unit: score > 0 ? '★' : '', sub: '服务质检口碑' }
-  ];
-});
+const kpiCards = computed(() => buildKpiCards(kpi.value));
 
 // 空库时不要画无意义的零值坐标轴，改用空态提示
 const hasTrendData = computed(

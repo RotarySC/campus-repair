@@ -125,7 +125,7 @@ public class AnalyticsCockpitIntegrationTest {
     }
 
     @Test
-    @DisplayName("测试大屏 6 大核心 KPI 聚合统计与趋势图表数据结构准确性")
+    @DisplayName("测试大屏 7 项核心 KPI 聚合统计（含返工率）与趋势图表数据结构准确性")
     public void testCockpitKpiAndTrendAggregation() {
         // 1. 获取基础指标
         DashboardKpiVO kpi = analyticsService.getDashboardKpi();
@@ -134,6 +134,21 @@ public class AnalyticsCockpitIntegrationTest {
         Assertions.assertNotNull(kpi.getCompletionRatePercent());
         Assertions.assertNotNull(kpi.getAverageResponseHours());
         Assertions.assertNotNull(kpi.getSatisfactionScore());
+
+        // 1.1 Phase 05 新增：返工率（K5 / R49）与它的分母。本用例不断言具体数值
+        //     （测试库为共享内存库，全局计数随其他用例执行顺序漂移），只锁契约与不变式：
+        //     ① 两字段必须非空；② 率恒在 [0, 100]；③ 无结单时率必须为 0.00（前端据此渲染「—」）
+        Assertions.assertNotNull(kpi.getCompletedOrderCount(), "返工率分母 completedOrderCount 不得为 null");
+        Assertions.assertNotNull(kpi.getReworkRatePercent(), "返工率 reworkRatePercent 不得为 null");
+        Assertions.assertTrue(kpi.getCompletedOrderCount() >= 0, "返工率分母不得为负");
+        Assertions.assertTrue(kpi.getReworkRatePercent().compareTo(java.math.BigDecimal.ZERO) >= 0,
+                "返工率不得为负，实际 " + kpi.getReworkRatePercent());
+        Assertions.assertTrue(kpi.getReworkRatePercent().compareTo(java.math.BigDecimal.valueOf(100)) <= 0,
+                "返工率是比率，恒 ≤ 100%，实际 " + kpi.getReworkRatePercent());
+        if (kpi.getCompletedOrderCount() == 0L) {
+            Assertions.assertEquals(0, java.math.BigDecimal.ZERO.compareTo(kpi.getReworkRatePercent()),
+                    "无结单工单时返工率必须为 0.00，由前端渲染「—」");
+        }
 
         // 2. 获取 30 天双折线趋势
         TrendChartVO trend = analyticsService.getTrendChart(30);

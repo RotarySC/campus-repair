@@ -5,6 +5,20 @@ export interface DashboardKpiVO {
   completionRatePercent: number;
   averageResponseHours: number;
   satisfactionScore: number;
+  /**
+   * 已结单工单数，即返工率的分母。
+   *
+   * 单独返回它，是为了让页面能区分两种都拿到 `reworkRatePercent = 0` 的情况：
+   * 「至今还没有结单」（渲染「—」）与「有结单且真的零返工」（渲染 0.00%）。
+   */
+  completedOrderCount: number;
+  /**
+   * 返工率（百分比 0-100，后端已按 HALF_UP 保留 2 位）。
+   *
+   * 口径：已结单且 `rework_count > 0` 的**工单数** / 已结单工单数 × 100，**按单去重**——
+   * 一张工单返工多次也只算一单（按次数会突破 100%）。在办返工不计入分子分母。
+   */
+  reworkRatePercent: number;
 }
 
 export interface TrendChartVO {

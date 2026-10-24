@@ -20,6 +20,9 @@ public class DashboardAggregateRow {
     /** 已闭环且闭环耗时有效的工单数 */
     private Long timedOrders;
 
+    /** 触发过返工的已闭环工单数（按单去重：一张单返工多次也只计 1），返工率的分子 */
+    private Long reworkOrders;
+
     /** 已闭环工单的闭环总分钟数（每单下限 1 分钟，与原口径一致） */
     private Long totalMinutes;
 
@@ -67,6 +70,14 @@ public class DashboardAggregateRow {
 
     public void setTimedOrders(Long timedOrders) {
         this.timedOrders = timedOrders;
+    }
+
+    public Long getReworkOrders() {
+        return reworkOrders;
+    }
+
+    public void setReworkOrders(Long reworkOrders) {
+        this.reworkOrders = reworkOrders;
     }
 
     public Long getTotalMinutes() {

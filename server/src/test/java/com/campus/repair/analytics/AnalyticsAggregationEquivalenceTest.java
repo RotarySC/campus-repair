@@ -42,8 +42,8 @@ import java.util.stream.Collectors;
  * <p>本测试刻意把重构前 {@code AnalyticsServiceImpl} 的内存聚合算法原样保留为
  * <b>参考实现</b>（{@code ref*} 系列方法），用同一批数据分别跑参考实现与新的
  * SQL 聚合实现，断言两者逐项一致——包括空间标签截断、故障大类根节点、
- * 聚类排序与技师榜单排序。这样既锁住「改动不改变数值口径」，也覆盖了
- * SQL 与 Java 最可能悄悄分歧的边界（单段路径、两段路径、多段路径、无斜杠类别）。
+ * 聚类排序、技师榜单排序，以及<b>返工率（按单去重）</b>。这样既锁住「改动不改变数值口径」，
+ * 也覆盖了 SQL 与 Java 最可能悄悄分歧的边界（单段路径、两段路径、多段路径、无斜杠类别、多次返工）。
  */
 @SpringBootTest(classes = CampusRepairApplication.class)
 @ActiveProfiles("test")
@@ -86,6 +86,12 @@ public class AnalyticsAggregationEquivalenceTest {
 
     private Long insertOrder(String spacePath, String categoryPath, String status,
                              LocalDateTime createdAt, LocalDateTime closedTime, Long workerId) {
+        return insertOrder(spacePath, categoryPath, status, createdAt, closedTime, workerId, 0);
+    }
+
+    private Long insertOrder(String spacePath, String categoryPath, String status,
+                             LocalDateTime createdAt, LocalDateTime closedTime, Long workerId,
+                             int reworkCount) {
         seq++;
         RepairOrder o = new RepairOrder();
         o.setOrderNo("BXEQ" + System.nanoTime() + seq);
@@ -101,6 +107,7 @@ public class AnalyticsAggregationEquivalenceTest {
         o.setUrgencyLevel(1);
         o.setStatus(status);
         o.setWorkerId(workerId);
+        o.setReworkCount(reworkCount);
         o.setIsArchived(0);
         o.setDeleted(0);
         o.setCreatedAt(createdAt);
@@ -244,6 +251,16 @@ public class AnalyticsAggregationEquivalenceTest {
         insertEvaluation(rated, 4);
         insertEvaluation(insertOrder("西校区/后勤保障区/仓库", "电气照明/灯具", "COMPLETED",
                 now.minusDays(8), now.minusDays(8).plusHours(3), w3), 2);
+        // 返工口径的三张样本（本阶段新增，用于锁住「返工率」的 SQL 与内存口径等价）：
+        //   ① 已结单 + 返工 1 次        → 计入分子
+        //   ② 已结单 + 返工 3 次        → 按单去重仍只算 1 单（不得按次数求和）
+        //   ③ 在办返工（REWORK_PENDING）→ 既不计入分子也不计入分母（只看终态）
+        insertOrder("南校区/教工生活区/4号楼", "电气照明/开关", "COMPLETED",
+                now.minusDays(9), now.minusDays(9).plusHours(2), w1, 1);
+        insertOrder("南校区/教工生活区/4号楼", "电气照明/开关", "COMPLETED",
+                now.minusDays(10), now.minusDays(10).plusHours(3), w2, 3);
+        insertOrder("南校区/教工生活区/5号楼", "水暖管道/阀门", "REWORK_PENDING",
+                now.minusDays(11), null, w3, 1);
         // 逻辑删除单：任何统计都必须排除。@TableLogic 会拦截 updateById 对 deleted 的写入，
         // 因此这里用原生 SQL 直接把标记置为 1，才能真实覆盖「逻辑删除数据不进统计」这一分支。
         Long deletedId = insertOrder("东校区/学生生活区/9号楼", "水暖管道/爆管", "COMPLETED",
@@ -287,6 +304,18 @@ public class AnalyticsAggregationEquivalenceTest {
                     .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
         }
 
+        // 返工率（按单去重）：已结单且 rework_count>0 的**工单数** / 已结单工单数 × 100。
+        // 刻意不写 SUM(rework_count)——那会让同一单的多次返工重复进分子
+        long reworkOrders = orders.stream()
+                .filter(o -> "COMPLETED".equals(o.getStatus()))
+                .filter(o -> o.getReworkCount() != null && o.getReworkCount() > 0)
+                .count();
+        BigDecimal reworkRate = BigDecimal.ZERO;
+        if (completed > 0) {
+            reworkRate = BigDecimal.valueOf(reworkOrders).multiply(BigDecimal.valueOf(100))
+                    .divide(BigDecimal.valueOf(completed), 2, RoundingMode.HALF_UP);
+        }
+
         List<RepairOrder> closed = orders.stream()
                 .filter(o -> "COMPLETED".equals(o.getStatus()) && o.getClosedTime() != null && o.getCreatedAt() != null)
                 .toList();
@@ -303,6 +332,7 @@ public class AnalyticsAggregationEquivalenceTest {
         return DashboardKpiVO.builder()
                 .totalOrderCount(total).todayNewOrderCount(today).activeProcessingCount(active)
                 .completionRatePercent(rate).averageResponseHours(avgHours).satisfactionScore(score)
+                .completedOrderCount(completed).reworkRatePercent(reworkRate)
                 .build();
     }
 
@@ -389,6 +419,10 @@ public class AnalyticsAggregationEquivalenceTest {
         Assertions.assertEquals(0, ref.getCompletionRatePercent().compareTo(now.getCompletionRatePercent()), "闭环率");
         Assertions.assertEquals(0, ref.getAverageResponseHours().compareTo(now.getAverageResponseHours()), "平均时效");
         Assertions.assertEquals(0, ref.getSatisfactionScore().compareTo(now.getSatisfactionScore()), "满意度");
+        Assertions.assertEquals(ref.getCompletedOrderCount(), now.getCompletedOrderCount(), "已结单工单数（返工率分母）");
+        Assertions.assertEquals(0, ref.getReworkRatePercent().compareTo(now.getReworkRatePercent()),
+                "返工率（按单去重）：SQL 条件聚合与内存口径必须一致，期望 " + ref.getReworkRatePercent()
+                        + "%，实际 " + now.getReworkRatePercent() + "%");
 
         // 自动核销未评分不得进满意度：(4 + 2) / 2 = 3.00
         Assertions.assertEquals(0, new BigDecimal("3.00").compareTo(now.getSatisfactionScore()),
