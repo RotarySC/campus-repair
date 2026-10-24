@@ -33,7 +33,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AssistantFaqProvider {
 
-    /** 与 `data-demo.sql` 的种子、以及 AGENTS.md §3 的状态机约定保持一致 */
+    /** 与 `data-demo.sql` 的种子、以及 `OrderStatusEnum` 的状态机约定保持一致 */
     private static final int DEFAULT_AUTO_ACCEPTANCE_HOURS = 72;
     private static final int DEFAULT_REWORK_RATING_THRESHOLD = 2;
     private static final int DEFAULT_SLA_WARNING_AHEAD_HOURS = 24;

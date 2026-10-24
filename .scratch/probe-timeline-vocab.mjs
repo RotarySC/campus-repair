@@ -3,7 +3,7 @@
  *
  * 为什么需要：`OrderStatusEnum` 里**没有 `DRAFT`**，而第一期实施记录（规范 §10.9）写着
  * 时间轴渲染出「DRAFT ➔ 待派单」。若属实，那是把字典码直接端给用户
- * （AGENTS.md 明令禁止的那类：「不许把 PLUMBER 这种字典码端给用户」）。
+ * （本仓库约定禁止的那类：「不许把 PLUMBER 这种字典码端给用户」）。
  * 但**不能只凭一句记录就下结论**——去数据库真的读一遍。
  *
  * 用法: node .scratch/probe-timeline-vocab.mjs

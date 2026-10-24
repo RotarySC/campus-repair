@@ -31,7 +31,7 @@ import java.util.List;
  *   <li>闭环耗时的每单下限为 1 分钟（沿用原 {@code Math.max(1, ...)} 口径），
  *       无耗时的订单不进入平均耗时分母；</li>
  *   <li>满意度只统计 {@code rating_star} 非空且大于 0 的真实评价，
- *       自动核销产生的未评分记录不得计入（见 AGENTS.md §3）。</li>
+ *       自动核销产生的未评分记录不得计入（口径见 `CONTEXT.md`）。</li>
  * </ul>
  *
  * <p>SQL 需同时兼容 MySQL 8 与测试使用的 H2（MySQL 兼容模式），因此刻意绕开两个不可移植点：
@@ -39,8 +39,7 @@ import java.util.List;
  *   <li>日期分桶用标准 {@code CAST(ts AS DATE)}，<b>不用 {@code DATE_FORMAT}</b>
  *       （H2 即使 {@code MODE=MySQL} 也不提供该函数）；</li>
  *   <li>「校区/分区」标签的字符串截断<b>不写进 SQL</b>，只在 Java 侧对去重后的路径做
- *       {@code split("/")}（H2 对 {@code LOCATE} 的表达式求值语义不可靠，
- *       详见 {@code AGENTS.md} §4 首条）。</li>
+ *       {@code split("/")}（H2 对 {@code LOCATE} 的表达式求值语义不可靠）。</li>
  * </ul>
  */
 @Mapper

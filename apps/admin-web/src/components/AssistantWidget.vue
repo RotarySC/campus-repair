@@ -562,7 +562,7 @@ defineExpose({ notifyCenter: openNotificationCenter });
 /*
  * 单条删除徽标：默认藏着，只有指针/键盘落在该条上才露出。
  * **刻意不加 transition**——后台标签里主线程过渡会卡住，探针量不到终态
- * （`AGENTS.md` §2.2 记过这条：宽度/transform 的过渡在隐藏标签页不推进）。
+ * （宽度/transform 的过渡在隐藏标签页不推进）。
  */
 .history-chip-remove {
   position: absolute;

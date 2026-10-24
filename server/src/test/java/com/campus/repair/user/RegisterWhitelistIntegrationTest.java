@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 只有想改密才被拦。两条契约都属于"注册接口对外承诺什么"，故收在同一个类里。
  *
  * <p>刻意**不新开测试类**：surefire 默认 `runOrder=filesystem`，新增测试类会改变文件
- * 枚举顺序，进而让既有的"跨测试类残留数据"问题换一副面孔出现（见 `AGENTS.md` §2.1）。
+ * 枚举顺序，进而让既有的"跨测试类残留数据"问题换一副面孔出现。
  * 本类是 `@Transactional`，用例间无残留，是更稳的落脚点。
  */
 @SpringBootTest

@@ -112,7 +112,7 @@
           <el-table-column prop="workerSkillCode" label="指派维修工种" width="160">
             <template #default="{ row }">
               <!-- 🐞 原先直接渲染 `row.workerSkillCode`，于是用户看到的是 **`PLUMBER` / `HVAC` / `LOCKSMITH`**
-                   这些字典码本身（AGENTS.md 禁止的正是这一类，而它举的反例恰好就是 `PLUMBER`）。
+                   这些字典码本身（本仓库约定禁止的正是这一类，反例恰好就是 `PLUMBER`）。
                    工种的唯一中文来源是 shared 的 `WorkerSkillLabels`——与调度中心、助手候选卡同源。 -->
               <MetaChip v-if="row.workerSkillCode">
                 {{ WorkerSkillLabels[row.workerSkillCode] || row.workerSkillCode }}
@@ -367,7 +367,7 @@ function getLevelLabel(level: number) {
  * `getLevelTagType()` **已删除**（A4）：它把四个层级映射成四个 EP 语义色
  * （校区=danger 红 / 组团=warning 橙 / 楼栋=primary 蓝 / 房间=success 绿）。
  * 层级是**分类**不是状态，这四个色纯属装饰——而且它们还借用了「危险/警告」这两个
- * 有确定含义的语义档去表示「校区/组团」，属于 AGENTS.md 说的「一个色相两个意思」。
+ * 有确定含义的语义档去表示「校区/组团」，属于本仓库约定里的「一个色相两个意思」。
  * 现在层级由 `LevelIcon` 的图形承担。
  */
 

@@ -130,7 +130,7 @@ describe('状态 → 色相 / 语义档的映射', () => {
   });
 
   it('锁死 orderStatusTagType 的既有档位——它是「另一份投影」，不许顺手改', () => {
-    // 这张表是**跨页一致**的契约（AGENTS.md「orderStatusTagType() 是全仓唯一一份」）。
+    // 这张表是**跨页一致**的契约（「orderStatusTagType() 是全仓唯一一份」）。
     // ⚠️ 2026-10-12 第二期起它**已经没有调用点**了（V7 让状态一律走 StatusRing，
     //    见 `status-ring-v7.spec.ts`）。保留它是 §5 V9 的「两份投影、一处来源」：
     //    `ORDER_STATUS_HUE` 是唯一色值来源，圆环与标签都从它派生。

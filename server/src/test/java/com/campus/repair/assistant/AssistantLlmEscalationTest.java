@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 而不是"返回了什么"。只看响应体会得到一个**恒真**的测试——规则命中时 `engine` 本来就是
  * `RULE`，模型调没调它都是 `RULE`（模型返回空列表时也一样）。这与真机探针里
  * 「非报修职能一次 `/assistant/suggest` 都没发」必须用 CDP `Network` 域取证、而不是看 DOM
- * 是同一个道理（见 `AGENTS.md` §2.2）。
+ * 是同一个道理。
  *
  * <p><b>② 合并策略</b>——模型返回的**顺序不参与排序**（根治"首候选随机翻"），
  * 且模型**不得淘汰规则命中**（只能填空位）。这两条也只在"模型真的被调了、且返回了东西"

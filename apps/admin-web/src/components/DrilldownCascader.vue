@@ -182,7 +182,7 @@ const props = withDefaults(
      *
      * 层级取自**节点自己的 `levelType`**，而不是"当前下钻到第几层"：
      * 单位字典的根「所属单位」与「2024级」都是 `level_type = 1`
-     * （见 AGENTS.md「两个必须能分开念」那条），按下钻深度推会算错一级。
+     * （见 `CONTEXT.md`「所属单位」条：两者必须能分开念），按下钻深度推会算错一级。
      */
     levelIconKind?: 'org' | 'space';
     /**

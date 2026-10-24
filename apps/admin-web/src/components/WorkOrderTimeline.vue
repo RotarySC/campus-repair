@@ -136,7 +136,7 @@ async function fetchTimeline() {
  * 审计日志里会出现工单生命周期**之外**的状态码：提交那一刻的 `fromStatus` 是 `DRAFT`
  * （2026-10-12 实测 77 条日志里 **20 条**如此）。而 `OrderStatusLabels` 里没有这个键，
  * 于是 `|| status` 的兜底会把**裸码 `DRAFT` 直接渲染给用户**——
- * 正是 AGENTS.md 反复禁止的那类（「不许把 `PLUMBER` 这种字典码端给用户」）。
+ * 正是本仓库约定禁止的那类（「不许把 `PLUMBER` 这种字典码端给用户」）。
  *
  * **刻意不并进 `OrderStatusLabels`**：那张表同时驱动 §3.2 的 8 个色相，
  * 「9 个业务状态 ↔ 8 个色相」的映射是锁定的（`status-hue.spec.ts` 逐值比对），
