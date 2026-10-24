@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { resolveNavigation } from './guard';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import UserManageView from '../views/system/UserManageView.vue';
 import SpatialManageView from '../views/spatial/SpatialManageView.vue';
@@ -191,45 +192,38 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore();
 
-  // 未登录：先跳登录页，并在登录后回到原目标
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({ path: '/login', query: { redirect: to.fullPath } });
-    return;
-  }
-  if (!to.meta.requiresAuth) {
-    next();
-    return;
-  }
+  // 判定顺序全部收敛在 `guard.ts` 的纯函数里（6 条，逐条与抽取前一致）；
+  // 本处只负责组装事实并把 decision 翻译成 `next(...)`，不再写分支条件。
+  const decision = resolveNavigation(
+    {
+      path: to.path,
+      fullPath: to.fullPath,
+      requiresAuth: to.meta.requiresAuth as boolean | undefined,
+      functions: to.meta.functions as string[] | undefined
+    },
+    {
+      isAuthenticated: authStore.isAuthenticated,
+      needsIdentityReview: authStore.needsIdentityReview,
+      functions: getUserFunctions(authStore)
+    }
+  );
 
-  // 身份待核验：可登录、可看个人中心与待核验页，其余一律拦回 /pending。
-  // 与后端 1010 闸门（仅 status=1 且 identityVerified=1 可提单）同一口径。
-  if (authStore.needsIdentityReview) {
-    const allowedWhenPending = new Set(['/pending', '/profile']);
-    if (!allowedWhenPending.has(to.path)) {
+  switch (decision.type) {
+    case 'login':
+      next({ path: '/login', query: { redirect: decision.redirect } });
+      return;
+    case 'pending':
       next('/pending');
       return;
-    }
-  }
-
-  const functions = getUserFunctions(authStore);
-  const has = (code: string) => functions.includes(code);
-
-  // 首页分流优先级：管理职能 > 维修作业 > 报修人（多职能账号取最高优先级）
-  if (to.path === '/') {
-    const isAdminSide = has('DISPATCHER') || has('PLATFORM_ADMIN');
-    if (!isAdminSide && has('WORKER')) {
-      next('/worker/workbench');
+    case 'home':
+      next(decision.path);
       return;
-    }
+    case 'forbidden':
+      next({ path: '/403' });
+      return;
+    default:
+      next();
   }
-
-  // 按路由 meta.functions 做职能放行：越权访问（报修人调管理页、管理员进报修页等）落 403 说明页
-  const requiredFunctions = to.meta.functions as string[] | undefined;
-  if (requiredFunctions && !functions.some((code) => requiredFunctions.includes(code))) {
-    next({ path: '/403' });
-    return;
-  }
-  next();
 });
 
 export default router;
