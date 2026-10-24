@@ -24,6 +24,14 @@
         <jjwt.version>0.12.5</jjwt.version>
         <easyexcel.version>3.3.4</easyexcel.version>
         <knife4j.version>4.4.0</knife4j.version>
+        <!--
+            默认回归排除的测试分组。放在 <properties> 而不是直接写死在插件 <configuration> 里：
+            Maven 里插件 POM 配置的优先级高于命令行 -D（同一参数两处都给值时，POM 赢），
+            若把 perf 直接写进 <configuration>，`-DexcludedGroups=` 就无法把排除清空，
+            压测类永远跑不起来。用 ${excludedGroups} 间接一次后，命令行即可覆盖：
+              mvn test -Dgroups=perf -DexcludedGroups= -Dtest=AnalyticsPerformanceTest
+        -->
+        <excludedGroups>perf</excludedGroups>
     </properties>
 
     <dependencies>
@@ -150,6 +158,19 @@
                             <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <!--
+                性能压测不进默认回归：AnalyticsPerformanceTest 带 @Tag("perf")，默认被排除，
+                使日常 `mvn test` 保持「秒级反馈 + 不造 5 万行数据」。需要跑基线时显式开：
+                  mvn test -f server/pom.xml -Dgroups=perf -DexcludedGroups= -Dtest=AnalyticsPerformanceTest
+                版本由 spring-boot-starter-parent 管理，这里不写 <version>。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${excludedGroups}</excludedGroups>
                 </configuration>
             </plugin>
         </plugins>
