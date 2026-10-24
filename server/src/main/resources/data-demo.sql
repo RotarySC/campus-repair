@@ -47,6 +47,38 @@ INSERT INTO sys_user_role (id, user_id, role_id) VALUES
 (22, 11, 4);
 
 -- ---------------------------------------------------------------------------
+-- 1.1 Phase 01 · 身份核验演示样本
+--   两个 `status=2`（待核验）账号，覆盖审核页的两种待办：
+--     · student03：名单内但姓名不一致 → MISMATCHED（存疑，人工核验）
+--     · visitor01：名单外 → NOT_IN_ROSTER（外部人员误注册）
+--   它们都持 REPORTER 职能，可登录（方便演示 /pending），但提单会被拦成 1010。
+-- ---------------------------------------------------------------------------
+INSERT INTO sys_user (id, username, phone, password, real_name, user_type, department, status, identity_verified, is_first_login) VALUES
+(30, 'student03', '13800000030', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '王晓明', 'STUDENT', '2024级 计算机学院', 2, 0, 0),
+(31, 'visitor01', '13800000031', '$2a$10$Zil1dAKT0PuD4Enm9NC27OnIAgVGF4HLsRtAE37pduiHlQ6Xb6TwK', '访客甲', 'LOGISTICS', NULL, 2, 0, 0);
+
+INSERT INTO sys_user_role (id, user_id, role_id) VALUES
+(30, 30, 4),
+(31, 31, 4);
+
+INSERT INTO sys_identity_review (id, user_id, username, apply_type, match_result, outcome, reason, created_at) VALUES
+(1, 30, 'student03', 'REGISTER', 'MISMATCHED', 'PENDING', NULL, CURRENT_TIMESTAMP),
+(2, 31, 'visitor01', 'REGISTER', 'NOT_IN_ROSTER', 'PENDING', NULL, CURRENT_TIMESTAMP);
+
+-- 名单：演示在册账号（admin/worker01/student01 已由 data-test.sql 种入）
+-- student03 的名册姓名刻意写成「王小明」，与注册填写的「王晓明」不一致 → 待核验样本
+INSERT INTO sys_identity_roster (username, real_name, user_type, department, phone, status, import_batch) VALUES
+('logistics01','王调度',  'LOGISTICS', '所属单位 后勤保障处·调度中心', '13800000010', 1, 'demo'),
+('worker02',   '张电工',  'LOGISTICS', '所属单位 后勤维修中心 电工班', '13800000011', 1, 'demo'),
+('worker03',   '赵空调',  'LOGISTICS', '所属单位 后勤维修中心 暖通班', '13800000012', 1, 'demo'),
+('worker04',   '孙锁匠',  'LOGISTICS', '所属单位 后勤维修中心 五金班', '13800000013', 1, 'demo'),
+('worker05',   '周网络',  'LOGISTICS', '所属单位 后勤维修中心 弱电班', '13800000014', 1, 'demo'),
+('worker06',   '吴综合',  'LOGISTICS', '所属单位 后勤维修中心 综合班', '13800000015', 1, 'demo'),
+('student02',  '李同学',  'STUDENT',   '2024级 计算机学院',            '13800000020', 1, 'demo'),
+('teacher01',  '陈老师',  'FACULTY',   '所属单位 土木工程学院',         '13800000021', 1, 'demo'),
+('student03',  '王小明',  'STUDENT',   '2024级 计算机学院',            '13800000030', 1, 'demo');
+
+-- ---------------------------------------------------------------------------
 -- 2. 师傅档案（current_load 必须与“在办工单数”严格一致，否则负荷看板自相矛盾）
 --    worker01=2(ASSIGNED+IN_PROGRESS) worker02=2(ASSIGNED+SUSPENDED)
 --    worker03=0 worker04=1(IN_PROGRESS) worker05=0(离岗休假) worker06=1(IN_PROGRESS)
@@ -151,6 +183,15 @@ INSERT INTO sys_config (config_key, config_value, description) VALUES
 ('assistant_llm_enabled',         '0',  '助手的大模型增强开关（默认关）：需同时注入 ASSISTANT_LLM_* 才生效'),
 ('assistant_max_candidates',      '3',  '助手一次最多返回的故障候选数量'),
 ('assistant_llm_escalate_below',  '10', '大模型升级阈值：规则最高分低于它才调模型（10=非HIGH就升级，1=只noMatch，0=每次都调）');
+
+-- Phase 02/04 新增参数（代码侧均有兜底默认值，落库只为让运维页面可见可调）
+INSERT INTO sys_config (config_key, config_value, description) VALUES
+('content_review.enabled',           '1',  '内容初筛总开关：0=关闭初筛（全部直接通过）'),
+('content_review.image_sample_rate', '30', '图片人工抽检比例（0-100）'),
+('inventory.warning_enabled',        '1',  '库存安全预警总开关'),
+('inventory.warning_cooldown_hours', '24', '同一物料库存告警冷却小时数'),
+('inventory.warning_scan_minutes',   '30', '库存预警定时扫描间隔（分钟，改动需重启生效）'),
+('contact.reporter_see_worker_phone','0',  '报修人是否可见师傅完整号码：0=掩码，1=完整');
 
 -- ---------------------------------------------------------------------------
 -- 6. 耗材备件台账（含低于/等于安全库存的红色预警项与 1 个停用项）

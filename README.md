@@ -12,6 +12,7 @@
 | 首登强制改密（服务端） | `is_first_login=1` 会烙进 Access Token，未改密前除 `/auth/**`、改密端点、本人资料外的业务请求一律返回 `code=1009`；改密成功即返回重新签发的双令牌（旧票里的标记不会自行消失）。 |
 | 登出即吊销 | `POST /auth/logout` 把出示的 Access 与 Refresh 双令牌 `jti` 写入吊销黑名单（Redis 优先、进程内兜底，TTL 取剩余有效期）；旧 Access 立即 401、旧 Refresh 不能再换票；端点幂等且不抛错。 |
 | 身份三层模型 | **组织条线**（`sys_user.user_type`，单值 4 类）/ **职能**（`sys_role.role_code` + `sys_user_role`，可多值，是 `@PreAuthorize` 与前端路由守卫的唯一判据）/ **工种**（`worker_profile.skill_code`）。术语口径见仓库根 `CONTEXT.md`。 |
+| 校内身份核验 | 自助注册按「预导入名册（学号/工号 + 姓名 + 条线）」自动比对：命中即通过并留 `SYSTEM` 审核轨迹；名单外 / 姓名不符 / 条线不符进 `status=2` 待核验（**可登录、不可提单**，业务码 `1010`），平台管理员在「身份核验」页通过或驳回（驳回理由必填、结论一次性、二次决策 `1013`）；名册支持 Excel 导入与离校失效标记，被驳回账号可用同一学号重新提交（复用账号、新增 `REAPPLY` 轨迹）。 |
 | 空间与故障字典 | 校区 → 区域组团 → 楼栋 → 房间四级空间树（全路径文本冗余、节点软停用）；楼栋标建筑性质并挂网格责任人；两级故障分类，细类直接绑工种与 SLA 时效（小时）。 |
 | 师生报修 | 自动带出默认空间与电话；空间失焦异步查重并弹防重预警；Canvas 等比压缩到 ≤ 800KB；LocalStorage 草稿恢复；全局单调单号 `BXyyyyMMddXXXXXX`。 |
 | 智能派单 | 监听提单事件，按在岗 + 工种 + 校区筛候选，在修负荷最小优先（同负荷比评分）；`incrementCurrentLoadAtomic` 原子加负荷，杜绝并发突破 `max_load`；无可用候选降级 `MANUAL_DISPATCH`。 |
@@ -20,8 +21,10 @@
 | 完工填报与耗材 | 现场拍照 + Canvas 防伪水印（工单号 + 师傅 + 时间戳）；`deductStockAtomic` 行级条件扣减防超卖，材料成本自动记入工单台账。 |
 | 验收评价与返工 | 报修前后实况对比卡片；≥ 3 星闭环 `COMPLETED`，≤ 2 星必填未解决原因并转 `REWORK_PENDING` 置顶；主管可退回原师傅或换派。Spring Task 每 15 分钟扫描超 72 小时未确认单并幂等结单，`ratingStar` 保持 `null`（不虚假好评）。 |
 | 审计与站内信 | `repair_order_log` 不可篡改全轨迹；`operator_role` 只记 4 个职能码 + `SYSTEM`（与 `@PreAuthorize` 一一对应），操作人由 `operator_id`/`operator_name` 标识；历史行不重写、由展示层兼容翻译。6 类站内信 + 红点徽标 + `Notifier` SPI（Console / Mail）。 |
+| 字典变更审计 | `sys_operation_log` 为 append-only：空间节点、故障分类、系统参数的新增 / 修改 / 删除 / 启停都记录**前后值白名单快照**与操作人（同事务，失败不留假日志）；`GET /operation-logs` 仅管理侧可读、**无写接口**（PUT/DELETE 回 405），空间字典页「变更记录」抽屉可按模块/目标/时间查。 |
+| 库存安全预警 | 定时扫描（30 分钟）+ 完工核销后 `AFTER_COMMIT` 即时检查双通道；同一物料 24h 冷却（补货回安全线以上清零）、条件更新原子认领、扫描级锁（Redisson 优先、进程内兜底）；只推 `DISPATCHER`/`PLATFORM_ADMIN`，通知分类 `STOCK_WARNING`，文案不含成本。 |
 | 备件进销存 | 物料主台账、编码唯一防重、在库防删；采购入库 `INyyyyMMddXXXXXX` 并沉淀流水；4 项动态指标看板；按安全水位 2 倍核算采购建议并 EasyExcel 导出。 |
-| 运营看板与检索 | 控制台概览（管理员 `/`）：6 项 KPI + 近 30 天提单/完工双折线 + 空间热力 + 分类占比 + 技师战绩榜，30 秒自动刷新，空库显示空态；多维组合检索与 180 天冷数据归档导出。 |
+| 运营看板与检索 | 控制台概览（管理员 `/`）：**7 项 KPI**（含返工率 = 触发返工的已结单工单数 / 已结单工单数，按单去重、HALF_UP 2 位，无结单显示「—」）+ 近 30 天提单/完工双折线 + 空间热力 + 分类占比 + 技师战绩榜，30 秒自动刷新，空库显示空态；多维组合检索与 180 天冷数据归档导出。 |
 | 智能助手 | 悬浮气泡 + 抽屉，全角色可见、内容按职能裁剪；**默认本地规则引擎**（叶子名 +10 > 关键词 +5 > 大类名 +3，同分按 `sortOrder`/`id`，一条没命中就如实说"判断不了"）；大模型增强默认关、**只能填空位**，不淘汰规则命中、不参与排序；快捷入口与侧边栏同源；「最近询问」存 `localStorage`（按账号分键、上限 8 条）。 |
 | 统一响应式门户 | 单地址连续自适应：≥ 1024 桌面外壳 / 768~1023 图标栏 / < 768 抽屉 + 堆叠；无设备判定、无页面跳转。 |
 
@@ -126,8 +129,10 @@ mvn spring-boot:run
 | 后勤保障 / 维修作业 | `worker06` | 吴综合（综合维修） | 跨工种兜底派单 |
 | 学生 / 报修人 | `student02` | 李同学 | 无需改密，直接提单与评价 |
 | 教学科研 / 报修人 | `teacher01` | 陈老师 | 教工报修、加急单、教学区空间 |
+| 学生 / 报修人（**待核验**） | `student03` / `13800000030` | 王晓明（名册写「王小明」） | 演示存疑分支：登录落 `/pending`、提单被拦 1010，管理员可在「身份核验」通过/驳回 |
+| 后勤 / 报修人（**待核验**） | `visitor01` / `13800000031` | 访客甲（名册外） | 演示名单外注册分支 |
 
-**生产 MySQL 种子**（`sql/data.sql`）：预置 `admin`、`logistics01`、`worker01`、`2023010101`（学号登录）4 个账号。**注意该脚本的 BCrypt 哈希是占位示例，实测不匹配 `Admin@2026` / `InitPass@2026` / `password`，使用前需自行重置密码。**
+**生产 MySQL 种子**（`sql/data.sql`）：预置 `admin`、`logistics01`、`worker01`、`2023010101`（学号登录）4 个账号，**统一密码 `password`**（BCrypt 哈希与 H2 种子同一串，2026-10-24 在 MySQL 8.4 实测可登录）。
 
 ### 权限与数据边界
 
@@ -138,7 +143,7 @@ mvn spring-boot:run
 ## 4. 自验
 
 ```powershell
-# 后端：单元 + 集成 + 并发压测（32 个套件 / 178 例，2026-10-24 实测 0 失败）
+# 后端：单元 + 集成 + 并发压测（225 例，2026-10-24 实测 0 失败；含身份核验/审计/库存预警/返工率）
 mvn test -f server/pom.xml
 
 # 前端类型检查（两包；.vue 单文件组件必须用 vue-tsc）
@@ -148,9 +153,17 @@ cd apps/admin-web; ./node_modules/.bin/vue-tsc.CMD --noEmit
 # 前端单测：10 个 spec / 61 例（format 14、http 3、watermark 3、status-hue 10、token-coverage 8、
 # category-palette 7、color-controls 6、brand-mark 5、probes-parse 3、status-ring-v7 2）
 cd packages/shared; node node_modules/vitest/vitest.mjs run
+
+# 生产库（MySQL 8）：空库建表 + 灌种子 + 冒烟（2026-10-24 在 MySQL 8.4 实测：23 表、登录、
+# 看板/派单池/空间树/身份核验/审计/405 全部通过）
+mysql -uroot -p -e "CREATE DATABASE campus_repair CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql -uroot -p campus_repair < sql/schema.sql
+mysql -uroot -p campus_repair < sql/data.sql
+# 已部署的旧 12 表库改用增量脚本（可重复执行）：
+mysql -uroot -p campus_repair < sql/migration-20261024-baseline.sql
 ```
 
-覆盖重点：双令牌鉴权与首登拦截（`AuthIntegrationTest` / `FirstLoginEnforcementIntegrationTest` / `LogoutRevocationIntegrationTest`）、工单读接口属主四方向（`WorkOrderReadOwnershipIntegrationTest`）、派单最小负荷与 10 线程防超派（`DispatchEngineIntegrationTest`）、库存 10 线程防超卖（`InventoryAndFinishIntegrationTest`）、72h 超时核销与差评返工仲裁（`EvaluationAndReworkIntegrationTest`）、审计职能词表逐个动作核对（`AuditRoleVocabularyIntegrationTest`）、旧角色码反漏改扫描（`NoLegacyRoleCodeTest`）、分析聚合等价性（`AnalyticsAggregationEquivalenceTest`）、智能助手规则打分与真实 HTTP 信封/超时降级（`AssistantRuleEngineTest` / `RestClientLlmTransportTest` / `AssistantLlmEscalationTest`）。
+覆盖重点：双令牌鉴权与首登拦截（`AuthIntegrationTest` / `FirstLoginEnforcementIntegrationTest` / `LogoutRevocationIntegrationTest`）、**校内身份核验与待核验闸门**（`IdentityVerificationIntegrationTest` / `IdentityMatchServiceTest` / `IdentityRosterImportTest`）、工单读接口属主四方向（`WorkOrderReadOwnershipIntegrationTest`）、派单最小负荷与 10 线程防超派（`DispatchEngineIntegrationTest`）、库存 10 线程防超卖（`InventoryAndFinishIntegrationTest`）、72h 超时核销与差评返工仲裁（`EvaluationAndReworkIntegrationTest`）、**字典变更审计**（`OperationLogIntegrationTest`）、**库存预警冷却与双通道**（`StockWarningIntegrationTest`）、**返工率口径**（`ReworkRateKpiTest`）、**建表脚本一致性**（`SchemaParityTest`）、审计职能词表逐个动作核对（`AuditRoleVocabularyIntegrationTest`）、旧角色码反漏改扫描（`NoLegacyRoleCodeTest`）、分析聚合等价性（`AnalyticsAggregationEquivalenceTest`）、智能助手规则打分与真实 HTTP 信封/超时降级（`AssistantRuleEngineTest` / `RestClientLlmTransportTest` / `AssistantLlmEscalationTest`）。
 
 ### 真机探针
 
@@ -178,9 +191,9 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
 
 - **Redis 降级是单实例语义**：未部署 Redis 时失败计数、验证码、吊销黑名单不跨节点共享，发号器与派单锁退化为进程内实现；多实例 / 生产必须提供 Redis。
 - **本地库是内存 H2**：进程退出即丢数据；`data-demo.sql` 的时间戳用相对时间生成，长跑的 JVM 会被 15 分钟一次的 72h 超时核销任务改动 KPI，比对数值请用刚启动的实例。
-- **生产 MySQL 8 未在本仓库的测试链路内端到端验证**：测试库为 H2（`MODE=MySQL`），`DATE_FORMAT` 不可用、`LOCATE` 行为与 MySQL 不同，相关聚合已刻意下推到 Java 侧；`sql/migration-*.sql` 需自行在 MySQL 上执行。
+- **生产 MySQL 8 的覆盖范围**：H2 仍是默认测试库（`MODE=MySQL`），但 2026-10-24 已在本地 MySQL 8.4 完成「空库建表（23 表 + 9 外键）→ 灌种子 → 登录取票 → 看板/派单池/空间树 → 身份核验注册/通过/1010 → 字典审计 → 405 语义」冒烟；`sql/migration-20261024-baseline.sql` 在旧 12 表库上实测升到 23 表。CI 仍只跑 H2，MySQL 路径靠 `SchemaParityTest` + 上述手工脚本守护。
 - **`/uploads` 与 `/api` 必须同源可达**：前端与图片 URL 都是相对路径，分域部署需各自补代理或改绝对地址。
-- **`sql/data.sql` 的密码哈希是占位值**，不能直接登录，见「用法」。
+- **`dev` profile 的 JDBC `characterEncoding` 必须写 `UTF-8`**（不能写 `utf8mb4`，Connector/J 会抛 `UnsupportedEncodingException`）；库/表侧仍是 `utf8mb4`。
 - **智能助手的大模型增强默认关闭**，默认只有本地规则；开启后单次请求受 `MAX_TOKENS` / `TIMEOUT_MS` 约束，思考模型容易把 `content` 挤空而降级为纯规则。
 - **窄档下管理端不推荐**：调度台、进销存、字典维护按 PC 设计，< 768 只有师生 / 师傅侧做过完整走查。
 - **前端没有页面级单测**：`apps/admin-web` 只有 `typecheck`，页面行为靠真机探针；探针依赖本机 Edge 9222 与两个服务，不能进 CI 无头跑。
@@ -188,6 +201,7 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
 ## 版本与变更
 
 - **v1.0.0**（2026-10）：12 个业务模块全部交付，后端 178 例测试全绿；统一响应式门户取代早期双端，`/cockpit` 大屏并入控制台概览。
+- 2026-10-24：补齐开题缺口的第一批——**校内身份核验与账号三态**（名册比对 / 待核验 1010 / 核验工作台 / 三态台账）、**字典变更审计**、**库存安全预警**、**返工率 KPI**；生产库脚本从 12 表补到 23 表（含 9 个核心外键）并新增迁移脚本；后端测试 178 → **225 例**。
 - 2026-09：身份模型重构为「组织条线 / 职能 / 工种」三层，新增 ADR 0001/0002；首登强制改密、登出双令牌吊销、工单读接口属主判定落地。
 - 2026-09-21：智能助手（规则引擎 + 可选大模型增强）。
 - 2026-10：视觉语言方向 D 收敛（设计令牌、状态色档、空态插画），表单页宽档限宽分栏。
