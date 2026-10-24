@@ -51,6 +51,23 @@ ON DUPLICATE KEY UPDATE `real_name`=VALUES(`real_name`), `user_type`=VALUES(`use
   `department`=VALUES(`department`), `phone`=VALUES(`phone`);
 
 -- ---------------------------------------------------------------------------
+-- 内容初筛词表（Phase 02）：四类规则的数据来源，后台「内容审核 → 敏感词表」可维护。
+-- 这里只放**中性占位词**（真实脏词不进仓库），覆盖四类各 2–3 条，保证开箱即可演示
+-- 「命中 → 待复核」链路；生产按本校口径替换。代码里不写死任何词。
+-- ---------------------------------------------------------------------------
+INSERT INTO `sys_sensitive_word` (`word`, `category`, `enabled`, `created_by`) VALUES
+('代做',           'AD',         1, 1),
+('刷单',           'AD',         1, 1),
+('加微信',         'AD',         1, 1),
+('辱骂示例',       'ABUSE',      1, 1),
+('攻击示例',       'ABUSE',      1, 1),
+('隐私示例',       'PRIVACY',    1, 1),
+('联系方式示例',   'PRIVACY',    1, 1),
+('灌水示例',       'IRRELEVANT', 1, 1),
+('与维修无关示例', 'IRRELEVANT', 1, 1)
+ON DUPLICATE KEY UPDATE `category`=VALUES(`category`), `enabled`=VALUES(`enabled`);
+
+-- ---------------------------------------------------------------------------
 -- 业务参数默认值（Phase 02/04/03）：代码侧都有兜底默认值，这里落库便于运维页面查看与调整。
 -- ---------------------------------------------------------------------------
 INSERT INTO `sys_config` (`config_key`, `config_value`, `description`) VALUES
