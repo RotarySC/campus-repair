@@ -58,6 +58,24 @@ _Avoid_: 角色（指这一列时）、操作人身份、用户类型
 审计表不可篡改，**不重写历史**：由展示层（`OperatorRoleLabels` 与时间轴配色表）把两代词表都翻译成中文，因此这两处**必须保留旧码**。
 _Avoid_: 数据迁移（指审计历史时——这里不做 backfill）
 
+### 内容审核与可见性
+
+**内容审核闸门**（`repair_order.review_status`）：
+内容维度的放行判据，取值 `PASSED` / `PENDING` / `REJECTED`，默认 `PASSED`。
+它是**工单状态之外的第二把闸**，不是 `OrderStatusEnum` 的第七个状态：命中初筛的工单照常落库、报修人照常可查、状态仍是「待派单」，但**不进派单池、不自动派单、不能人工指派**（业务码 `2004`）；复核通过才补发派单事件。工单状态机图不因它改画。
+_Avoid_: 待审核状态（指工单状态时）、审核中工单
+
+**报修人可取消窗口**（`canCancel`）：
+后端按「待派单 / 待承接 / 已指派但师傅未接单（`accepted_time` 为空）」判定并下发的布尔值。
+取消复用 `CANCELLED` 终态，取消主体靠审计动作词区分：`CANCEL_BY_REPORTER` + `operator_role=REPORTER` 是报修人自助取消，`CANCEL` + `DISPATCHER` 是调度核实作废。
+前端**只读这个字段**，不得自行按状态拼规则。
+_Avoid_: 未接单状态（本系统没有这个状态）、学生取消
+
+**掩码展示值**（`applicantPhoneDisplay` / `workerPhoneDisplay` / `viewerRelation`）：
+按「查看者与这张工单的关系」（`OWNER` / `ASSIGNEE` / `DISPATCH`）算出的展示用号码。
+报修人看师傅号码默认掩码、指派师傅与调度/平台管理看完整；原始 `phone` 字段保留给处理人与管理侧，新代码只读 `*Display`，含 `*` 的值不生成 `tel:` 链接。
+_Avoid_: 脱敏字段（指原字段时——原字段没被改写，只有展示值被掩码）
+
 ### 智能助手
 
 **智能助手**：
