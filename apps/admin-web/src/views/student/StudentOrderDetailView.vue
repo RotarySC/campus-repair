@@ -2,6 +2,13 @@
   <div class="student-order-detail">
     <div class="page-head">
       <el-page-header content="工单详情与质检验收" @back="router.back()" />
+      <!--
+        取消入口只认后端 `canCancel`（窗口 = 未派单 / 待人工调度 / 已指派未接单）。
+        页面不复制状态机规则：规则改了，后端改一处即可，前端不会漂。
+      -->
+      <div v-if="order.canCancel" class="page-head__actions">
+        <el-button type="danger" plain @click="cancelVisible = true">取消报修</el-button>
+      </div>
     </div>
 
     <div v-loading="loading">
@@ -14,6 +21,28 @@
         </div>
       </div>
 
+      <!--
+        内容审核的两种可见结果：
+        · PENDING：解释「为什么还没派单」，避免学生以为提单失败；
+        · REJECTED：给出驳回理由 + 修改重提入口（只有驳回才需要动作）。
+        两者都不是工单状态，所以用中性提示条 / 卡片，不占用状态色。
+      -->
+      <div v-if="order.reviewStatus === 'PENDING'" class="review-pending">
+        <MetaChip>内容审核中</MetaChip>
+        <span>工单内容正在人工复核，通过后系统会自动派单；若被驳回，您可以修改描述与照片后重新提交。</span>
+        <!-- 命中摘要由后端给（只回分类，不回传敏感词表原文） -->
+        <span v-if="order.reviewReason" class="review-pending__reason">{{ order.reviewReason }}</span>
+      </div>
+
+      <el-card v-if="order.reviewStatus === 'REJECTED'" shadow="never" class="block review-block">
+        <template #header><span class="block-title">内容审核未通过</span></template>
+        <p class="review-reason">
+          驳回理由：{{ order.reviewReason || '内容不符合发布规范（未提供具体理由）' }}
+        </p>
+        <p class="review-tip">修改描述与照片后可重新提交，通过复核后系统会自动派单。</p>
+        <el-button type="primary" @click="openResubmit">修改并重新提交</el-button>
+      </el-card>
+
       <!-- 2. 基本信息 -->
       <el-card shadow="never" class="block">
         <template #header><span class="block-title">报修基本信息</span></template>
@@ -24,7 +53,7 @@
           <el-descriptions-item label="报修故障">{{ order.categoryFullName }}</el-descriptions-item>
           <el-descriptions-item label="期望预约">{{ order.appointmentPeriod }}</el-descriptions-item>
           <el-descriptions-item label="维修师傅">
-            {{ order.workerName ? `${order.workerName}（${order.workerPhone || '暂无电话'}）` : '待派单' }}
+            {{ order.workerName ? `${order.workerName}（${workerPhoneText}）` : '待派单' }}
           </el-descriptions-item>
           <el-descriptions-item label="紧急度">
             <!--
@@ -199,6 +228,51 @@
         </div>
       </el-card>
     </div>
+
+    <!-- 取消报修：与学生列表同一个弹窗组件（原因可选 + 二次确认 + 不可逆文案） -->
+    <ReporterCancelDialog
+      v-model="cancelVisible"
+      :order="order"
+      @cancelled="handleCancelled"
+    />
+
+    <!-- 内容驳回后的修改重提：description / 图片可改，提交后重新进入复核 -->
+    <el-dialog
+      v-model="resubmitVisible"
+      title="修改并重新提交"
+      width="min(560px, 94vw)"
+      :close-on-click-modal="false"
+    >
+      <el-form label-position="top">
+        <el-form-item label="现场情况（≤300 字）">
+          <el-input
+            v-model="resubmitDescription"
+            type="textarea"
+            :rows="4"
+            maxlength="300"
+            show-word-limit
+            placeholder="请补充/修改故障现象描述"
+          />
+        </el-form-item>
+        <el-form-item label="损坏照片（最多 3 张）">
+          <el-upload
+            v-model:file-list="resubmitFiles"
+            list-type="picture-card"
+            accept="image/*"
+            :limit="3"
+            :http-request="uploadResubmitImage"
+            :on-exceed="() => ElMessage.warning('最多上传 3 张照片')"
+            :on-error="() => ElMessage.error('图片压缩或上传失败，请删除后重试')"
+          >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="resubmitVisible = false">取消</el-button>
+        <el-button type="primary" :loading="resubmitting" @click="onResubmit">提交复核</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -206,10 +280,12 @@
 import StatusRing from '../../components/StatusRing.vue';
 import MetaChip from '../../components/MetaChip.vue';
 import AlertBanner from '../../components/AlertBanner.vue';
+import ReporterCancelDialog from './ReporterCancelDialog.vue';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Right } from '@element-plus/icons-vue';
+import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
+import { Plus, Right } from '@element-plus/icons-vue';
 import { httpClient } from '../../stores/auth';
 import { useViewport } from '../../composables/useViewport';
 import WorkOrderTimeline from '../../components/WorkOrderTimeline.vue';
@@ -220,7 +296,10 @@ import {
   WorkOrderEvaluationVO,
   WorkOrderEvaluateRequest,
   OrderStatusLabels,
-  formatDateTime
+  compressImage,
+  formatDateTime,
+  maskPhone,
+  parseImageUrls
 } from '@campus/shared';
 
 const route = useRoute();
@@ -238,8 +317,31 @@ const ratingStar = ref(5);
 const selectedTags = ref<string[]>([]);
 const comment = ref('');
 
+// ---- 取消报修（入口条件由后端 canCancel 决定）----
+const cancelVisible = ref(false);
+
+// ---- 内容驳回后的修改重提 ----
+const resubmitVisible = ref(false);
+const resubmitting = ref(false);
+const resubmitDescription = ref('');
+const resubmitFiles = ref<UploadUserFile[]>([]);
+
 const commonTags = ['准时到达', '技术过硬', '着装整洁', '清理彻底', '礼貌热情'];
 const rateTexts = ['', '非常差 (严重返工)', '不满意 (返工)', '一般', '满意', '非常满意'];
+
+/**
+ * 师傅号码展示。
+ *
+ * **只读后端给的 `workerPhoneDisplay`**（它已经按查看者关系掩码过，是权威值）。
+ * 旧后端没有该字段时才用本地 `maskPhone()` 兜底——注意**不要**对 `*Display`
+ * 再掩一次（`138****0000` 会被二次加工成 `13****0000`，反而破坏规则）。
+ */
+const workerPhoneText = computed(() => {
+  if (!order.value.workerName) return '暂无电话';
+  const display = order.value.workerPhoneDisplay;
+  if (display !== null && display !== undefined && display !== '') return display;
+  return maskPhone(order.value.workerPhone) || '暂无电话';
+});
 
 const statusTitle = computed(() =>
   order.value.status ? `${OrderStatusLabels[order.value.status] || order.value.status}` : '加载中'
@@ -255,7 +357,7 @@ const statusTip = computed(() => {
     case 'PENDING_ACCEPTANCE': return '师傅已完工上报，请您核验现场实况并打分评价';
     case 'REWORK_PENDING': return '您已提交差评，工单正由后勤主管安排二次返工';
     case 'COMPLETED': return '工单已圆满验收结单';
-    case 'CANCELLED': return '工单已核实作废';
+    case 'CANCELLED': return '工单已作废，如需维修请重新提单';
     default: return '';
   }
 });
@@ -275,6 +377,87 @@ async function fetchData() {
     ElMessage.error(e.message || '获取工单信息失败');
   } finally {
     loading.value = false;
+  }
+}
+
+/** 取消成功后整单重取：状态、能否再取消、审核角标都要跟着变 */
+function handleCancelled() {
+  fetchData();
+}
+
+/**
+ * 打开「修改并重新提交」：回填当前描述与已有图片。
+ *
+ * 预填的图片直接放进 `response.url`（与上传成功的条目同构），
+ * 这样提交时只用「status=success 且能取到 url」一条规则收集，不必区分新旧。
+ */
+function openResubmit() {
+  resubmitDescription.value = order.value.description || '';
+  resubmitFiles.value = parseImageUrls(order.value.faultImages).map((url, index) => ({
+    uid: -(index + 1),
+    name: `fault-${index + 1}`,
+    url,
+    status: 'success' as const,
+    response: { url }
+  }));
+  resubmitVisible.value = true;
+}
+
+/** el-upload 自定义上传：resolve 即成功，`response.url` 供提交时派生 faultImages */
+async function uploadResubmitImage(options: UploadRequestOptions): Promise<{ url: string }> {
+  const compressedBlob = await compressImage(options.file as File, { maxDimension: 1600, quality: 0.8 });
+  const compressedFile = new File([compressedBlob], options.file.name, { type: 'image/jpeg' });
+
+  const formData = new FormData();
+  formData.append('file', compressedFile);
+
+  const res = await httpClient.post<{ url: string }>('/common/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  if (res.code === 200 && res.data?.url) {
+    return { url: res.data.url };
+  }
+  throw new Error(res.message || '上传失败');
+}
+
+function collectResubmitUrls(): string[] {
+  return resubmitFiles.value
+    .filter((file) => file.status === 'success')
+    .map((file) => (file.response as { url?: string } | undefined)?.url || file.url || '')
+    .filter((url): url is string => !!url);
+}
+
+async function onResubmit() {
+  const description = resubmitDescription.value.trim();
+  if (!description) {
+    ElMessage.warning('请填写故障描述后再提交');
+    return;
+  }
+  resubmitting.value = true;
+  try {
+    const res = await httpClient.post<{ reviewStatus?: 'PASSED' | 'PENDING' }>(
+      `/work-orders/${orderId}/review-resubmit`,
+      { description, faultImages: collectResubmitUrls() }
+    );
+    if (res.code === 200) {
+      const next = res.data?.reviewStatus;
+      resubmitVisible.value = false;
+      // 重提结果就是新的审核状态：PENDING 还会再人工复核，PASSED 已直接放行进入派单
+      if (next === 'PENDING') {
+        ElMessage.success('已重新提交，内容待人工复核；通过后系统会自动派单');
+      } else if (next === 'PASSED') {
+        ElMessage.success('已重新提交，内容审核通过，系统正在重新派单');
+      } else {
+        ElMessage.success('已重新提交，请留意审核状态更新');
+      }
+      fetchData();
+    } else {
+      ElMessage.error(res.message || '重新提交失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || e.message || '重新提交失败');
+  } finally {
+    resubmitting.value = false;
   }
 }
 
@@ -319,6 +502,49 @@ async function onSubmitEvaluation() {
 }
 .page-head {
   margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 审核中：中性提示条（审核不是风险，不占用警示档的呼吸点） */
+.review-pending {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: var(--fs-base);
+  line-height: 1.7;
+}
+.review-pending__reason {
+  flex-basis: 100%;
+  color: var(--faint);
+  font-size: var(--fs-base);
+}
+/* 驳回理由：这是用户要读的正文，按正文色而不是警示色（色相只服务状态） */
+.review-reason {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: var(--fs-base);
+  line-height: 1.7;
+}
+.review-tip {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: var(--fs-base);
+  line-height: 1.7;
 }
 /*
  * 状态条（V7 修订）。

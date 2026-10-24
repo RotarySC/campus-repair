@@ -182,6 +182,23 @@ const rules = {
 
 const DRAFT_STORAGE_KEY = 'CAMPUS_REPAIR_SUBMIT_DRAFT';
 
+/**
+ * 提单响应里与**内容审核**相关的两个字段（`POST /work-orders/submit`）。
+ *
+ * 刻意在本文件本地声明，而不去改 `packages/shared` 的 `WorkOrderSubmitResultVO`：
+ * 那份类型在同一波次里由「取消 + 脱敏」那条流扩字段（canCancel / *Display），
+ * 两处同时改同一个接口形状会互相覆盖。等两条流合并后再回收进 shared。
+ *
+ * `reviewStatus='PENDING'` 的含义是「内容初筛命中，等人工复核」——工单照常落库、报修人可查，
+ * 但**不会**自动派单（审核通过时才补发派单事件），所以提示文案必须与「已派单」区分开。
+ */
+interface SubmitResultWithReview {
+  orderNo?: string;
+  reviewStatus?: 'PASSED' | 'PENDING' | null;
+  /** 命中分类的可读摘要（后端不回传词表原文） */
+  reviewReason?: string | null;
+}
+
 function saveDraft() {
   const draft = {
     spaceId: form.spaceId,
@@ -442,11 +459,24 @@ async function onSubmit() {
       faultImages: collectUploadedUrls()
     };
 
-    const res = await httpClient.post<any>('/work-orders/submit', payload);
+    const res = await httpClient.post<SubmitResultWithReview>('/work-orders/submit', payload);
     if (res.code === 200) {
       localStorage.removeItem(DRAFT_STORAGE_KEY);
+      const result = res.data;
+      if (result?.reviewStatus === 'PENDING') {
+        // 内容闸门命中：工单已受理但**不进派单池**，提示口径必须与「系统正在自动调度」区分开，
+        // 并且把工单号显式给出——此时报修人唯一的凭据就是这个单号。
+        const reason = result.reviewReason ? `命中原因：${result.reviewReason}。` : '';
+        await ElMessageBox.alert(
+          `工单编号：${result.orderNo || '—'}。内容待审核，审核通过后自动派单。${reason}审核结论会通过站内通知告知，届时可在「我的工单」查看进度。`,
+          '报修提交成功（内容待审核）',
+          { confirmButtonText: '查看我的工单', type: 'info' }
+        );
+        router.push('/');
+        return;
+      }
       await ElMessageBox.alert(
-        `您的报修工单已受理！工单编号：${res.data?.orderNo}，系统正在为您自动调度匹配师傅。`,
+        `您的报修工单已受理！工单编号：${result?.orderNo}，系统正在为您自动调度匹配师傅。`,
         '报修提交成功',
         { confirmButtonText: '查看我的工单', type: 'success' }
       );

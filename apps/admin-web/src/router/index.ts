@@ -17,6 +17,8 @@ import PersonalCenterView from '../views/profile/PersonalCenterView.vue';
 import WorkbenchView from '../views/worker/WorkbenchView.vue';
 import WorkerFinishView from '../views/worker/WorkerFinishView.vue';
 import IdentityReviewView from '../views/system/IdentityReviewView.vue';
+import ContentReviewView from '../views/review/ContentReviewView.vue';
+import AnnouncementManageView from '../views/notification/AnnouncementManageView.vue';
 
 /**
  * 职能集合，与后端 `@PreAuthorize` 保持一致（口径见仓库根 CONTEXT.md）。
@@ -142,6 +144,21 @@ const routes: RouteRecordRaw[] = [
         name: 'IdentityReview',
         component: IdentityReviewView,
         meta: { title: '身份核验', requiresAuth: true, functions: ['PLATFORM_ADMIN'] }
+      },
+      {
+        // 内容审核对调度与平台管理同时开放（后端复核端点同集合）；
+        // 页内的「敏感词表」tab 只给平台管理，由页面按职能隐藏，不靠路由挡
+        path: 'review/content',
+        name: 'ContentReview',
+        component: ContentReviewView,
+        meta: { title: '内容审核工作台', requiresAuth: true, functions: ADMIN_FUNCTIONS }
+      },
+      {
+        // 公告工作台同样是调度/平台管理（后勤发公告）；发布前必须先审核通过
+        path: 'notifications/announcements',
+        name: 'AnnouncementManage',
+        component: AnnouncementManageView,
+        meta: { title: '公告管理', requiresAuth: true, functions: ADMIN_FUNCTIONS }
       }
     ]
   },

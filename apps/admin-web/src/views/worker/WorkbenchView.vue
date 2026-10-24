@@ -78,13 +78,32 @@
           <span v-else>—</span>
         </template>
 
-        <!-- 报修人列直接是 tel: 链接：现场一键拨号，少一列按钮；号码直接可读（可能要换机拨打） -->
+        <!--
+          报修人列：完整号码 = tel: 一键拨号（现场作业要能直接打）；
+          掩码号（含 `*`）**不生成拨号链接**——它拨不出去，做成链接只会点了没反应。
+          展示值读后端 `applicantPhoneDisplay`（按查看者关系算好的权威值），
+          旧后端缺字段时用 shared `maskPhone()` 兜底，绝不回落到原始完整号码。
+        -->
         <template #col-applicantName="{ row }">
-          <a :href="'tel:' + row.applicantPhone" class="tel-link" :title="`拨打 ${row.applicantName} ${row.applicantPhone}`">
+          <a
+            v-if="!isMaskedPhone(applicantPhoneOf(row))"
+            :href="'tel:' + applicantPhoneOf(row)"
+            class="tel-link"
+            :title="`拨打 ${row.applicantName} ${applicantPhoneOf(row)}`"
+          >
             <el-icon :size="14"><Phone /></el-icon>
             <span>{{ row.applicantName }}</span>
-            <span class="tel-number">{{ row.applicantPhone }}</span>
+            <span class="tel-number">{{ applicantPhoneOf(row) }}</span>
           </a>
+          <span
+            v-else
+            class="tel-link tel-link--masked"
+            :title="applicantPhoneOf(row) ? MASKED_PHONE_TIP : undefined"
+          >
+            <el-icon :size="14"><Phone /></el-icon>
+            <span>{{ row.applicantName }}</span>
+            <span class="tel-number">{{ applicantPhoneOf(row) || '—' }}</span>
+          </span>
         </template>
 
         <!-- 仅窄档卡片：故障描述 + 挂起原因横幅（宽档表格放不下，靠 title 提示） -->
@@ -301,7 +320,9 @@ import {
   WorkerWorkbenchCountVO,
   WorkerOrderListResultVO,
   WorkOrderEvaluationVO,
-  formatDateTime
+  formatDateTime,
+  isMaskedPhone,
+  maskPhone
 } from '@campus/shared';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
@@ -320,6 +341,20 @@ const HISTORY_STATUSES: readonly string[] = ['PENDING_ACCEPTANCE', 'COMPLETED', 
 
 function isHistoryStatus(status: string): boolean {
   return HISTORY_STATUSES.includes(status);
+}
+
+/** 掩码号码的统一提示（tooltip 文案只写一次，避免同一句话两种说法） */
+const MASKED_PHONE_TIP = '号码已按隐私规则掩码';
+
+/**
+ * 报修人电话的展示值：**后端 `applicantPhoneDisplay` 优先**（它按查看者关系算好，
+ * 后端是权威）；旧后端/旧会话缺该字段时才在本地掩码兜底，且**不回落到原始号码**。
+ */
+function applicantPhoneOf(row: DispatchOrderItemVO): string {
+  const display = row.applicantPhoneDisplay;
+  if (display !== null && display !== undefined && display !== '') return display;
+  // `maskPhone` 对空值返回 null：这里归一成 ''，调用方用 `|| '—'` 决定是否显示占位
+  return maskPhone(row.applicantPhone) || '';
 }
 
 /**
@@ -707,6 +742,15 @@ async function submitTransfer() {
 
 .tel-link:hover {
   text-decoration: underline;
+}
+
+/* 掩码号不是交互对象：不画下划线、不指针手型、不占用主色（那是「可点」的语义） */
+.tel-link--masked {
+  cursor: default;
+  color: var(--ink);
+}
+.tel-link--masked:hover {
+  text-decoration: none;
 }
 
 /* 号码比姓名弱一档：姓名是识别信息，号码是可读但不抢视线的辅助信息 */

@@ -33,8 +33,37 @@
         </template>
 
         <template #col-status="{ row }">
- <!-- V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
-          <StatusRing :status="row.status" />
+          <span class="status-cell">
+            <!-- V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
+            <StatusRing :status="row.status" />
+            <!--
+              内容审核是**状态之外的另一条信息**（工单可能「待派单」且「内容审核中」），
+              所以不是又一个状态色标签，而是中性次级 chip：它解释「为什么还没派单」。
+            -->
+            <MetaChip v-if="reviewChipText(row.reviewStatus)" class="review-chip">
+              {{ reviewChipText(row.reviewStatus) }}
+            </MetaChip>
+          </span>
+        </template>
+
+        <!-- 行操作：取消入口只看后端给的 `canCancel`（窗口规则在后端 ReporterCancelPolicy） -->
+        <template #col-actions="{ row }">
+          <el-button
+            v-if="row.canCancel"
+            link
+            type="danger"
+            size="small"
+            @click.stop="openCancel(row)"
+          >
+            取消
+          </el-button>
+        </template>
+
+        <!-- 窄档卡片：审核 chip 放在卡片底部操作区（宽档已经在状态列里并排） -->
+        <template #cardFooter="{ row }">
+          <MetaChip v-if="reviewChipText(row.reviewStatus)" class="review-chip">
+            {{ reviewChipText(row.reviewStatus) }}
+          </MetaChip>
         </template>
       </ResponsiveTable>
 
@@ -50,6 +79,13 @@
         />
       </div>
     </el-card>
+
+    <!-- 取消报修（与详情页同一个弹窗组件：原因可选 + 二次确认 + 不可逆文案） -->
+    <ReporterCancelDialog
+      v-model="cancelVisible"
+      :order="cancelTarget"
+      @cancelled="handleCancelled"
+    />
   </div>
 </template>
 
@@ -63,6 +99,18 @@ import { DispatchOrderItemVO, OrderStatusLabels } from '@campus/shared';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 import StatusRing from '../../components/StatusRing.vue';
+import MetaChip from '../../components/MetaChip.vue';
+import ReporterCancelDialog from './ReporterCancelDialog.vue';
+
+/** 内容审核 → 次级 chip 文案；`PASSED`/空表示正常，不出现 chip */
+const REVIEW_CHIP_LABELS: Record<string, string> = {
+  PENDING: '内容审核中',
+  REJECTED: '已驳回'
+};
+
+function reviewChipText(reviewStatus?: string | null): string {
+  return reviewStatus ? REVIEW_CHIP_LABELS[reviewStatus] || '' : '';
+}
 
 const router = useRouter();
 
@@ -72,6 +120,20 @@ const page = ref(1);
 const size = ref(10);
 const total = ref(0);
 const orders = ref<DispatchOrderItemVO[]>([]);
+
+// 取消弹窗：选中行 + 可见性；提交与二次确认都在共用的 ReporterCancelDialog 里
+const cancelVisible = ref(false);
+const cancelTarget = ref<DispatchOrderItemVO | null>(null);
+
+function openCancel(row: DispatchOrderItemVO) {
+  cancelTarget.value = row;
+  cancelVisible.value = true;
+}
+
+function handleCancelled() {
+  // 取消会改变状态与 tab 过滤结果（例如从「在办」掉到「已作废」），整页重取最稳
+  fetchData();
+}
 
 /** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
 const columns: TableColumn<DispatchOrderItemVO>[] = [
@@ -93,7 +155,7 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
   {
     key: 'status',
     label: '状态',
-    width: 120,
+    width: 200,
     align: 'center',
     card: 'tag',
     cardTag: (row) => ({
@@ -110,7 +172,8 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     align: 'center',
     cardHideEmpty: true
   },
-  { key: 'createdAt', label: '提单时间', width: 170, valueType: 'datetime' }
+  { key: 'createdAt', label: '提单时间', width: 170, valueType: 'datetime' },
+  { key: 'actions', label: '操作', width: 90, align: 'center', card: 'action' }
 ];
 
 function handleTabChange() {
@@ -169,6 +232,24 @@ onMounted(fetchData);
 /* 「普通」不加急时不该有颜色——它不是状态，只是「没有需要提醒的事」 */
 .urgency-normal {
   color: var(--faint);
+}
+/* 状态圆环 + 内容审核 chip 并排：chip 是次级信息，不能挤掉状态 */
+.status-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.review-chip {
+  font-size: var(--fs-base);
+}
+/*
+  窄档卡片底部操作区：`ResponsiveTable` 只要存在操作列就会渲染 footer，
+  无法按行隐藏。没有任何「取消 / 审核 chip」时把它收掉，避免每张卡底部多一条空分隔线。
+ */
+:deep(.rl-card__foot:empty) {
+  display: none;
 }
 /* 子组件内部的表格行：整行可点（scoped 对子组件根内元素需 :deep） */
 :deep(.el-table__row) {

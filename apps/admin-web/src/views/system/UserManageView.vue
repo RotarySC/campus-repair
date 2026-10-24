@@ -37,6 +37,15 @@
         <MetaChip>{{ branchLabel(row.userType) }}</MetaChip>
       </template>
 
+      <!--
+        联系电话：列里只出现后端给的 `phoneDisplay`（`DISPATCHER` 掩码 / `PLATFORM_ADMIN` 完整）。
+        用户台账不再出网 `password` 与完整号码；这里的 tooltip 解释可见性口径，
+        避免管理员误以为掩码是数据缺失。
+      -->
+      <template #col-phoneDisplay="{ row }">
+        <span :title="phoneColumnTip()">{{ row.phoneDisplay || '—' }}</span>
+      </template>
+
       <template #col-status="{ row }">
         <!-- Phase 01：账号三态。开关只对 0/1 生效；2 = 待核验，不做启停 -->
         <div class="status-cell">
@@ -71,7 +80,9 @@
           顺带统一了文案：宽档原写「正常」、窄档原写「已改密」—— 现在两档都是「已改密」。
         -->
         <StatusRing v-if="row.isFirstLogin === 1" variant="dot" tone="muted" label="需改密" />
-        <span v-else>已改密</span>
+        <span v-else-if="row.isFirstLogin === 0">已改密</span>
+        <!-- 字段缺失（旧后端 / 契约最小集）时显示未知，不猜成「已改密」 -->
+        <span v-else class="text-faint">—</span>
       </template>
 
       <template #col-actions="{ row }">
@@ -128,28 +139,48 @@
 <script setup lang="ts">
 import MetaChip from '../../components/MetaChip.vue';
 import StatusRing from '../../components/StatusRing.vue';
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { AccountStatusLabels, branchLabel } from '@campus/shared';
-import type { AccountStatus } from '@campus/shared';
-import { httpClient } from '../../stores/auth';
+import type { AccountStatus, UserAdminVO } from '@campus/shared';
+import { httpClient, useAuthStore } from '../../stores/auth';
 import ResponsiveTable from '../../components/ResponsiveTable.vue';
 import type { TableColumn } from '../../components/ResponsiveTable.vue';
 
 const router = useRouter();
+const authStore = useAuthStore();
+
+/**
+ * 当前登录人是否平台管理：只有 `PLATFORM_ADMIN` 能拿到完整号码（要联系账号本人），
+ * 其余（如调度）拿到的是掩码。判定只在后端，这里只决定提示文案。
+ */
+const isPlatformAdmin = computed(() => (authStore.userInfo?.roleCodes || []).includes('PLATFORM_ADMIN'));
+
+/** 手机号列的提示：解释「为什么你看到的是掩码 / 为什么你能看到完整」 */
+function phoneColumnTip(): string {
+  return isPlatformAdmin.value
+    ? '完整号码仅平台管理可见'
+    : '号码已按隐私规则掩码，完整号码仅平台管理可见';
+}
 
 const loading = ref(false);
 const importing = ref(false);
-const tableData = ref<any[]>([]);
+const tableData = ref<UserAdminVO[]>([]);
 const total = ref(0);
 
 /** 列定义双档共用：宽档渲染 el-table，窄档按 card 角色渲染卡片 */
-const columns: TableColumn<any>[] = [
+const columns: TableColumn<UserAdminVO>[] = [
   { key: 'id', label: 'ID', width: 70, align: 'center' },
   { key: 'username', label: '学号/工号', width: 130, card: 'title' },
   { key: 'realName', label: '真实姓名', width: 110 },
-  { key: 'phone', label: '联系电话', width: 130 },
+  {
+    // 台账只输出后端算好的展示值：`DISPATCHER` 掩码、`PLATFORM_ADMIN` 完整
+    key: 'phoneDisplay',
+    label: '联系电话（掩码）',
+    width: 150,
+    showOverflowTooltip: true
+  },
   {
     key: 'userType',
     label: '所属条线',
@@ -167,10 +198,13 @@ const columns: TableColumn<any>[] = [
  // ⚠️ 2026-10-13（C 组 #4）：带语义 `type`（warning）的胶囊 → **提示档**中性点
     //    （`type:'ring'` + `variant:'dot'` + `tone:'muted'`）。与宽档 `#col-isFirstLogin` 同一个长相。
     //    「已改密」是正常态 ⇒ 不带 `type` ⇒ `is-info`（已与 `MetaChip` 统一的中性胶囊）。
+    //    字段缺失（旧后端 / 契约最小集）时显示「—」，不猜成「已改密」。
     cardTag: (row) =>
       row.isFirstLogin === 1
         ? { text: '需改密', type: 'ring', variant: 'dot', tone: 'muted' }
-        : { text: '已改密' }
+        : row.isFirstLogin === 0
+          ? { text: '已改密' }
+          : { text: '—' }
   },
   { key: 'status', label: '账号状态', width: 120, align: 'center' },
   { key: 'actions', label: '操作', width: 180, align: 'center', card: 'action' }
@@ -194,12 +228,13 @@ const importReport = ref<any>({});
 async function loadData() {
   loading.value = true;
   try {
-    const res = await httpClient.get<any>('/users/page', {
+    // 台账端点已改为 `R<IPage<UserAdminVO>>`：不再有 password / 完整号码
+    const res = await httpClient.get<{ records: UserAdminVO[]; total: number }>('/users/page', {
       params: query
     });
-    if (res.code === 200) {
-      tableData.value = res.data.records;
-      total.value = res.data.total;
+    if (res.code === 200 && res.data) {
+      tableData.value = res.data.records || [];
+      total.value = res.data.total || 0;
     }
   } catch (err: any) {
     ElMessage.error(err.message || '加载用户台账失败');

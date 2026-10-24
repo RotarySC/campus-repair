@@ -107,6 +107,13 @@
                 -->
                 <StatusRing v-if="order.urgencyLevel === 2" variant="dot" label="加急" class="status-ring--text-after" />
                 <StatusRing :status="order.status" />
+                <!--
+                  内容待审（Phase 02 内容闸门）：命中的单子在调度侧只留下这一点痕迹。
+                  **它不是工单生命周期状态**（状态机已冻结），所以既不借空心状态环、也不借 8 个状态色相，
+                  用次级中性 chip。
+                  ⚠️ 本文件的电话列与 tel: 链接归另一条流，此处不动。
+                -->
+                <MetaChip v-if="isContentPending(order)">内容待审</MetaChip>
               </div>
               <span class="order-time">{{ formatDateTime(order.createdAt) }}</span>
             </div>
@@ -128,7 +135,14 @@
             </div>
 
             <div class="card-user-meta">
-              <span>报修人: {{ order.applicantName }} ({{ order.applicantPhone }})</span>
+              <!--
+                报修人电话：读后端 `applicantPhoneDisplay`（按查看者关系算好的权威展示值）。
+                掩码值只是展示，**不生成 `tel:` 链接**——拨不出去的号码做成链接只会误导；
+                这里本来就没有拨号入口，掩码时用 tooltip 说明原因即可。
+              -->
+              <span :title="applicantPhoneOf(order) && isMaskedPhone(applicantPhoneOf(order)) ? MASKED_PHONE_TIP : undefined">
+                报修人: {{ order.applicantName }} ({{ applicantPhoneOf(order) || '—' }})
+              </span>
               <span>期望时段: {{ order.appointmentPeriod }}</span>
             </div>
 
@@ -492,11 +506,38 @@ import {
   DispatchPoolCategoryCountVO,
   DispatchPoolResultVO,
   WorkerBoardVO,
-  formatDateTime
+  formatDateTime,
+  isMaskedPhone,
+  maskPhone
 } from '@campus/shared';
+
+/** 掩码号码的统一提示（tooltip 文案只写一次） */
+const MASKED_PHONE_TIP = '号码已按隐私规则掩码';
+
+/**
+ * 报修人电话展示值：**后端 `applicantPhoneDisplay` 优先**；
+ * 旧后端缺字段时用 shared `maskPhone()` 兜底，绝不回落到原始完整号码。
+ */
+function applicantPhoneOf(order: DispatchOrderItemVO): string {
+  const display = order.applicantPhoneDisplay;
+  if (display !== null && display !== undefined && display !== '') return display;
+  // `maskPhone` 对空值返回 null：归一成 ''，模板用 `|| '—'` 决定占位
+  return maskPhone(order.applicantPhone) || '';
+}
 
 const route = useRoute();
 const router = useRouter();
+
+/**
+ * 「内容待审」判据。
+ *
+ * `reviewStatus` 由工单侧内容闸门投影（`repair_order.review_status`），本页只读这一个字段：
+ * `PENDING` = 命中敏感规则、等人工复核，此类工单**不进派单池**，所以这里也不可能真的出现——
+ * 留着这个标记是为了「调度中心按单号直链打开」等旁路场景下也能看出它为什么不在池子里。
+ */
+function isContentPending(order: DispatchOrderItemVO): boolean {
+  return order.reviewStatus === 'PENDING';
+}
 
 // 左栏工单池数据状态
 const currentCategory = ref('ALL');

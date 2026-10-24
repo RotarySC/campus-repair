@@ -12,7 +12,7 @@
           广播确实会打断全校，但那件事由 `openBroadcastDialog` 的弹窗承担
           （标题/正文必填、提交前可放弃），不该再由一个色相说第二遍。
         -->
-        <el-button link size="small" @click="openBroadcastDialog">发布全校广播</el-button>
+        <el-button link size="small" @click="openBroadcastDialog">新建公告草稿</el-button>
         <el-button type="primary" link size="small" @click="handleMarkAllRead">一键全部已读</el-button>
       </div>
     </div>
@@ -97,24 +97,31 @@
       />
     </div>
 
+    <!--
+      广播走「先审后发」：这个入口不再直接扇出，只创建公告**草稿**，
+      后续 提交审核 → 通过 → 发布 在公告管理页完成。
+    -->
     <el-dialog
       v-model="broadcastVisible"
-      title="发布全校广播公告"
+      title="新建公告草稿"
       width="480px"
       :close-on-click-modal="false"
       append-to-body
     >
-      <AlertBanner>广播将扇出推送至全部在册在校用户，请确认内容准确后发布</AlertBanner>
+      <AlertBanner>
+        公告改为「先审后发」：这里只创建草稿，需在「公告管理」提交内容审核并通过后再发布，
+        发布时才会扇出给全部在册在校用户。
+      </AlertBanner>
       <el-form ref="broadcastFormRef" :model="broadcastForm" :rules="broadcastRules" label-width="64px">
         <el-form-item label="标题" prop="title">
-          <el-input v-model="broadcastForm.title" maxlength="50" show-word-limit placeholder="如：全校供水阀门维保停水通知" />
+          <el-input v-model="broadcastForm.title" maxlength="128" show-word-limit placeholder="如：全校供水阀门维保停水通知" />
         </el-form-item>
         <el-form-item label="正文" prop="content">
           <el-input
             v-model="broadcastForm.content"
             type="textarea"
             :rows="5"
-            maxlength="500"
+            maxlength="2000"
             show-word-limit
             placeholder="请输入公告详细正文，例如停水/停电/检修时间与影响范围"
           />
@@ -122,7 +129,7 @@
       </el-form>
       <template #footer>
         <el-button @click="broadcastVisible = false">取消</el-button>
-        <el-button type="primary" :loading="broadcastSubmitting" @click="submitBroadcast">确认发布</el-button>
+        <el-button type="primary" :loading="broadcastSubmitting" @click="submitBroadcast">创建草稿</el-button>
       </template>
     </el-dialog>
   </div>
@@ -159,8 +166,11 @@ const notifications = ref<NotificationItemVO[]>([]);
 const router = useRouter();
 const authStore = useAuthStore();
 
-/** 库存预警只对调度/平台管理有意义；其它角色点击只标已读，不做无权跳转。 */
-function canOpenInventory(): boolean {
+/**
+ * 管理侧判据：库存预警与公告工作台都只对调度/平台管理有意义，
+ * 其它角色点击只标已读，不做无权跳转。
+ */
+function isAdminSide(): boolean {
   const codes = authStore.userInfo?.roleCodes ?? [];
   return codes.includes('DISPATCHER') || codes.includes('PLATFORM_ADMIN');
 }
@@ -232,8 +242,18 @@ function handleItemClick(item: NotificationItemVO) {
   }
   // 库存预警没有关联工单，落到进销存台账才看得到采购建议（Phase 04）
   if (item.category === 'STOCK_WARNING') {
-    if (canOpenInventory()) {
+    if (isAdminSide()) {
       router.push('/inventory');
+    }
+    return;
+  }
+  // 公告类通知（`BROADCAST` 或带公告来源 id 的通知）落公告工作台：
+  // 「先审后发」之后发布入口在那里，作者/调度点通知直接到那一页看状态与后续动作。
+  // 无权限的角色维持原行为——只标已读，不跳无权页面。
+  // `announcementId` 是共享真源 `NotificationItemVO` 上的字段（后端 `sys_notification.announcement_id`）。
+  if (item.category === 'BROADCAST' || item.announcementId != null) {
+    if (isAdminSide()) {
+      router.push('/notifications/announcements');
     }
     return;
   }
@@ -265,17 +285,26 @@ async function submitBroadcast() {
 
   broadcastSubmitting.value = true;
   try {
-    const res = await httpClient.post<number>('/notifications/broadcast', broadcastForm.value);
-    if (res.code === 200 && res.data != null) {
-      ElMessage.success(`广播发布成功，已推送至 ${res.data} 位在校用户`);
+    // 兼容端点：`POST /notifications/broadcast` 的语义已改为「只建草稿、不扇出」，
+    // 返回 `{ announcementId }`（旧实现是「已推送人数」）。两种形状都认，避免联调期类型炸开。
+    const res = await httpClient.post<{ announcementId?: number } | number>(
+      '/notifications/broadcast',
+      broadcastForm.value
+    );
+    if (res.code === 200) {
       broadcastVisible.value = false;
+      ElMessage.success('公告草稿已创建，请提交内容审核并通过后再发布');
       emit('unread-updated');
       fetchData();
+      // 有权限才引导到公告工作台；无权限角色靠后端 403 兜底，别把人送进 403 页
+      if (isAdminSide()) {
+        router.push('/notifications/announcements');
+      }
     } else {
-      ElMessage.error(res.message || '广播发布失败');
+      ElMessage.error(res.message || '创建公告草稿失败');
     }
   } catch (e: any) {
-    ElMessage.error(e.message || '广播发布失败');
+    ElMessage.error(e.message || '创建公告草稿失败');
   } finally {
     broadcastSubmitting.value = false;
   }

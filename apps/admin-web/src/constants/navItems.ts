@@ -25,6 +25,10 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { path: '/inventory', label: '耗材进销存台账', icon: 'Box', requires: 'ADMIN_SIDE' },
   { path: '/spatial', label: '空间与分类字典', icon: 'Grid', requires: 'ADMIN_SIDE' },
   { path: '/system/users', label: '用户台账管理', icon: 'User', requires: 'ADMIN_SIDE' },
+  // 内容审核与公告管理：调度也要用（复核 + 发公告），因此走 ADMIN_SIDE；
+  // 其中「敏感词表」是系统参数性质，只给平台管理，由页面按职能隐藏 tab
+  { path: '/review/content', label: '内容审核', icon: 'DocumentChecked', requires: 'ADMIN_SIDE' },
+  { path: '/notifications/announcements', label: '公告管理', icon: 'Notification', requires: 'ADMIN_SIDE' },
   // 核验只给平台管理员：后端 approve/reject 是 hasRole('PLATFORM_ADMIN')
   { path: '/system/identity', label: '身份核验', icon: 'Stamp', requires: 'PLATFORM_ADMIN' }
 ];
