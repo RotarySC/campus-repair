@@ -162,7 +162,7 @@
 
           顺带说明：`type="error"` 里的 **`error` 根本不在棘轮的口径里**
           （`color-controls.spec.ts` 的 `SEMANTIC` 是 `success|warning|danger|info|primary`，
-          那是 `el-button` 的语汇；`el-alert` 用 `error`）。所以它一直是**隐形的**，见设计文档 §26.10。
+          那是 `el-button` 的语汇；`el-alert` 用 `error`）。所以它一直是**隐形的**。
         -->
         <AlertBanner v-if="ratingStar > 0 && ratingStar <= 2">
           打分 ≤ 2 星将立即触发【差评返工督办】流程！工单将被置顶由后勤主管调度二次上门整改，请详细说明未解决问题。

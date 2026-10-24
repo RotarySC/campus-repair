@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * **token 层覆盖棘轮**（设计规范 §7.2 的第二条回归）。
+ * **token 层覆盖棘轮**（第二条回归）。
  *
  * 规范原话是「新增页面不得出现 `#` 形式的色值字面量」。逐字实现不了——
  * 第二期还有 9 页没铺开，全仓此刻仍有 300 多处。所以这里落成**棘轮**：
@@ -59,7 +59,7 @@ const MIGRATED = [
   'components/ResponsiveTable.vue',
   'components/StatusRing.vue',
   'layouts/AdminLayout.vue',
-  // 登录页的深蓝渐变已由 G1 的生成式背景替换（规范 §4.6），品牌蓝随之退场
+  // 登录页的深蓝渐变已由 G1 的生成式背景替换，品牌蓝随之退场
   'views/login/LoginView.vue',
   'views/analytics/WorkOrderReportView.vue',
   // ---- 第二期第一批（V7 状态圆环铺开）----
@@ -111,7 +111,7 @@ const CSS_TOKEN_FALLBACK = /cssToken\(\s*'([^']+)'\s*,\s*'(#[0-9A-Fa-f]{3,8})'\s
  * 配对会整体错位，把两者之间**全部真实代码**当成注释吞掉。
  * 实测 `WorkerFinishView.vue` 因此被吃掉 15 个 `<el-` 标签，
  * 并让两个真实色值（`#F56C6C` / `#1677FF`）在色值棘轮里**隐形了很久**，
- * 于「定义处之外 0 处」这个结论上假绿（见规范 §23.6）。
+ * 于「定义处之外 0 处」这个结论上假绿。
  *
  * 逐字符走：**引号内部不认注释**，并处理反斜杠转义。HTML 注释先单独去掉。
  */

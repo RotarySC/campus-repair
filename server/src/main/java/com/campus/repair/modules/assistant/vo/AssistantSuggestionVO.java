@@ -16,7 +16,7 @@ public class AssistantSuggestionVO implements Serializable {
     /**
      * 原样回显请求里的报修空间 id（可为 {@code null}）。
      *
-     * <p>v1 是纯文本匹配，**空间不参与打分**（设计文档 §3.3/§7）——但既然请求体收了这个字段，
+     * <p>v1 是纯文本匹配，**空间不参与打分**——但既然请求体收了这个字段，
      * 就必须回显，否则它是个"收了却静默丢掉"的字段，调用方无从判断服务端到底看没看到它。
      */
     private Long spaceId;

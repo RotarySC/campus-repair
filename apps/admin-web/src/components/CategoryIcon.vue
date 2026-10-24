@@ -1,6 +1,6 @@
 <template>
   <!--
-    故障分类图标（规范 §4.6 的 A3）。
+    故障分类图标。
 
     与 `LevelIcon.vue` 是**兄弟**，不是扩展：两者渲染契约逐字相同（内联 SVG、只写 `d`、
     `stroke="currentColor"` + `fill="none"`、`viewBox 0 0 24 24`、默认 16px），
@@ -52,7 +52,7 @@ const props = withDefaults(
     name?: string | null;
     /** 工种码（`worker_skill_code`）——按名取不到时的兜底，让**用户新建的**分类也不空白 */
     skill?: string | null;
-    /** 边长（px）。规范 §4.6 A3 的阈值是 16–20px 锐利 */
+    /** 边长（px）。16–20px 时最锐利 */
     size?: number;
   }>(),
   { name: null, skill: null, size: 16 }

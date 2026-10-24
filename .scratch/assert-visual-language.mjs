@@ -110,7 +110,7 @@ const CSS_TOKEN_FALLBACK = /cssToken\(\s*'([^']+)'\s*,\s*'(#[0-9A-Fa-f]{3,8})'\s
  * 配对会整体错位，把两者之间**全部真实代码**当成注释吞掉。
  * 实测 `WorkerFinishView.vue` 因此被吃掉 15 个 `<el-` 标签，
  * 并让两个真实色值（`#F56C6C` / `#1677FF`）在色值棘轮里**隐形了很久**，
- * 于「定义处之外 0 处」这个结论上假绿（见规范 §23.6）。
+ * 于「定义处之外 0 处」这个结论上假绿。
  *
  * 逐字符走：**引号内部不认注释**，并处理反斜杠转义。HTML 注释先单独去掉。
  */
@@ -500,7 +500,7 @@ if (report.ring) {
 check('工单报表渲染出了实心警戒点（加急）', !!report.dot);
 if (report.dot && report.ring) {
   // ⚠️ 这一条**刻意推翻**了旧规则（旧：`dot.w === ring.w`，即「只差填充这一个变量」）。
-  //    看到这处 diff 请对照 `StatusRing.vue` 的 `VARIANT_SIZE` 与规范 §3.3 的修订说明 —— **不是回归**。
+  //    看到这处 diff 请对照 `StatusRing.vue` 的 `VARIANT_SIZE` 与既有修订说明 —— **不是回归**。
   check(
     '实心标记比空心环小：点 6px / 环 9px（尺寸参与区分，不再只靠填充）',
     report.dot.w === '6px' && report.dot.h === '6px' && report.ring.w === '9px',
@@ -508,7 +508,7 @@ if (report.dot && report.ring) {
   );
   check('实心标记仍是圆、仍是填充 currentColor', report.dot.radius === '100%' && report.dot.fill === report.dot.color, `${report.dot.radius} / ${report.dot.fill}`);
   /*
-   * ⚠️ **这一条 2026-10-13 从"必须呼吸"翻成了"必须不呼吸"**（规范 §30，不是回归）。
+   * ⚠️ **这一条 2026-10-13 从"必须呼吸"翻成了"必须不呼吸"**（不是回归）。
    * 工单报表里的「加急」是**逐行**的点；§30 把动效收给了页面级汇总那一枚。
    * 改前这里是「警戒档带呼吸类 → true」，现在它**正确地**是 false。
    */
@@ -655,7 +655,7 @@ console.log('\n===== ⑥ 登录页（§4.5，止于 G1） =====');
     L?.btnRadius === '0px' && L?.btnFontSize === '12px', `${L?.btnRadius} / ${L?.btnFontSize}`);
   /*
     ⚠️ **这一条是改写过的旧断言，不是回归。**
-    G1 之前它断言的是「深蓝渐变仍在」——那是当时刻意留下的停点（规范 §4.5 把渐变指向 §4.6）。
+    G1 之前它断言的是「深蓝渐变仍在」——那是当时刻意留下的停点。
     图落地之后就该反过来：**渐变没了、图在了**。
   */
   check(

@@ -115,7 +115,7 @@ INSERT INTO org_node (id, parent_id, name, level_type, audience, full_path_name,
 -- 4. 两级故障字典（二级细类绑定标准工种与 SLA 承诺时效）
 --    keywords / self_help_tip 供「智能助手」判断故障类别与提交前自助排查（口径见 CONTEXT.md）：
 --      · keywords 逗号分隔；匹配时**长度 < 2 的词一律忽略**，所以这里不写「水」「灯」「门」这类单字
---      · 叶子名命中权重 > keywords 命中 > 大类名命中（打分表见设计文档）
+--      · 叶子名命中权重 > keywords 命中 > 大类名命中（打分权重见 `AssistantRuleEngine`）
 --      · self_help_tip 多步用 | 分隔，只对二级细类有意义
 -- ---------------------------------------------------------------------------
 INSERT INTO repair_category (id, parent_id, name, level, worker_skill_code, sla_hours, keywords, self_help_tip, sort_order, status) VALUES

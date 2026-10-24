@@ -194,7 +194,7 @@ public class AuthService {
      * 由已加载的用户实体签发双 Token 并装配登录响应（登录 / 换票 / 改密后换票三处共用）。
      *
      * <p>职能码一律取自 {@code sys_user_role}，**不做 userType 回退**：userType 是组织条线，
-     * 不是职能码；回退会让"删掉角色绑定"反而升权（见 CONTEXT.md 与设计文档 §4.2）。
+     * 不是职能码；回退会让"删掉角色绑定"反而升权（见 CONTEXT.md）。
      */
     private LoginResponseVO issueTokens(SysUser user) {
         List<String> roleCodes = userMapper.selectRoleCodesByUserId(user.getId());

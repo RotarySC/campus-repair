@@ -196,7 +196,7 @@ check('区块标题用口径词「制度问答」，没有用被 _Avoid_ 掉的�
   JSON.stringify(drawer?.blockTitles));
 check('未提问时不显示自助排查区', drawer?.hasSelfHelp === false);
 check('未提问且无历史时不显示「最近询问」', drawer?.hasHistory === false);
-// 快捷入口 = 导航并集 **+** 「通知中心」动作项（设计文档 §4）：前者防清单漂移，后者是动作不是路由
+// 快捷入口 = 导航并集 **+** 「通知中心」动作项：前者防清单漂移，后者是动作不是路由
 const QUICK_ACTION = '通知中心';
 check('快捷入口 = 侧边栏导航并集 + 「通知中心」动作项',
   JSON.stringify([...drawer.quick].sort()) === JSON.stringify([...navLabels, QUICK_ACTION].sort()),

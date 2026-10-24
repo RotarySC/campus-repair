@@ -16,15 +16,14 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 守卫用例：源码里**不得再出现旧角色码**（2026-09-13 身份模型改名，见
- * `docs/20260913-1118-campus-repair-system-identity-role-model-design.md` §11 批次 1）。
+ * 守卫用例：源码里**不得再出现旧角色码**（2026-09-13 身份模型改名，批次 1）。
  *
  * <p>为什么需要它：44 处 `@PreAuthorize` 由脚本机械改名，**漏改一处就是静默的放权或降权**
  * ——测试很可能仍然是绿的（例如某端点少了一个角色、或某个端点仍然放行旧码对应的权限）。
  * 本用例把「漏改」变成编译期之后立刻可见的失败。
  *
  * <p>扫描范围：① `src/main/java` 的**非注释行**（注释里提到旧码属于解释历史，例如说明 P0 成因）；
- * ② 前端 `apps/admin-web/src` 的 `.ts` / `.vue`（设计 §10 要求）；
+ * ② 前端 `apps/admin-web/src` 的 `.ts` / `.vue`；
  * ③ 共享包 `packages/shared/src` 的 `.ts`——**这条是 2026-09-13 补的**：前两处都扫了，唯独
  * 共享包没扫，而 `OperatorRoleLabels` 恰好住在那里，等于给旧码留了一个「扫不到」的后门。
  * **历史词表的展示层除外**，见 {@link #LEGACY_DISPLAY_ALLOWLIST} / {@link #SHARED_DISPLAY_ALLOWLIST}。
@@ -71,7 +70,7 @@ class NoLegacyRoleCodeTest {
     void testNoLegacyRoleCodesInJavaSource() throws IOException {
         List<String> offenders = scan(resolveJavaSourceRoot(), Set.of(), ".java");
         assertThat(offenders)
-                .as("发现旧角色码，说明改名漏改（旧码 -> 新职能码/条线码见设计文档 §4）")
+                .as("发现旧角色码，说明改名漏改（旧码 -> 新职能码/条线码见 `CONTEXT.md`）")
                 .isEmpty();
     }
 

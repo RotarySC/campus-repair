@@ -7,7 +7,7 @@ import lombok.Data;
 /**
  * 助手推荐请求。
  *
- * <p>{@code spaceId} 本轮**只回显、不参与打分**（纯文本匹配，见设计文档 §3.3 与 §7）。
+ * <p>{@code spaceId} 本轮**只回显、不参与打分**（纯文本匹配）。
  */
 @Data
 public class AssistantSuggestRequest {

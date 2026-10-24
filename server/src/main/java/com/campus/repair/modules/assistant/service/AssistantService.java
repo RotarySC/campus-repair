@@ -89,7 +89,7 @@ public class AssistantService {
      * <p>"有没有把握"由 {@code sys_config.assistant_llm_escalate_below} 决定（默认 10 = 非 HIGH 就升级）：
      * 规则已经给出 HIGH 命中时**一次模型调用都不发**——那条路径瞬时、免费、且完全确定。
      *
-     * @param spaceId 报修空间 id，**只回显、不参与打分**（v1 纯文本匹配，设计文档 §7）
+     * @param spaceId 报修空间 id，**只回显、不参与打分**（v1 纯文本匹配）
      */
     public AssistantSuggestionVO suggest(String description, Long spaceId) {
         AssistantSuggestionVO result = new AssistantSuggestionVO();
@@ -120,7 +120,7 @@ public class AssistantService {
             degradedReason = outcome.degradedReason();
             if (!outcome.categoryIds().isEmpty()) {
                 List<Scored> merged = merge(outcome.categoryIds(), ranked, dict.byId(), limit);
-                // engine 的语义是「**模型有没有贡献可用结果**」（设计文档 §3.6），不是「调没调模型」：
+                // engine 的语义是「**模型有没有贡献可用结果**」，不是「调没调模型」：
                 // 模型返回的 id 若全是规则已命中的、或候选位已被规则占满，`merge` 一条都不会多
                 // ⇒ 它没贡献，engine 如实保持 RULE（"调了但没用上"与"没调"对外是同一件事）。
                 // `merge` 只追加、从不删减，所以比长度就够。
@@ -316,8 +316,8 @@ public class AssistantService {
      *       再截断，模型返回满 {@code limit} 条时规则命中会被整批截掉，等于"开了大模型反而更差"。</li>
      *   <li><b>顺序完全由规则口径决定</b>——合并后一律走 {@link AssistantRuleEngine#sort}
      *       （分数降序 → {@code sortOrder} → {@code id}），**模型返回的先后顺序不参与排序**。
-     *       这是"排序不确定"的根治：思考模型的 {@code temperature} 被服务端强制成 1.0
-     *       （设计文档 §8），让它的顺序当主键就等于把随机性直接引进 UI 首候选。</li>
+     *       这是"排序不确定"的根治：思考模型的 {@code temperature} 被服务端强制成 1.0，
+     *       让它的顺序当主键就等于把随机性直接引进 UI 首候选。</li>
      *   <li><b>模型仍能追加</b>——规则没命中的叶子由 {@link #promote} 补进候选，
      *       占用规则命中之外的空位。这正是升级路径的全部增益所在。</li>
      * </ol>

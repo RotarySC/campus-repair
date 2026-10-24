@@ -2,7 +2,7 @@
  * 智能助手（`/api/v1/assistant/*`）的接口类型。
  *
  * 口径见仓库根 `CONTEXT.md`：**助手候选 / 自助排查提示 / 助手知识 / 引擎模式**。
- * 后端契约见 `docs/20260921-1418-campus-repair-system-smart-assistant-design.md` §3.2。
+ * 后端契约见 `server/src/main/java/com/campus/repair/modules/assistant/` 下的 VO / DTO。
  */
 
 /** 实际使用的引擎：纯本地规则，或规则 + 大模型增强 */
@@ -48,7 +48,7 @@ export interface AssistantSuggestion {
   engine: AssistantEngine;
   degradedReason: AssistantDegradedReason | null;
   /**
-   * 请求里的报修空间 id **原样回显**（v1 空间不参与打分，见设计文档 §7）。
+   * 请求里的报修空间 id **原样回显**（v1 空间不参与打分）。
    * 没传时是 `null`——不要把它当成"默认空间"。
    */
   spaceId: number | null;

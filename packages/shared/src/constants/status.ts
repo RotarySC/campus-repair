@@ -28,8 +28,7 @@ export type OrderStatusTagType = 'success' | 'primary' | 'danger' | 'warning' | 
 /**
  * 状态色相令牌名。取值与 `apps/admin-web/src/styles/tokens.css` 的 `--h1`~`--h8` 一一对应。
  *
- * 编号即 `docs/20261012-1330-…-visual-language-d-design.md` §3.2 那张两列表的**列优先**读序
- * （左列 h1~h4、右列 h5~h8），也就是工单生命周期顺序。
+ * 编号即**列优先**读序（左列 h1~h4、右列 h5~h8），也就是工单生命周期顺序。
  */
 export type StatusHueToken = '--h1' | '--h2' | '--h3' | '--h4' | '--h5' | '--h6' | '--h7' | '--h8';
 
@@ -39,7 +38,7 @@ export type StatusHueToken = '--h1' | '--h2' | '--h3' | '--h4' | '--h5' | '--h6'
  * `test/status-hue.spec.ts` 会解析 tokens.css 并逐值比对，任一处的色值被改动都会变红。
  *
  * 为什么色相不降饱和：色相的面积只剩圆环那 2px 描边（约 100px²），
- * **饱和度是那点色相唯一还能被认出来的东西**（规范 §3.2）。
+ * **饱和度是那点色相唯一还能被认出来的东西**。
  */
 export const STATUS_HUE: Record<StatusHueToken, string> = {
   '--h1': '#FA8C16', // 待派单
@@ -56,7 +55,7 @@ export const STATUS_HUE: Record<StatusHueToken, string> = {
 export const STATUS_HUE_FALLBACK: StatusHueToken = '--h8';
 
 /**
- * 8 个色相键的**有序**清单（顺序 = §3.2 那张表的列优先读序，也就是工单生命周期顺序）。
+ * 8 个色相键的**有序**清单（顺序 = 列优先读序，也就是工单生命周期顺序）。
  * 给「必须复核全部 28 对」的可辨识性核算用——它需要一份**确定的**键序，而不是 `Object.keys` 的顺序。
  */
 export const ORDER_STATUS_HUE_KEYS: readonly StatusHueToken[] = [
@@ -71,10 +70,10 @@ export const ORDER_STATUS_HUE_KEYS: readonly StatusHueToken[] = [
 ];
 
 /**
- * 工单状态的两份视觉投影，**一处来源**（规范 §5 的 V9 修订：`ORDER_STATUS_VISUAL` 是唯一来源）。
+ * 工单状态的两份视觉投影，**一处来源**（V9 修订：`ORDER_STATUS_VISUAL` 是唯一来源）。
  *
- * - `hue`：9px 圆环的 2px 描边色相（`StatusRing`，规范 §3.2/§3.3）
- * - `tag`：`el-tag` 的语义档（**仍保留**给非状态场景与尚未迁移的页面，规范 §5「`el-tag` 仅保留给非状态类标签」）
+ * - `hue`：9px 圆环的 2px 描边色相（`StatusRing`）
+ * - `tag`：`el-tag` 的语义档（**仍保留**给非状态场景与尚未迁移的页面：`el-tag` 仅用于非状态类标签）
  *
  * 新增一个工单状态 = 在这里加**一条**，两个投影同时到位。
  */
@@ -86,8 +85,8 @@ interface StatusVisual {
 const ORDER_STATUS_VISUAL: Record<string, StatusVisual> = {
   [OrderStatusEnum.PENDING_DISPATCH]: { hue: '--h1', tag: 'info' },
   // 「待人工调度」是「自动派单未成功、等人工介入」，与「待派单」同属**尚未指派**，
-  // 因此共用琥珀 `--h1` 而不是新增第 9 个色相——§3.2 锁定的就是 8 个，
-  // 而色相可辨识性核算断言的是 8 个色相的 28 对最小 ΔE（规范 §7.2）。
+  // 因此共用琥珀 `--h1` 而不是新增第 9 个色相——锁定的就是 8 个，
+  // 而色相可辨识性核算断言的是 8 个色相的 28 对最小 ΔE。
   [OrderStatusEnum.MANUAL_DISPATCH]: { hue: '--h1', tag: 'info' },
   [OrderStatusEnum.ASSIGNED]: { hue: '--h2', tag: 'warning' },
   [OrderStatusEnum.IN_PROGRESS]: { hue: '--h3', tag: 'warning' },

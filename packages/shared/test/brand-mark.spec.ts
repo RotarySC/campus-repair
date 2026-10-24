@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { BRAND_MARK_PATHS, BRAND_MARK_STROKE_WIDTH, BRAND_MARK_VIEWBOX } from '../src/constants/brand';
 
 /**
- * **品牌标识三处同源的机器判据**（设计规范 §4.6 的 A1/A2/A5/A6）。
+ * **品牌标识三处同源的机器判据**。
  *
  * 图形「缺口楼宇」现在有三个消费者，而其中一个是**静态文件**（`public/favicon.svg`），
  * 浏览器直接取它，import 不进来：

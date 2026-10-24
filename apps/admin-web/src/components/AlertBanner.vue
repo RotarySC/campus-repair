@@ -14,7 +14,7 @@
     <span class="alert-banner__mark">
       <!--
         `breathing` 显式打开：警示条是**页面/区域级的一条汇总**（"这件事整块都要注意"），
-        全站只有这一档有资格动 —— 见 StatusRing 的 `breathing` prop 与规范 §30。
+        全站只有这一档有资格动 —— 见 StatusRing 的 `breathing` prop 。
         全仓共 7 处警示条，都由这一行继承。
       -->
       <StatusRing variant="dot" :label="label" breathing />

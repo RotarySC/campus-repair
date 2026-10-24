@@ -58,14 +58,14 @@
         <template #col-orderNo="{ row }">
           <span class="order-no-wrap">
             <span class="order-no">{{ row.orderNo }}</span>
-            <!-- 加急＝警戒：§3.3 的「实心圆」，不是又一个彩色胶囊。
+            <!-- 加急＝警戒：「实心圆」，不是又一个彩色胶囊。
                  原先这里是 `el-tag type="danger"`（红底白字），是本页除状态列外最响的一处颜色。 -->
             <StatusRing v-if="row.urgencyLevel === 2" variant="dot" label="加急" class="status-ring--text-after" />
           </span>
         </template>
 
         <template #col-status="{ row }">
-          <!-- §5 的 V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
+          <!-- V7 修订：状态不再用带底色的 `el-tag`，改用 9px 圆环 + 中性字 -->
           <StatusRing :status="row.status" />
         </template>
 
@@ -114,7 +114,7 @@
             </template>
 
             <!--
-              本块的非主色按钮（§24 执行顺序 1）：
+              本块的非主色按钮（中性化执行顺序 1）：
               · 「挂起」原 `warning` 琥珀、「解除挂起」原 `success` 绿 —— 两者**都不是状态**。
                 「要小心」已由 `openSuspendModal` 弹窗里那条 `AlertBanner` 承担
                 （「挂起后 SLA 倒计时冻结…」），不该再由一个色相说第二遍。
@@ -358,7 +358,7 @@ const columns: TableColumn<DispatchOrderItemVO>[] = [
     card: 'tag',
     cardTag: (row) => ({
       text: OrderStatusLabels[row.status as keyof typeof OrderStatusLabels] || row.status,
-      // §5 的 V7 修订：窄档卡片与宽档表格**共用同一份状态色值**（`ResponsiveTable` 的 ring 档
+      // V7 修订：窄档卡片与宽档表格**共用同一份状态色值**（`ResponsiveTable` 的 ring 档
       // 会把它渲染成 9px 圆环，见该组件 `CardTag.type` 的注释）
       type: 'ring',
       status: row.status
@@ -619,10 +619,10 @@ async function submitTransfer() {
 
 <style scoped>
 /*
- * 视觉语言：方向 D（口径见 docs/20261012-1330-…-visual-language-d-design.md §3、§5 的 V1~V15）。
+ * 视觉语言：方向 D（令牌见 `apps/admin-web/src/styles/tokens.css`，状态色见 `packages/shared/src/constants/status.ts`）。
  * 根节点 16px 内边距、内容装进 el-card shadow="never"、宽档表格 / 窄档卡片共用一份列定义
  * （components/ResponsiveTable.vue）、**状态一律 StatusRing 圆环**（V7）。
- * 颜色只取 styles/tokens.css 的令牌：品牌蓝 #1677FF 已退场（§4.2），彩色只服务状态语义
+ * 颜色只取 styles/tokens.css 的令牌：品牌蓝 #1677FF 已退场，彩色只服务状态语义
  * ——而状态色相只活在圆环的 2px 描边上，一个色值字面量都不该出现在本文件里。
  */
 .worker-workbench {
@@ -694,8 +694,8 @@ async function submitTransfer() {
   font-weight: var(--fw-medium);
 }
 
-/* 报修人 = 一键拨号（设计文档 §8.3 的 tel: 语义，收进内容列省掉一列按钮）。
-   可点 → 走 EP 主色令牌（§4.2：品牌蓝退场后由 `--el-color-primary` 承担「可交互」这一档） */
+/* 报修人 = 一键拨号（tel: 语义，收进内容列省掉一列按钮）。
+   可点 → 走 EP 主色令牌（品牌蓝退场后由 `--el-color-primary` 承担「可交互」这一档） */
 .tel-link {
   display: inline-flex;
   align-items: center;
@@ -725,7 +725,7 @@ async function submitTransfer() {
   overflow: hidden;
 }
 
-/* G4 口径（§4.6）：提示条**不用图像、不用彩底彩边**——发丝线边框 + 中性字。
+/* G4 口径：提示条**不用图像、不用彩底彩边**——发丝线边框 + 中性字。
    ⚠️ 2026-10-13 起**不再带实心点**：这条横幅只在 `status === 'SUSPENDED'` 时渲染，
    「有挂起原因」这件事与状态列 100% 同源（状态列已经有 `--h4 已挂起` 的圆环），
    符合判据「同义去重」——点在这里信息增益 ≈ 0。边框仍在说「这里有一条备注」。 */

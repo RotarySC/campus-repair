@@ -78,7 +78,7 @@ const EXPECTED_ACTIONS = {
   返工待派: ['查看'],
   已作废: ['查看']
 };
-/** 设计文档 §3.1 令牌 → 浏览器计算出的 rgb（与缩放无关） */
+/** 设计令牌 → 浏览器计算出的 rgb（与缩放无关） */
 const CARD_BORDER = 'rgb(229, 231, 235)';   // --color-border #E5E7EB
 const SUSPEND_BAR = 'rgb(250, 173, 20)';    // --status-suspended #FAAD14
 
@@ -620,7 +620,7 @@ check('完工页 4 个分段都是 el-card 且都有 #header', f?.cardCount === 
 check('完工页 alert 不再边到边（圆角恢复）', f?.noticeRadius && f.noticeRadius !== '0px', `radius=${f?.noticeRadius}`);
 check('完工页 alert 用 14px 下边距与卡片同距', f?.noticeMarginBottom === '14px', `margin-bottom=${f?.noticeMarginBottom}`);
 // ⚠️ V13（2026-09-27）把这条断言锁的规则**改掉了**：内容列由 760 放宽到 1280 并分两栏。
-// 旧值 `760px` 是 V5 时期的口径——V5 只解决"居中"这一半（见设计文档 §3.3「V5 的由来」），
+// 旧值 `760px` 是 V5 时期的口径——V5 只解决"居中"这一半（见「V5 的由来」），
 // 表单页那一半一直是缺的。看到这里 diff 请对照 §3.3.4，不要当成回归。
 // 二轮修订：760 的上限在**所有档位**都已撤掉（初版只撤到 ≥1440，于是 1272 档量出
 // 「提示条 985 / 表单 760」——正是 V13 第①条要消灭的形态，只是小一号）。

@@ -98,7 +98,7 @@ console.log('      表格多露出一行，正好把名额补了回去。');
 console.log('      ⇒ **判据① 治的是「同一个事实两枚标记」，不是「红点总数」**；');
 console.log('        逐行点是逐项谓词，屏幕里行多它就多 —— 这是设计如此，不是没治干净。');
 
-/* ---- 判据④「呼吸的密度」：从"待观察项"升级成断言（2026-10-13，规范 §30） ---- */
+/* ---- 判据④「呼吸的密度」：从"待观察项"升级成断言（2026-10-13） ---- */
 check('反向自证：表格里确实有**逐行**的「低库存」点（否则下面"逐行静止"在空集上恒真）',
   inv.rowDotCount > 0, `${inv.rowDotCount} 枚`);
 check('**逐行的「低库存」点全部静止**（呼吸 0 枚）', inv.rowBreathing === 0,
@@ -292,7 +292,7 @@ check('警告改由 G4 警示条承担（实心点 + 中性字 + 发丝线）', 
 check('全页**不再有 `el-alert--error`**（口径补上后一并改掉了）', b5after.errorAlerts === 0, `${b5after.errorAlerts} 个`);
 
 /* ==================== ⑧ 全仓扫一遍：**每页同时在呼吸的 ≤ 1 枚** ==================== */
-console.log('\n===== ⑧ 判据④ 呼吸密度：逐页扫一遍（规范 §30） =====');
+console.log('\n===== ⑧ 判据④ 呼吸密度：逐页扫一遍 =====');
 const DENSITY = `(()=>{
   const dots=[...document.querySelectorAll('.status-ring--dot')];
   const br=dots.filter(d=>d.classList.contains('is-breathing'));

@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * **非状态类彩色控件的棘轮**（设计规范 §12.5 / §23）。
+ * **非状态类彩色控件的棘轮**。
  *
  * ## 为什么要有它
  *
@@ -70,7 +70,7 @@ function isDestructive(comp: string, dynamic: boolean, staticType: string | unde
 /**
  * 待裁决的存量，`文件 → 不满足口径的处数`。
  *
- * **这份名单只允许变短。** 每一项都对应规范 §24「待裁决登记表」里的某一组。
+ * **这份名单只允许变短。** 每一项都对应「待裁决登记表」里的某一组。
  * 修干净一个文件就把它从这里删掉——不删就会被「已迁干净必须销账」那条抓住。
  *
  * 2026-10-13 第一批（§24 执行顺序 1 + 2 + 5）：43 → **16**。
@@ -126,7 +126,7 @@ const ALLOWANCE: Record<string, number> = {
  * 配对会整体错位，把两者之间**全部真实代码**当成注释吞掉。
  * 实测 `WorkerFinishView.vue` 因此被吃掉 15 个 `<el-` 标签，
  * 并让两个真实色值（`#F56C6C` / `#1677FF`）在色值棘轮里**隐形了很久**，
- * 于「定义处之外 0 处」这个结论上假绿（见规范 §23.6）。
+ * 于「定义处之外 0 处」这个结论上假绿。
  *
  * 逐字符走：**引号内部不认注释**，并处理反斜杠转义。HTML 注释先单独去掉。
  */
@@ -249,7 +249,7 @@ function hitsIn(text: string): Hit[] {
 /**
  * **第三处棘轮：会吃 EP 语义色、却不在上面那张名单里的组件**（2026-10-13 补）。
  *
- * 起因是三处**实测出来的盲区**（总账见设计文档 §27.5），共同形状是
+ * 起因是三处**实测出来的盲区**，共同形状是
  * **判据只覆盖了自己脑子里那一种写法**：
  *
  *  ① **裸 `<el-tag>`** —— EP 的 `type` 缺省值就是 `primary`，**不传不等于中性**（浅蓝底）。
@@ -507,7 +507,7 @@ describe('非状态类彩色控件棘轮（§12.5 / §23）', () => {
     expect(
       unexpected,
       `这些文件出现了**新的**非状态类彩色控件，但不在登记表里。\n` +
-        `请改用 MetaChip / AlertBanner / StatusRing，或（若确属新决策）在规范 §24 登记后再加进 ALLOWANCE：\n` +
+        `请改用 MetaChip / AlertBanner / StatusRing，或（若确属新决策）在待裁决登记表登记后再加进 ALLOWANCE：\n` +
         unexpected.map((f) => `  ${f} (${offenders.get(f)} 处)`).join('\n')
     ).toEqual([]);
 

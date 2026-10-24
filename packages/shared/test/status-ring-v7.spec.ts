@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * **V7 的状态渲染棘轮**（设计规范 §5 的 V7 修订）。
+ * **V7 的状态渲染棘轮**（V7 修订）。
  *
  * 规范 V7 从「状态一律用 `el-tag :type=orderStatusTagType(status)`」改成
  * 「**状态一律用 `StatusRing`**（9px 圆环 ＋ 中性字）；`el-tag` 仅保留给非状态类标签」。
@@ -57,7 +57,7 @@ describe('V7：工单状态只经由 StatusRing 渲染', () => {
     const offenders = sources.filter((s) => /orderStatusTagType\s*\(/.test(s.code)).map((s) => s.rel);
     expect(
       offenders,
-      '状态必须走 StatusRing 圆环（规范 §5 的 V7）。这些文件仍在把工单状态渲染成带底色的标签，' +
+      '状态必须走 StatusRing 圆环（V7）。这些文件仍在把工单状态渲染成带底色的标签，' +
         '请改用 <StatusRing :status="row.status" />：\n' +
         offenders.map((f) => `  ${f}`).join('\n')
     ).toEqual([]);
