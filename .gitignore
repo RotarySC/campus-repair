@@ -37,28 +37,33 @@ Thumbs.db
 # 现场照片上传目录（运行时产物，由 app.file.upload-dir 指定）
 uploads/
 
-# 文档目录（按用户要求排除在 git 之外）
-# ⚠️ 注意：本目录下**已被跟踪**的文件不受影响（gitignore 只作用于未跟踪文件），
-#    它们仍会出现在 git status 里。要让它们真正退出跟踪需 `git rm -r --cached docs`。
+# 过程性 / 开发 / 计划文档一律不入库（见 AGENTS.md §1）：docs/ 只留在磁盘。
+# 历史入库的 17 个文件已 `git rm -r --cached`，磁盘未删。
 docs/
 
 # 视觉伴侣（brainstorming 的 mockup 产物与过程记录，本地会话临时文件）
 .superpowers/
 
-# 探针的**临时产物**：截图与 stdout 存档。
-# 探针脚本本身（.scratch/*.mjs）是入库的——它们是可复跑的判据；
-# 但它们吐出来的图与日志是**一次性的观测**，入库只会让 git status 长满噪声。
-.scratch/v7-shots/
-.scratch/v3-shots/
-.scratch/v8-shots/
-.scratch/v9-shots/
-.scratch/v10-shots/
-.scratch/v11-shots/
-.scratch/v12-shots/
-.scratch/v13-shots/
-.scratch/probe-out*.txt
+# 探针目录：只入库**可复跑的回归探针**及其公共模块，
+# 其余（诊断/截图/迁移/生成/一次性核对）留在磁盘，避免 git status 噪声。
+.scratch/*
+!.scratch/assert-*.mjs
+!.scratch/cdp-raw.mjs
+!.scratch/measure.mjs
+!.scratch/probe-*.mjs
+!.scratch/table-dom.mjs
+!.scratch/verify-tabs.mjs
+!.scratch/check-*.mjs
+!.scratch/census-*.mjs
+!.scratch/narrow-public.mjs
+!.scratch/narrow-walkthrough.mjs
+!.scratch/make-pwa-icons.mjs
 
-# Maven 测试/运行的临时目录（沙箱下 java.io.tmpdir 必须落在工作区内，
-# 见 AGENTS.md §2.1：不设它会报 Unable to create tempDir / AccessDeniedException）
+# 工具目录（会话过程转储与记忆，非产物）
+.workbuddy/
+.zcode/
+
+# Maven 测试/运行的临时目录：受限沙箱下 java.io.tmpdir 必须落在工作区内，
+# 否则 ImageIO 相关用例会报 Unable to create tempDir / AccessDeniedException。
 .tmp-java/
 

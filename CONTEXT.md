@@ -2,7 +2,7 @@
 
 单体前后端一体的校园设施报修运维系统：师生提报修单、后勤调度派单、维修师傅作业、平台管理。
 本文件只收录**本项目特有**的术语（通用编程概念不入内），是口径的唯一来源——**改口径先改这里**。
-业务侧其余术语见 `docs/20260906-1219-campus-repair-system-requirements.md` 与 `docs/20260907-2000-campus-repair-system-architecture.md`。
+业务侧其余术语见各模块的实体、DTO 与 `sql/` 脚本注释。
 
 ## Language
 
