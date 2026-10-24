@@ -42,6 +42,19 @@
 - Node.js ≥ 18.18，pnpm ≥ 9；
 - Redis 7 —— 可选，多实例 / 生产必需。
 
+### 一键启动（可选）
+
+下面两节的手工步骤可以合并成一条命令：脚本把 `JAVA_HOME` / `PATH` 指到仓库内置 JDK 17 与 Maven，两个服务在后台起、等就绪后打印地址，不占当前终端（Windows）。
+
+```powershell
+pwsh scripts/start.ps1                # local：内存 H2 + data-demo.sql，零外部依赖
+pwsh scripts/start.ps1 -Profile dev   # dev：需先起 MySQL :3306；Redis :6379 可选（缺省降级为进程内存储）
+pwsh scripts/start.ps1 -BackendOnly   # 只起后端（-FrontendOnly 同理）
+pwsh scripts/start.ps1 -Stop          # 停止 8080 / 3000（连同 mvn / pnpm 包装进程）
+```
+
+就绪判据不是「端口开了」，而是能真答出一个业务请求：后端要求匿名 `GET /api/v1/auth/register-org-options?audience=STUDENT` 返回 `code=200`（该端点要查库，等于同时证明端口、应用、库与种子数据都通），前端要求 `:3000` 返回含 `id="app"` 的 `index.html`。`-TimeoutSeconds`（默认 180）内等不到就打印日志末尾并停掉本次拉起的进程，不留半启动状态；端口被别的程序占用时报出 PID 与处理命令，不会误连到别人的服务上。服务已在运行时按「已在运行」跳过，可反复执行。日志在 `.scratch/logs/`（`backend.out.log` / `backend.err.log` / `frontend.out.log` / `frontend.err.log`），PID 记在 `.scratch/run/services.json`。
+
 ### 启动后端（:8080）
 
 ```powershell
@@ -213,6 +226,7 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
   ```
 - `vitest` 在 `workspace-write` 沙箱下会 `spawn EPERM`（Vite 探测网络驱动器），表现为 `no tests`；放宽到 `danger-full-access` 重跑即可，别去改 spec。
 - `mvn clean` 会连 `server/target/tmp` 一起删掉：要同时 clean 和跑测试时，把 `TEMP`/`TMP` 指到仓库内一个不被 clean 清掉的目录（如 `.scratch/tmp`），否则验证码/ImageIO 用例会因临时目录消失而红。
+- **`spring-boot:run` 同样吃 `TEMP`**：系统临时目录不可写时，Tomcat 会在刷新上下文阶段直接失败（`Unable to create tempDir` → `AccessDeniedException: ...\Temp\tomcat.8080.xxx`），现象是「服务没起来、mvn 日志里只有一串 Java 堆栈、端口从头到尾没开」。`scripts/start.ps1` 已把 `TEMP`/`TMP` 指到 `.scratch/tmp`；手工启动时照 §4 第一段先改环境变量。
 - **改完源码先 `mvn clean test` 再下结论**：多进程/并发构建时，若 `.class` 的 mtime 比 `.java` 新，Maven 增量编译会判定「无需重编」并复用旧字节码——曾因此拿旧 class 当修复结论（`javap` 才看出来）。`scripts/verify.ps1` 走的是普通 `mvn test`，改完业务代码后建议至少 clean 跑一次。
 
 ## 5. 已知限制与未验证项
@@ -232,6 +246,7 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
 ## 版本与变更
 
 - **v1.0.0**（2026-10）：12 个业务模块全部交付，后端 178 例测试全绿；统一响应式门户取代早期双端，`/cockpit` 大屏并入控制台概览。
+- 2026-10-24（第四批）：新增 `scripts/start.ps1` 一键启停开发服务——后台起前后端、用真实业务请求判就绪（后端匿名查单位树、前端取 `index.html`）、超时自动回收不留半启动状态、端口冲突报 PID；顺带把「JVM 日志按系统代码页输出」与「Tomcat 需要可写的 `TEMP`」两处环境坑在脚本里处理掉。
 - 2026-10-24（第三批）：**测试与性能证据补齐**——`apps/admin-web` 接入 vitest（3 spec / 16 例：路由守卫矩阵、KPI 卡口径、学生工单列表挂载），把 `beforeEach` 的判定抽成纯函数 `resolveNavigation`；新增 `@Tag("perf")` 的 5 万单压测基线（KPI p95≈1.0ms、深分页 p95≈12.6ms）与 `scripts/verify.ps1` / `scripts/perf.ps1` 两条一键命令；新增取消三方并发与复核 approve/reject 并发用例，并据此修掉**取消/作废/接单未做条件更新导致并发双写**的缺陷。后端测试 282 → **285 例**。
 - 2026-10-24（第二批）：补齐开题缺口的第二批——**内容审核闸门与公告先审后发**（敏感词表 + 确定性初筛 + 图片抽检 + 复核队列 + append-only 轨迹 + 公告状态机）、**报修人接单前取消**（复用 `CANCELLED`、审计区分主体、释放负荷）、**字段级脱敏与用户台账隐私修复**（按关系掩码、台账不再回密码）；顺带修掉「自动派单事件在事务内发布导致偶发不派单」的时序缺陷。后端测试 225 → **282 例**，前端 shared 单测 61 → **100 例**。
 - 2026-10-24：补齐开题缺口的第一批——**校内身份核验与账号三态**（名册比对 / 待核验 1010 / 核验工作台 / 三态台账）、**字典变更审计**、**库存安全预警**、**返工率 KPI**；生产库脚本从 12 表补到 23 表（含 9 个核心外键）并新增迁移脚本；后端测试 178 → **225 例**。
