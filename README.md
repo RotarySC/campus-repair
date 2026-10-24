@@ -15,12 +15,16 @@
 | 校内身份核验 | 自助注册按「预导入名册（学号/工号 + 姓名 + 条线）」自动比对：命中即通过并留 `SYSTEM` 审核轨迹；名单外 / 姓名不符 / 条线不符进 `status=2` 待核验（**可登录、不可提单**，业务码 `1010`），平台管理员在「身份核验」页通过或驳回（驳回理由必填、结论一次性、二次决策 `1013`）；名册支持 Excel 导入与离校失效标记，被驳回账号可用同一学号重新提交（复用账号、新增 `REAPPLY` 轨迹）。 |
 | 空间与故障字典 | 校区 → 区域组团 → 楼栋 → 房间四级空间树（全路径文本冗余、节点软停用）；楼栋标建筑性质并挂网格责任人；两级故障分类，细类直接绑工种与 SLA 时效（小时）。 |
 | 师生报修 | 自动带出默认空间与电话；空间失焦异步查重并弹防重预警；Canvas 等比压缩到 ≤ 800KB；LocalStorage 草稿恢复；全局单调单号 `BXyyyyMMddXXXXXX`。 |
-| 智能派单 | 监听提单事件，按在岗 + 工种 + 校区筛候选，在修负荷最小优先（同负荷比评分）；`incrementCurrentLoadAtomic` 原子加负荷，杜绝并发突破 `max_load`；无可用候选降级 `MANUAL_DISPATCH`。 |
+| 内容审核（内容闸门） | 提单即初筛：敏感词表（广告导流 / 辱骂攻击 / 他人隐私 / 与维修无关，四类后台可维护）+ 确定性规则（本人手机号豁免、身份证/银行卡模式、超短与纯符号文本）+ 图片人工抽检比例，命中**只拦不删**。命中即 `review_status=PENDING`：工单照常可查，但**不进派单池、不自动派单、不能人工指派**（`2004`）；调度/平台管理复核通过才补发派单，驳回必填理由、报修人改文案后重提（轮次 +1）。轨迹 `sys_content_review` append-only、一次性决策（二次决策 `2007`）。`content_review.enabled=0` 可一键退回「先发后审」。 |
+| 公告先审后发 | 维修公告独立成表走状态机：草稿 → 待审 → 通过 / 驳回 → 发布；**未发布不产生任何站内信**（对师生不可见），发布时才扇出并回写 `announcement_id`。旧 `POST /notifications/broadcast` 保留路径与权限，但只建草稿，绕不过审核。 |
+| 智能派单 | 监听提单事件，按在岗 + 工种 + 校区筛候选，在修负荷最小优先（同负荷比评分）；`incrementCurrentLoadAtomic` 原子加负荷，杜绝并发突破 `max_load`；无可用候选降级 `MANUAL_DISPATCH`；派单事件在事务提交后发布，并对「非 PASSED 内容」二次设防。 |
+| 报修人接单前取消 | `POST /work-orders/{id}/cancel-by-reporter`（仅属主）：窗口 = 待派单 / 待承接 / 已指派但师傅未接单（`accepted_time` 为空），由后端单点判定并下发 `canCancel`，前端不复制规则；取消复用 `CANCELLED` 终态，用动作词 `CANCEL_BY_REPORTER` + `operator_role=REPORTER` 与调度作废区分，释放师傅负荷并通知师傅与报修人；已开工 / 挂起 / 待验收 / 终态返回 `2006`。 |
 | 调度工作台 | 左栏 55% 调度池（派单失败 / 转派 / 加急 / 返工）+ 右栏 45% 彩色负荷看板；同屏人工指派、强制改派、核实作废（作废即释放师傅负荷）。 |
 | 师傅作业台 | 待承接 / 维修中 / 历史三页签卡片流，触控区 ≥ 44×44pt，`tel:` 一键外呼；接单出发、施工挂起（冻结 SLA）、解除挂起（顺延截止）、申请转派（移出负荷并交还调度）。 |
 | 完工填报与耗材 | 现场拍照 + Canvas 防伪水印（工单号 + 师傅 + 时间戳）；`deductStockAtomic` 行级条件扣减防超卖，材料成本自动记入工单台账。 |
 | 验收评价与返工 | 报修前后实况对比卡片；≥ 3 星闭环 `COMPLETED`，≤ 2 星必填未解决原因并转 `REWORK_PENDING` 置顶；主管可退回原师傅或换派。Spring Task 每 15 分钟扫描超 72 小时未确认单并幂等结单，`ratingStar` 保持 `null`（不虚假好评）。 |
-| 审计与站内信 | `repair_order_log` 不可篡改全轨迹；`operator_role` 只记 4 个职能码 + `SYSTEM`（与 `@PreAuthorize` 一一对应），操作人由 `operator_id`/`operator_name` 标识；历史行不重写、由展示层兼容翻译。6 类站内信 + 红点徽标 + `Notifier` SPI（Console / Mail）。 |
+| 审计与站内信 | `repair_order_log` 不可篡改全轨迹；`operator_role` 只记 4 个职能码 + `SYSTEM`（与 `@PreAuthorize` 一一对应），操作人由 `operator_id`/`operator_name` 标识；历史行不重写、由展示层兼容翻译。7 类站内信 + 红点徽标 + `Notifier` SPI（Console / Mail）。 |
+| 字段级脱敏 | 按「查看者与工单的关系」算展示值：报修人看师傅号码默认掩码（`138****0000`，`contact.reporter_see_worker_phone=1` 可放开），指派师傅与调度 / 平台管理看完整；VO 同时保留原始字段与 `*Display`，前端只读展示值，掩码值不生成 `tel:` 拨号（与后端同一掩码规则另有前端纯函数与单测锁死）。用户台账 `GET /users/page` 改返回 `UserAdminVO`——不再回 `password` / `deleted`，电话按职能掩码。 |
 | 字典变更审计 | `sys_operation_log` 为 append-only：空间节点、故障分类、系统参数的新增 / 修改 / 删除 / 启停都记录**前后值白名单快照**与操作人（同事务，失败不留假日志）；`GET /operation-logs` 仅管理侧可读、**无写接口**（PUT/DELETE 回 405），空间字典页「变更记录」抽屉可按模块/目标/时间查。 |
 | 库存安全预警 | 定时扫描（30 分钟）+ 完工核销后 `AFTER_COMMIT` 即时检查双通道；同一物料 24h 冷却（补货回安全线以上清零）、条件更新原子认领、扫描级锁（Redisson 优先、进程内兜底）；只推 `DISPATCHER`/`PLATFORM_ADMIN`，通知分类 `STOCK_WARNING`，文案不含成本。 |
 | 备件进销存 | 物料主台账、编码唯一防重、在库防删；采购入库 `INyyyyMMddXXXXXX` 并沉淀流水；4 项动态指标看板；按安全水位 2 倍核算采购建议并 EasyExcel 导出。 |
@@ -136,34 +140,38 @@ mvn spring-boot:run
 
 ### 权限与数据边界
 
-- **角色注解只回答「你是什么角色」，不回答「这张单是不是你的」**：`GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail` 额外做属主判定（报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理），其余 403，与 2003「工单不存在」刻意区分；判定在 `WorkOrderService.assertReadable`。
+- **角色注解只回答「你是什么角色」，不回答「这张单是不是你的」**：`GET /work-orders/{id}`、`/{id}/timeline`、`/{id}/evaluation-detail`、`/{id}/reviews` 额外做属主判定（报修人本人 ∨ 当前指派师傅 ∨ 调度/平台管理），其余 403，与 2003「工单不存在」刻意区分；判定在 `WorkOrderService.assertReadable`。
+- **取消窗口只由后端判定**：可取消 = 待派单 / 待承接 / 已指派但 `accepted_time` 为空；接口下发 `canCancel` 与 `viewerRelation`，前端不得自行按状态拼规则（状态机一改就会两边漂）。取消不改状态机图，复用 `CANCELLED`，主体靠审计动作词区分。
+- **脱敏只影响「展示值」**：`phone` 原字段仍按既有权限下发，新代码一律读 `applicantPhoneDisplay` / `workerPhoneDisplay`；掩码值（含 `*`）不生成拨号链接。放开报修人看师傅完整号码需改 `sys_config.contact.reporter_see_worker_phone=1`（配置读库，重启或等待下次读取生效）。
 - **令牌吊销是单实例语义**：黑名单走 `AuthStateStore`（Redis 优先、进程内兜底）。多实例部署必须保证 Redis 可用，否则「登出即失效」只在处理该请求的节点生效。
 - **未登出的令牌在有效期内仍可用**：Access 无状态、默认 2h 且不查库，登出只能吊销被出示过的那一枚；账号级即时失效依赖 `status=0` 停用 + 重新登录。
 
 ## 4. 自验
 
 ```powershell
-# 后端：单元 + 集成 + 并发压测（225 例，2026-10-24 实测 0 失败；含身份核验/审计/库存预警/返工率）
+# 后端：单元 + 集成 + 并发（282 例，2026-10-24 实测 0 失败；含身份核验/内容审核/取消与脱敏/审计/库存预警/返工率）
 mvn test -f server/pom.xml
 
 # 前端类型检查（两包；.vue 单文件组件必须用 vue-tsc）
 ./node_modules/.bin/tsc.CMD --noEmit -p packages/shared/tsconfig.json
 cd apps/admin-web; ./node_modules/.bin/vue-tsc.CMD --noEmit
 
-# 前端单测：10 个 spec / 61 例（format 14、http 3、watermark 3、status-hue 10、token-coverage 8、
-# category-palette 7、color-controls 6、brand-mark 5、probes-parse 3、status-ring-v7 2）
+# 前端单测：12 个 spec / 100 例（format 14、http 3、watermark 3、status-hue 10、token-coverage 8、
+# category-palette 7、color-controls 6、brand-mark 5、probes-parse 3、status-ring-v7 2、
+# contact-mask 26、order-actions 13）
 cd packages/shared; node node_modules/vitest/vitest.mjs run
 
-# 生产库（MySQL 8）：空库建表 + 灌种子 + 冒烟（2026-10-24 在 MySQL 8.4 实测：23 表、登录、
-# 看板/派单池/空间树/身份核验/审计/405 全部通过）
-mysql -uroot -p -e "CREATE DATABASE campus_repair CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-mysql -uroot -p campus_repair < sql/schema.sql
-mysql -uroot -p campus_repair < sql/data.sql
+# 生产库（MySQL 8）：空库建表 + 灌种子 + 冒烟（2026-10-24 在 MySQL 8.4 实测：23 表；提单命中广告词
+# → 不进退派单池且人工指派 2004 → 复核通过自动派单 → 报修人取消且师傅负荷回落 → 公告「未通过发布
+# 2008 / 通过后扇出带 announcement_id」→ 学生看师傅号码掩码、管理看完整 → 台账 JSON 无 password）
+mysql --default-character-set=utf8mb4 -uroot -p -e "CREATE DATABASE campus_repair CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql --default-character-set=utf8mb4 -uroot -p campus_repair < sql/schema.sql
+mysql --default-character-set=utf8mb4 -uroot -p campus_repair < sql/data.sql
 # 已部署的旧 12 表库改用增量脚本（可重复执行）：
-mysql -uroot -p campus_repair < sql/migration-20261024-baseline.sql
+mysql --default-character-set=utf8mb4 -uroot -p campus_repair < sql/migration-20261024-baseline.sql
 ```
 
-覆盖重点：双令牌鉴权与首登拦截（`AuthIntegrationTest` / `FirstLoginEnforcementIntegrationTest` / `LogoutRevocationIntegrationTest`）、**校内身份核验与待核验闸门**（`IdentityVerificationIntegrationTest` / `IdentityMatchServiceTest` / `IdentityRosterImportTest`）、工单读接口属主四方向（`WorkOrderReadOwnershipIntegrationTest`）、派单最小负荷与 10 线程防超派（`DispatchEngineIntegrationTest`）、库存 10 线程防超卖（`InventoryAndFinishIntegrationTest`）、72h 超时核销与差评返工仲裁（`EvaluationAndReworkIntegrationTest`）、**字典变更审计**（`OperationLogIntegrationTest`）、**库存预警冷却与双通道**（`StockWarningIntegrationTest`）、**返工率口径**（`ReworkRateKpiTest`）、**建表脚本一致性**（`SchemaParityTest`）、审计职能词表逐个动作核对（`AuditRoleVocabularyIntegrationTest`）、旧角色码反漏改扫描（`NoLegacyRoleCodeTest`）、分析聚合等价性（`AnalyticsAggregationEquivalenceTest`）、智能助手规则打分与真实 HTTP 信封/超时降级（`AssistantRuleEngineTest` / `RestClientLlmTransportTest` / `AssistantLlmEscalationTest`）。
+覆盖重点：双令牌鉴权与首登拦截（`AuthIntegrationTest` / `FirstLoginEnforcementIntegrationTest` / `LogoutRevocationIntegrationTest`）、**校内身份核验与待核验闸门**（`IdentityVerificationIntegrationTest` / `IdentityMatchServiceTest` / `IdentityRosterImportTest`）、**内容初筛纯函数（归一化 / 本人手机号豁免 / 抽检确定性 / 停用词）**（`ContentScreeningTest`）、**内容审核闸门与重提**（`ContentReviewIntegrationTest`）、**公告先审后发**（`AnnouncementReviewIntegrationTest`）、**敏感词表维护**（`SensitiveWordApiTest`）、**报修人取消窗口与负荷回落**（`WorkOrderReporterCancelIntegrationTest`）、**按关系掩码**（`ContactVisibilityIntegrationTest`）、**台账不回密码**（`UserAdminPrivacyTest`）、工单读接口属主四方向（`WorkOrderReadOwnershipIntegrationTest`）、派单最小负荷与 10 线程防超派（`DispatchEngineIntegrationTest`）、库存 10 线程防超卖（`InventoryAndFinishIntegrationTest`）、72h 超时核销与差评返工仲裁（`EvaluationAndReworkIntegrationTest`）、**字典变更审计**（`OperationLogIntegrationTest`）、**库存预警冷却与双通道**（`StockWarningIntegrationTest`）、**返工率口径**（`ReworkRateKpiTest`）、**建表脚本一致性**（`SchemaParityTest`）、审计职能词表逐个动作核对（`AuditRoleVocabularyIntegrationTest`）、旧角色码反漏改扫描（`NoLegacyRoleCodeTest`）、分析聚合等价性（`AnalyticsAggregationEquivalenceTest`）、智能助手规则打分与真实 HTTP 信封/超时降级（`AssistantRuleEngineTest` / `RestClientLlmTransportTest` / `AssistantLlmEscalationTest`）。
 
 ### 真机探针
 
@@ -191,9 +199,11 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
 
 - **Redis 降级是单实例语义**：未部署 Redis 时失败计数、验证码、吊销黑名单不跨节点共享，发号器与派单锁退化为进程内实现；多实例 / 生产必须提供 Redis。
 - **本地库是内存 H2**：进程退出即丢数据；`data-demo.sql` 的时间戳用相对时间生成，长跑的 JVM 会被 15 分钟一次的 72h 超时核销任务改动 KPI，比对数值请用刚启动的实例。
-- **生产 MySQL 8 的覆盖范围**：H2 仍是默认测试库（`MODE=MySQL`），但 2026-10-24 已在本地 MySQL 8.4 完成「空库建表（23 表 + 9 外键）→ 灌种子 → 登录取票 → 看板/派单池/空间树 → 身份核验注册/通过/1010 → 字典审计 → 405 语义」冒烟；`sql/migration-20261024-baseline.sql` 在旧 12 表库上实测升到 23 表。CI 仍只跑 H2，MySQL 路径靠 `SchemaParityTest` + 上述手工脚本守护。
+- **生产 MySQL 8 的覆盖范围**：H2 仍是默认测试库（`MODE=MySQL`），但 2026-10-24 已在本地 MySQL 8.4 完成两轮冒烟——第一轮「空库建表（23 表 + 9 外键）→ 灌种子 → 登录取票 → 看板/派单池/空间树 → 身份核验注册/通过/1010 → 字典审计 → 405 语义」；第二轮「命中广告词提单 → 派单池不可见且人工指派 2004 → 复核通过补发派单 → 报修人取消（负荷回落 + 师傅收到取消通知）→ 公告未通过发布 2008 / 通过后扇出带 `announcement_id` → 学生看师傅号码掩码、管理看完整 → 用户台账无 `password`」。`sql/migration-20261024-baseline.sql` 在旧 12 表库上实测升到 23 表。CI 仍只跑 H2，MySQL 路径靠 `SchemaParityTest` + 上述手工脚本守护。
 - **`/uploads` 与 `/api` 必须同源可达**：前端与图片 URL 都是相对路径，分域部署需各自补代理或改绝对地址。
 - **`dev` profile 的 JDBC `characterEncoding` 必须写 `UTF-8`**（不能写 `utf8mb4`，Connector/J 会抛 `UnsupportedEncodingException`）；库/表侧仍是 `utf8mb4`。
+- **灌种子必须显式指定客户端字符集**：`mysql < sql/data.sql` 要带 `--default-character-set=utf8mb4`。客户端字符集不是 utf8mb4 时中文会被双编码写进库（`王同学` 变 `çŽ‹åŒå¦`），表现为敏感词表命中失效、姓名乱码——是灌数据姿势问题，不是应用 bug。
+- **内容审核的多轮轨迹只在审核工作台可见**：学生详情页给「当前轮驳回理由 + 修改重提入口」，不做整条审核时间轴（否则等于给工单再开一条并行时间轴）；需要按轮追溯时走「内容审核 → 审核记录」。
 - **智能助手的大模型增强默认关闭**，默认只有本地规则；开启后单次请求受 `MAX_TOKENS` / `TIMEOUT_MS` 约束，思考模型容易把 `content` 挤空而降级为纯规则。
 - **窄档下管理端不推荐**：调度台、进销存、字典维护按 PC 设计，< 768 只有师生 / 师傅侧做过完整走查。
 - **前端没有页面级单测**：`apps/admin-web` 只有 `typecheck`，页面行为靠真机探针；探针依赖本机 Edge 9222 与两个服务，不能进 CI 无头跑。
@@ -201,6 +211,7 @@ node .scratch/assert-profile.mjs          # 个人中心：单位字典下钻、
 ## 版本与变更
 
 - **v1.0.0**（2026-10）：12 个业务模块全部交付，后端 178 例测试全绿；统一响应式门户取代早期双端，`/cockpit` 大屏并入控制台概览。
+- 2026-10-24（第二批）：补齐开题缺口的第二批——**内容审核闸门与公告先审后发**（敏感词表 + 确定性初筛 + 图片抽检 + 复核队列 + append-only 轨迹 + 公告状态机）、**报修人接单前取消**（复用 `CANCELLED`、审计区分主体、释放负荷）、**字段级脱敏与用户台账隐私修复**（按关系掩码、台账不再回密码）；顺带修掉「自动派单事件在事务内发布导致偶发不派单」的时序缺陷。后端测试 225 → **282 例**，前端 shared 单测 61 → **100 例**。
 - 2026-10-24：补齐开题缺口的第一批——**校内身份核验与账号三态**（名册比对 / 待核验 1010 / 核验工作台 / 三态台账）、**字典变更审计**、**库存安全预警**、**返工率 KPI**；生产库脚本从 12 表补到 23 表（含 9 个核心外键）并新增迁移脚本；后端测试 178 → **225 例**。
 - 2026-09：身份模型重构为「组织条线 / 职能 / 工种」三层，新增 ADR 0001/0002；首登强制改密、登出双令牌吊销、工单读接口属主判定落地。
 - 2026-09-21：智能助手（规则引擎 + 可选大模型增强）。
